@@ -34,5 +34,39 @@ del { background-color: #FDD; }
 </tbody></table>
 <h1>Continuations and std::future</h1>
 
+<h2>Background</h2>
+In the Concurrency TS, <code>std::future</code> was augmented with support for continuations. However, the feedback leading up to and during the recent meeting in Toronto was that the specification for continuation support in the TS was insufficient. The absence of support for executors made it hard to control. LWG2533 expressed concern about where the continuation is run, and other papers including P0667, P0679 and P0701 expressed concerns with various parts of the proposal. Much of this
+feedback relates to the ongoing work on executors that is as yet incomplete. The continuation elements of the Concurrency TS were subsequently not merged into the C++20 standard draft at Toronto.
+
+At Facebook we, like mamy companies, have considerable experience of using continuations on futures. Our folly library is widely used within the company, and is open source. Folly supports executors and continuations. From the widespread use of folly inside Facebook we have learned many lessons. One of the big lessons is very similar to that expressed in LWG2533: that it needs to be very well defined precisely where a continuation will run when applied to a Future. In the absence of a very
+strong rule, there is an inherent non-determinism: I
+<ul>
+    <li>If the future is complete at the time of adding the continuation, will it run in the calling thread of execution?</li>
+    <li>If the future is incomplete at the time of adding the continuation, is it possible for it to complete in the same thread of execution that completes the preceding task?</li>
+    <li>Will the continuation always run in a well-defined thread-of-execution, whatever the completion state is of the future? To achieve this, the thread of execution has to be guaranteed to survive long enough to make this possible.</li>
+</ul>
+
+Our experience leads us to believe that an executor should always be available to any attempt to add a continuation to a future, and where the continuation runs should be explicitly defined by the rules of that executor. In this way everything is clean as long as the lifetime of the executor can be guaranteed (which is out of scope of this paper).
+
+Always requiring specification of an executor is possible, but clumsy. During discussions in Toronto more than one person expressed a wish to allow a default executor, that would be used if none was provided to the call to <code>.then</code>. If this is allowed then we have further questions:
+<ul>
+    <li>Should the default executor be a global default. This will be suboptimal for cases where it makes more sense to allow the continuation task to run on same thread-of-execution as task that results in the future's result.</li>
+    <li>Should an executor be embedded in the future, and hence a continuation added with <code>.then</code> would run on the same thread-of-execution as the future completes on? This would work well in many situations, but for libraries to safely return a future that did not allow the caller to run work on the library's internal threads-of-execution this might mean modifying the executor attached to the returned future before returning said future</li>
+</ul>
+
+The second option here is often used in Facebook's libraries. The result is that asynchronous libraries will require an executor to be passed into the library, so that the library can attach that continuation to the future before returning it to provide the clean execution boundary required. The cost of this is that executor parameters need to be widespread and intrude in places where they are not relevant.
+
+Take a simple example of a library that gets a future and passes it into some other library:
+<code>
+void myForwardingFunction() {
+    Executor e;
+    auto future = LibraryA::getFromSomewhere(&e, params);
+    LibraryB::sendToSomewhere(future);
+}
+</code>
+
+In this case, why did <code>myForwardingFunction</code> need to know about an executor at all? How would we ever choose a reasonable excecutor here that guarantees forward progress and yet does not impose a high cost? In practice, <code>LibraryB</code> should use its own exector to run the continuation, but this is not something that <code>LibraryA</code> can rely on while providing a safe separation of concerns.
+
+<h2>A simpler addition to std::future</h2>
 
 </p></body></html>
