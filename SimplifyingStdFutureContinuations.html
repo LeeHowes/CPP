@@ -71,5 +71,69 @@ void myForwardingFunction() {
 In this case, why did <code>myForwardingFunction</code> need to know about an executor at all? How would we ever choose a reasonable excecutor here that guarantees forward progress and yet does not impose a high cost? In practice, <code>LibraryB</code> should use its own exector to run the continuation, but this is not something that <code>LibraryA</code> can rely on while providing a safe separation of concerns.
 
 <h2>A simpler addition to std::future</h2>
+We propose modifying std::future to add a <code>.via()</code> method that takes an executor. Via should take the <code>std::future</code> and return a new future type, yet to be defined but that can be roughly similar to <code>std::experimental::future</code>, that adds support for continuations using <code>.then</code> methods. We will call this <code>ThennableFuture</code> here to avoid bikeshedding. <code>ThennableFuture</code> should store its executor internally, which means that it is well-defined to add an overload of <code>.then</code> that takes no executor. It may
+even make sense to remove the <code>.then</code> overloads that do take executors to make it absolutely explicit that at any point in the code, continuations are enqueued on the executor contained within the future.
+
+We additionally add a conversion, possibly implicit, from ThennableFuture to <code>std::future</code>. 
+
+In this world, <code>std::future</code> stays as the vocabulary type, with general day to day use unchanged. Our forwarding function as described above simplifies:
+
+<code>
+void myForwardingFunction() {
+    auto future = LibraryA::getFromSomewhere(params);
+    LibraryB::sendToSomewhere(future);
+}
+</code>
+
+We no longer need to tell <code>LibraryA</code> what executor to return us a future on, which means that <code>myForwardingFunction</code> now does not need to know about executors at all. Why should it care? <code>LibraryA</code> did some work, <code>LibraryB</code> will do some more work dependent on <code>LibraryA</code>'s work. The forwarder need not know what that is, and in addition need not incur any extra cost of adding a shunt-type executor that exists purely to protect
+<code>LibraryA</code> from its callers.
+
+As <code>std::future</code> will be carrying potentially unexecuted tasks, to allow safe chaining it may be necessary to include a type-erased executor as a field in the future core, but this appears to be an implementation detail.
+
+We are then proposing modifying <code>std::future</code> to add:
+<code>
+template<class T> class Future {
+    ...
+    /* implicit */
+    Future(ThennableFuture<T>&&);
+
+    ...
+
+    ThennableFuture<T> via(ExecutorT);
+
+    ...
+};
+</code>
+
+
+<h2>Templating the new future</h2>
+If we continue to use <code>std::future</code> as the vocabulary type for APIs, we can consider templating our new future on the executor type for efficiency. So our new future then becomes typed:
+
+<code>
+template<class T, class ExecutorT> class ThennableFuture;
+</code>
+
+What is interesting about this is that it means we do not pass a future that supports continuations and yet has an unknown executor across library boundaries. This is important because it also means we do not pass a future that supports continuations and has an unknown forward progress guarantee for those continuations.
+
+To <code>std::future</code> we add:
+<code>
+template<class T> class Future {
+    ...
+    template<class ExecutorT>
+    /* implicit */
+    Future(ThennableFuture<T, ExecutorT>&&);
+
+    ...
+
+    ThennableFuture<T, ExecutorT> via(ExecutorT);
+
+    ...
+};
+</code>
+
+<h2>Forward progress guarantees</h2>
+<h2>Boost blocking and deferred execution</h2>
+TODO:Even though the future does not expose the executor to continuations, it is still there. This means you can push some work onto the caller if it makes sense, still without exposing an API for that purpose.
+TODO:Note in particular that .via needs to boost block, along with .get, but that .then need not in this design.
 
 </p></body></html>
