@@ -60,13 +60,13 @@ Always requiring specification of an executor is possible, but clumsy. During di
 The second option here is often used in Facebook's libraries. The result is that asynchronous libraries will require an executor to be passed into the library, so that the library can attach that continuation to the future before returning it to provide the clean execution boundary required. The cost of this is that executor parameters need to be widespread and intrude in places where they are not relevant.
 
 Take a simple example of a library that gets a future and passes it into some other library:
-<code>
+<pre>
 void myForwardingFunction() {
     Executor e;
     auto future = LibraryA::getFromSomewhere(&e, params);
     LibraryB::sendToSomewhere(future);
 }
-</code>
+</pre>
 
 In this case, why did <code>myForwardingFunction</code> need to know about an executor at all? How would we ever choose a reasonable excecutor here that guarantees forward progress and yet does not impose a high cost? In practice, <code>LibraryB</code> should use its own exector to run the continuation, but this is not something that <code>LibraryA</code> can rely on while providing a safe separation of concerns.
 
@@ -78,12 +78,12 @@ We additionally add a conversion, possibly implicit, from ThennableFuture to <co
 
 In this world, <code>std::future</code> stays as the vocabulary type, with general day to day use unchanged. Our forwarding function as described above simplifies:
 
-<code>
+<pre>
 void myForwardingFunction() {
     auto future = LibraryA::getFromSomewhere(params);
     LibraryB::sendToSomewhere(future);
 }
-</code>
+</pre>
 
 We no longer need to tell <code>LibraryA</code> what executor to return us a future on, which means that <code>myForwardingFunction</code> now does not need to know about executors at all. Why should it care? <code>LibraryA</code> did some work, <code>LibraryB</code> will do some more work dependent on <code>LibraryA</code>'s work. The forwarder need not know what that is, and in addition need not incur any extra cost of adding a shunt-type executor that exists purely to protect
 <code>LibraryA</code> from its callers.
@@ -91,7 +91,7 @@ We no longer need to tell <code>LibraryA</code> what executor to return us a fut
 As <code>std::future</code> will be carrying potentially unexecuted tasks, to allow safe chaining it may be necessary to include a type-erased executor as a field in the future core, but this appears to be an implementation detail.
 
 We are then proposing modifying <code>std::future</code> to add:
-<code>
+<pre>
 template<class T> class Future {
     ...
     /* implicit */
@@ -103,20 +103,21 @@ template<class T> class Future {
 
     ...
 };
-</code>
+</pre>
 
 
 <h2>Templating the new future</h2>
 If we continue to use <code>std::future</code> as the vocabulary type for APIs, we can consider templating our new future on the executor type for efficiency. So our new future then becomes typed:
 
-<code>
+<pre>
 template<class T, class ExecutorT> class ThennableFuture;
-</code>
+</pre>
 
 What is interesting about this is that it means we do not pass a future that supports continuations and yet has an unknown executor across library boundaries. This is important because it also means we do not pass a future that supports continuations and has an unknown forward progress guarantee for those continuations.
 
 To <code>std::future</code> we add:
-<code>
+
+<pre>
 template<class T> class Future {
     ...
     template<class ExecutorT>
@@ -129,7 +130,7 @@ template<class T> class Future {
 
     ...
 };
-</code>
+</pre>
 
 <h2>Forward progress guarantees</h2>
 <h2>Boost blocking and deferred execution</h2>
