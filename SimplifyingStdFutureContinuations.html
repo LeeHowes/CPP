@@ -134,7 +134,34 @@ template<class T> class Future {
 
 <h2>Forward progress guarantees</h2>
 <h2>Boost blocking and deferred execution</h2>
-TODO:Even though the future does not expose the executor to continuations, it is still there. This means you can push some work onto the caller if it makes sense, still without exposing an API for that purpose.
-TODO:Note in particular that .via needs to boost block, along with .get, but that .then need not in this design.
+During the Toronto meeting, Torvald expressed a desire to ensure that continuations and result extraction for futures provide boost-blocking guarantees. folly::future and its executors do not provide this: we require a call to getVia to ensure that a callback that has no currently known executor gets one, and chains of continuations with undriven executors will not execute.
+
+We do see a common case, however, where a library wants to do some work on its own executor, and some on some provided executor. For example, much of Facebook's networking code will deserialize on a provided executor. The above code where we need to pass an executor to the library call is an example of this, and it causes problems in practice from users finding libraries hard to learn, to the addition of additional shunt executors and threads just to chain calls together.
+
+With good boost-blocking support we can avoid this. The proposal is that <code>.get</code> boost-blocks the executor attached to the future. <code>.via</code> similarly boost blocks, but it does it by ensuring that a task is added to the provided future that drives the previously attached future. In this way a whole chain of inline executors may be provided that drive each other in turn until the work is completed.
+
+Assuming we have some deferred executor type that guarantees not to execute work immediately but to run it when the executor is driven later (ie inline but with an <code>execute</code> method that calls <code>post</code. or <code>defer</code>). This means code like the following can be made to work:
+<pre>
+std::future<ResultType> LibraryA::getFromSomewhere(ParamType params) {
+    std::ThennableFuture tf = getRawNetworkData(params);
+    return tf.via(DeferredExecutor{}).then([](auto& serializedData){ return deserialize(serializedData); });
+}
+
+int main() {
+    auto f = getFromSomewhere(ParamType{});
+    // Deserialization will happen some time after this point, on ThreadedExecutor
+    auto resultFuture = f.via(ThreadedExecutor{});
+    ...
+    return 0;
+}
+</pre>
+
+This gives us control of what runs where, but with a simple API for interacting between libraries.
+
+<code>.then</code> need not boost-block here, as that behaviour is a property of the executors, and any application of boost-blocking is thus defined by points at which executors are connected together - with the clarification that a call to <code>f.get()</code> is logically equivalent to <code>InlineExecutor e; auto f2 = f.via(e); e.drive(); f2.get();</code> 
+
+Boost-blocking of executors still has to be considered carefully, of course, to avoid recursive driving behaviour. We merely use a <code>drive()</code> method as a potential interface for this that internals of futures would use.
+
+TODO: How about passing the current executor into the continuation? Maybe optionally. That way state abotu the current execution (TLS, the current thread, thread ids etc that might make sense for GPUs and so on) can be available though the executor or some sort of executor context parameter.
 
 </p></body></html>
