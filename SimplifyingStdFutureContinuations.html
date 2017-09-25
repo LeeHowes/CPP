@@ -179,6 +179,6 @@ int main() {
 
 
 
-A requirement arising from this is that any executor attached to a <code>std::future</code> should, in context, be boost-blocking at a minimum. This does not preclude an executor that requires explicit driving being attached, but for any user of a <code>std::future</code> it is reasonable to expect that the future will complete eventually, but that the calling thread might have to do some additional work inline to achieve this.
+<p>A requirement arising from this is that any executor attached to a <code>std::future</code> should, in context, be boost-blocking at a minimum. This does not preclude an executor that requires explicit driving being attached, but for any user of a <code>std::future</code> it is reasonable to expect that the future will complete eventually, but that the calling thread might have to do some additional work inline to achieve this.
 
 </p></body></html>
