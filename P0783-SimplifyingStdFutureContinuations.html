@@ -144,7 +144,7 @@ template&lt;class T, class ExecutorT&gt; class thenable_future;
 
 
 <h2>Boost blocking and deferred execution</h2>
-During the Toronto meeting, Torvald expressed a desire to ensure that continuations and result extraction for futures provide boost-blocking guarantees. folly::future and its executors do not provide this: we require a call to getVia to ensure that a callback that has no currently known executor gets one, and chains of continuations with undriven executors will not execute.
+In p0679r0 Torvald Riegel expressed a desire to ensure that continuations and result extraction for futures provide boost-blocking guarantees. folly::future and its executors do not provide this: we require a call to getVia to ensure that a callback that has no currently known executor gets one, and chains of continuations with undriven executors will not execute.
 
 <p>We do see a common case, however, where a library wants to do some work on its own executor, and some on some provided executor. For example, much of Facebook's networking code will deserialize on a provided executor. The above code where we need to pass an executor to the library call is an example of this, and it causes problems in practice from users finding libraries hard to learn, to the addition of additional shunt executors and threads just to chain calls together.
 
