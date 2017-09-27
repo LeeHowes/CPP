@@ -174,4 +174,14 @@ int main() {
 
 <p>A requirement arising from this is that any executor attached to a <code>std::future</code> should, in context, be boost-blocking at a minimum. This does not preclude an executor that requires explicit driving being attached, but for any user of a <code>std::future</code> it is reasonable to expect that the future will complete eventually, but that the calling thread might have to do some additional work inline to achieve this.
 
+
+<h2>Adding support for coroutines</h2>
+A future that acts as an asynchronous operation with only a synchronous get operation is a reasonable design to interact with <code>co_await</code>. 
+<code>co_await</code> is synchronous from the user's point of view, and because the coroutine context can carry information about the calling executor does not suffer from the same concerns about use of executors across the library boundary as continuations. 
+A coroutine that awaits on a <code>std::future</code> can ensure that the executor that
+handles work when the future is satisfied is the executor that is already executing the calling coroutine context.
+Futher, if the caller is going to be a coroutine, any intermediate shunt executors to act as safe work buffers are completely unnecessary.
+
+<p>We would argue that a simple future, with awaitability, is a cleaner primary model than a complex future with continuations.
+
 </p></body></html>
