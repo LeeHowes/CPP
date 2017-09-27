@@ -172,13 +172,6 @@ int main() {
 
 <p>Boost-blocking of executors still has to be considered carefully, of course, to avoid recursive driving behaviour. We merely use a <code>drive()</code> method as a potential interface for this that internals of futures would use.
 
-
-
-<p>TODO: How about passing the current executor into the continuation? Maybe optionally. That way state abotu the current execution (TLS, the current thread, thread ids etc that might make sense for GPUs and so on) can be available though the executor or some sort of executor context parameter.
-
-
-
-
 <p>A requirement arising from this is that any executor attached to a <code>std::future</code> should, in context, be boost-blocking at a minimum. This does not preclude an executor that requires explicit driving being attached, but for any user of a <code>std::future</code> it is reasonable to expect that the future will complete eventually, but that the calling thread might have to do some additional work inline to achieve this.
 
 </p></body></html>
