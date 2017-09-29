@@ -165,6 +165,8 @@ f.then([](ThreadPoolThreadExecutor&amp; e, auto value){
 
 <p>So in this case we know we are running on a member thread of a thread pool. We can use this knowledge to get an executor representing the entire pool (or alternatively get a strongly typed context from which we can get a member executor, it might depend on how we expect load balancing to work and when). We defer knowledge of which thread to allocate the task to to the runtime, and once our task starts we have a thread pool thread executor again.
 
+<p>Note that we can default this type to be the polymophic executor wrapper, which would provide us minimal information in the task. We can also consider allowing converting a <code>std::thennablefuture&lt;Type, Executor&gt;</code> to a <code>std::thennablefuture&lt;Type, PolymorphicExecutorWrapper&gt;</code> for whatever wrapper type is appropriately generic.
+
 
 
 <h2>Boost blocking and deferred execution</h2>
