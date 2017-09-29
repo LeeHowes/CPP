@@ -41,7 +41,7 @@ del { background-color: #FDD; }
 <p>In the Concurrency TS, <code>std::future</code> was augmented with support for continuations. However, the feedback leading up to and during the recent meeting in Toronto was that the specification for continuation support in the TS was insufficient. The absence of support for executors made it hard to control. LWG2533 expressed concern about where the continuation is run, and other papers including P0667, P0679 and P0701 expressed concerns with various parts of the proposal. Much of this
 feedback relates to the ongoing work on executors that is as yet incomplete. The continuation elements of the Concurrency TS were subsequently not merged into the C++20 standard draft at Toronto.
 
-<p>At Facebook we, like mamy companies, have considerable experience of using continuations on futures. Our folly library is widely used within the company, and is open source. Folly supports executors and continuations. From the widespread use of folly inside Facebook we have learned many lessons. One of the big lessons is very similar to that expressed in LWG2533: that it needs to be very well defined precisely where a continuation will run when applied to a Future. In the absence of a very
+<p>At Facebook we, like many companies, have considerable experience of using continuations on futures. Our folly library is widely used within the company, and is open source. Folly supports executors and continuations. From the widespread use of folly inside Facebook we have learned many lessons. One of the big lessons is very similar to that expressed in LWG2533: that it needs to be very well defined precisely where a continuation will run when applied to a Future. In the absence of a very
 strong rule, there is an inherent non-determinism: I
 <ul>
     <li>If the future is complete at the time of adding the continuation, will it run in the calling thread of execution?</li>
@@ -141,6 +141,30 @@ template&lt;class T, class ExecutorT&gt; class thenable_future;
 <p>What is interesting about this is that it means we do not pass a future that supports continuations and yet has an unknown executor across library boundaries. This is important because it also means we do not pass a future that supports continuations and has an unknown forward progress guarantee for those continuations.
 
 <p>We can discuss with proposals to replace <code>std::experimental::future</code> whether this has value, but we believe that by separating the two types rather than attempting to drastically widen the interface of <code>std::future</code> we have the option.
+
+<p>This approach has additional possible benefits. In the concurrency TS design we pass the future to the continuation. At Facebook we pass the value or a Try type that wraps the value or an exception. Imagine that we either pass that future, or to simplify the argument, optionally pass a separate executor to the continuation:
+
+<pre>
+f.then([](Executor&amp; e, auto value){...});
+</pre>
+
+<p>If the future is templated on the executor type we can use this information in the continuation. For example, if we want to enqueue work on the same executor as the current task is running on:
+
+<pre>
+f.then([](Executor&amp; e, auto value){e.execute([](Executor&amp; e){....});});
+</pre>
+
+<p>Of course we could achieve the same with a future parameter to the task as in the concurrency TS. However, knowing the precise type of the executor can offer us a more sophisticated interface, so maybe we could do something like:
+
+<pre>
+f.then([](ThreadPoolThreadExecutor&amp; e, auto value){
+    ThreadPoolExecutor tpe = e.getParentPool();
+    tpe.execute([](ThreadPoolThreadExecutor&amp; e){....});
+});
+</pre>
+
+<p>So in this case we know we are running on a member thread of a thread pool. We can use this knowledge to get an executor representing the entire pool (or alternatively get a strongly typed context from which we can get a member executor, it might depend on how we expect load balancing to work and when). We defer knowledge of which thread to allocate the task to to the runtime, and once our task starts we have a thread pool thread executor again.
+
 
 
 <h2>Boost blocking and deferred execution</h2>
