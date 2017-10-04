@@ -76,9 +76,9 @@ interaction. On the other hand a function that is running work on an inline exec
 <h2>A simpler addition to std::future</h2>
 We propose continuing to treat <code>std::future</code> as the vocabulary type for potentially asynchronous execution. We should not require that <code>std::future</code> make available a default executor and try to minimise the set of cases where it is not clear on what executor work will run.
 
-<p>Instead, we propose modifying std::future to add a <code>.via()</code> method that takes an executor. <code>std::future::via</code> should consume the <code>std::future</code> and return a new future type, yet to be defined but that can be roughly similar to <code>std::experimental::future</code>, that adds support for continuations using <code>.then</code> methods. We will call this <code>ThennableFuture</code> here to avoid bikeshedding. <code>ThennableFuture</code> should store its executor internally, which means that it is well-defined to add an overload of <code>.then</code> that takes no executor. It may
+<p>Instead, we propose modifying std::future to add a <code>.via()</code> method that takes an executor. <code>std::future::via</code> should consume the <code>std::future</code> and return a new future type, yet to be defined but that can be roughly similar to <code>std::experimental::future</code>, that adds support for continuations using <code>.then</code> methods. We will call this <code>magic_future</code> here, in the knowledge that this name is not what we really want, to avoid bikeshedding. <code>magic_future</code> should store its executor internally, which means that it is well-defined to add an overload of <code>.then</code> that takes no executor. It may
 even make sense to remove the <code>.then</code> overloads that do take executors to make it absolutely explicit that at any point in the code, continuations are enqueued on the executor contained within the future and to remove potential confusion over whether <code>.then(executor, task)</code> has sticky behaviour, such that the future is now bound to <code>executor</code> or non-sticky behaviour such that the future's executor returns to its original value. It is open to discussion
-whether this method should be restricted to r-value references. We additionally add a conversion, possibly implicit, from thenable_future to <code>std::future</code>. 
+whether this method should be restricted to r-value references. We additionally add a conversion, possibly implicit, from magic_future to <code>std::future</code>. 
 
 <p>Therefore we might aim for something similar to:
 
@@ -88,28 +88,28 @@ class future {
     ...
     // Primary r-value via method
     template&lt;class ExecutorT&gt;
-    std::thenable_future&lt;T&gt; via(ExecutorT executor) &amp;&amp;;
+    std::magic_future&lt;T&gt; via(ExecutorT executor) &amp;&amp;;
     // Optional l-value via method
     template&lt;class ExecutorT&gt;
-    std::thenable_future&lt;T&gt; via(ExecutorT executor) const &amp;;
+    std::magic_future&lt;T&gt; via(ExecutorT executor) const &amp;;
 };
 
 template&lt;class T&gt;
-class thenable_future{
+class magic_future{
     ...
     // Implicit conversion to std::future
     operator std::future<T>() &amp;&amp;;
     // r-value executor-less addition of continuation and return new future
     template&lt;class FunctionT&gt;
-    thenable_future&lt;T&gt; then(FunctionT task) &amp;&amp;;
+    magic_future&lt;T&gt; then(FunctionT task) &amp;&amp;;
 
     // Optional r-value then operation with executor and l-value then operations
     template&lt;class ExecutorT, class FunctionT&gt;
-    thenable_future&lt;T&gt; then(FunctionT task) const &amp;;
+    magic_future&lt;T&gt; then(FunctionT task) const &amp;;
     template&lt;class ExecutorT, class FunctionT&gt;
-    thenable_future&lt;T&gt; then(ExecutorT executor, FunctionT task) const &amp;;
+    magic_future&lt;T&gt; then(ExecutorT executor, FunctionT task) const &amp;;
     template&lt;class ExecutorT, class FunctionT&gt;
-    thenable_future&lt;T&gt; then(ExecutorT executor, FunctionT task) &amp;&amp;;
+    magic_future&lt;T&gt; then(ExecutorT executor, FunctionT task) &amp;&amp;;
 };
 </pre>
 
@@ -126,7 +126,7 @@ void myForwardingFunction() {
 <p>We no longer need to tell <code>LibraryA</code> what executor to return us a future on, which means that <code>myForwardingFunction</code> now does not need to know about executors at all. Why should it care? <code>LibraryA</code> did some work, <code>LibraryB</code> will do some more work dependent on <code>LibraryA</code>'s work. The forwarder need not know what that is, and in addition need not incur any extra cost of adding a shunt-type executor that exists purely to protect
 <code>LibraryA</code> from its callers.
 
-<p>As <code>std::future</code> will be carrying potentially unexecuted tasks, to allow safe chaining it may be necessary to include a type-erased executor as a field in the future core, but this appears to be an implementation detail. It is probably also safe to share the same core, with continuation support, between <code>std::future</code> and <code>std::thenable_future</code> making the required set of conversion operations low-to-zero cost. This is certainly how we have implemented it in
+<p>As <code>std::future</code> will be carrying potentially unexecuted tasks, to allow safe chaining it may be necessary to include a type-erased executor as a field in the future core, but this appears to be an implementation detail. It is probably also safe to share the same core, with continuation support, between <code>std::future</code> and <code>std::magic_future</code> making the required set of conversion operations low-to-zero cost. This is certainly how we have implemented it in
 Folly.
 
 
@@ -135,7 +135,7 @@ Folly.
 If we continue to use <code>std::future</code> as the vocabulary type for APIs, we can consider templating our new future on the executor type for efficiency. So our new future then becomes typed:
 
 <pre>
-template&lt;class T, class ExecutorT&gt; class thenable_future;
+template&lt;class T, class ExecutorT&gt; class magic_future;
 </pre>
 
 <p>What is interesting about this is that it means we do not pass a future that supports continuations and yet has an unknown executor across library boundaries. This is important because it also means we do not pass a future that supports continuations and has an unknown forward progress guarantee for those continuations.
@@ -179,7 +179,7 @@ In p0679r0 Torvald Riegel expressed a desire to ensure that continuations and re
 <p>Assuming we have some deferred executor type that guarantees not to execute work immediately but to run it when the executor is driven later (ie inline but with an <code>execute</code> method that calls <code>post</code. or <code>defer</code>). This means code like the following can be made to work:
 <pre>
 std::future&lt;ResultType&gt; LibraryA::getFromSomewhere(ParamType params) {
-    std::ThennableFuture tf = getRawNetworkData(params);
+    std::magic_future tf = getRawNetworkData(params);
     return tf.via(DeferredExecutor{}).then([](auto&amp; serializedData){ return deserialize(serializedData); });
 }
 
