@@ -42,7 +42,7 @@ del { background-color: #FDD; }
 feedback relates to the ongoing work on executors that is as yet incomplete. The continuation elements of the Concurrency TS were subsequently not merged into the C++20 standard draft at Toronto.
 
 <p>At Facebook we, like many companies, have considerable experience of using continuations on futures. Our folly library is widely used within the company, and is open source. Folly supports executors and continuations. From the widespread use of folly inside Facebook we have learned many lessons. One of the big lessons is very similar to that expressed in LWG2533: that it needs to be very well defined precisely where a continuation will run when applied to a Future. In the absence of a very
-strong rule, there is an inherent non-determinism: I
+strong rule, there is an inherent non-determinism:
 <ul>
     <li>If the future is complete at the time of adding the continuation, will it run in the calling thread of execution?</li>
     <li>If the future is incomplete at the time of adding the continuation, is it possible for it to complete in the same thread of execution that completes the preceding task?</li>
