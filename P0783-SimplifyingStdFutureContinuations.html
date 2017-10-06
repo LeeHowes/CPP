@@ -35,7 +35,7 @@ del { background-color: #FDD; }
                 <td>SG1</td>
         </tr>
 </tbody></table>
-<h1>Continuations and std::future</h1>
+<h1>P0783: Continuations without overcomplicating the future</h1>
 
 <h2>Background</h2>
 <p>In the Concurrency TS, <code>std::future</code> was augmented with support for continuations. However, the feedback leading up to and during the recent meeting in Toronto was that the specification for continuation support in the TS was insufficient. The absence of support for executors made it hard to control. LWG2533 expressed concern about where the continuation is run, and other papers including P0667, P0679 and P0701 expressed concerns with various parts of the proposal. Much of this
