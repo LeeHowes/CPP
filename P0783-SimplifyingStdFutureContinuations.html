@@ -70,9 +70,9 @@ If this is to be allowed then there arise further questions:
 </ul>
 
 <p>Something close to the second option here is often used in Facebook's libraries. 
-An asynchronous libraries will typically require an executor to be passed in, and the library will ensure that the future it returns to callers across the library boundary will complete on the caller-provided executor, regardless of whether any further work is to be performed on that caller-provided executor. 
-The effect is that an asynchronous library, in order to provide a clean execution boundary across the library boundary, will typically require an executor to be passed into the library, so that the library can attach to the internal future an extra empty continuation with that executor before returning the resulting future. 
-The cost of this is that executor parameters need to be widespread and intrude in places where they are not relevant.
+An asynchronous library will typically require an executor to be passed in, and the library will ensure that the future it returns to callers across the library boundary will complete on the caller-provided executor, regardless of whether any further work is to be performed on that caller-provided executor. 
+The asynchronous library will typically attach an empty continuation to the passed executor to make this guarantee.
+This action has runtime cost, and cognative load for the user because executor parameters need to be widespread and intrude in places where they are not relevant.
 
 <p>Take a simple example of a library that gets a future and passes it into some other library:
 <pre>
@@ -151,7 +151,7 @@ void myForwardingFunction() {
 </pre>
 
 <p>We no longer need to tell <code>LibraryA</code> what executor to complete its future on. <code>myForwardingFunction</code> does not need to know about executors at all. <code>LibraryA</code> did some work; <code>LibraryB</code> will do more work dependent on <code>LibraryA</code>'s work. 
-The forwarder should not incur any mental load or runtime cost to construct an executor that exists purely to protect <code>LibraryA</code> from its callers.
+The forwarder should not incur any cognative load or runtime cost to construct an executor that exists purely to protect <code>LibraryA</code> from its callers.
 
 <p>As <code>std::future</code> will be carrying potentially unexecuted tasks, its core will likely have to carry a type-erased executor. 
 This appears to be an implementation detail. Moreover, it is probably also safe to share the same core, with continuation support, between <code>std::future</code> and <code>std::magic_future</code> making the required set of conversion operations low-to-zero cost. 
@@ -197,8 +197,8 @@ f.then([](ThreadPoolThreadExecutor&amp; e, auto value){
 We use this knowledge to get an executor representing the entire pool, or a strongly typed context from which we can get a member executor. 
 We defer knowledge of which thread ultimately runs the task to the runtime; once our task starts, we have a thread pool thread executor. Importantly for this example, the functions <code>doWorkA</code> and <code>doWorkB</code> run in the same thread pool, but may run in different threads within the single thread pool.
 
-<p>Note that we can default this type to be the polymophic executor <code>magic_polymorphic_executor</code> (likewise, named so as to avoid bikeshedding over the name here), which would provide us minimal information about the executor in the task. 
-We may also allow converting a <code>std::magic_future&lt;T, ExecutorT&gt;</code> to a <code>std::magic_future&lt;T, OtherExecutorT&gt;</code> whenever <code>ExecutorT</code> is convertible to <code>OtherExecutorT</code>, and make all executors convertbile to <code>magic_polymorphic_executor</code>.
+<p>Note that we can default this type to be the polymophic executor <code>magic_polymorphic_executor</code> (likewise, named so as to avoid bikeshedding over the name here, although likely based on the polymorphic wrappers proposed in P0443R2), which would provide us minimal information about the executor in the task. 
+We may also allow converting a <code>std::magic_future&lt;T, ExecutorT&gt;</code> to a <code>std::magic_future&lt;T, OtherExecutorT&gt;</code> whenever <code>ExecutorT</code> is convertible to <code>OtherExecutorT</code>, and make all executors convertible to <code>magic_polymorphic_executor</code>.
 
 <p>We believe that by separating the two future types into the existing <code>std::future</code> extended with <code>std::future::via</code> and a new <code>magic_future</code>, rather than attempting drastically to widen the interface of <code>std::future</code>, we have much more flexibility in the design choices we can make.
 
@@ -216,7 +216,7 @@ This causes problems in practice where users find such libraries harder to learn
 <code>std::future::via</code> similarly leads to boosting, but does so by ensuring that a task is added to the provided executor that drives, if necessary, the previously attached executor to ensure earlier tasks complete. 
 In this way a whole chain of inline executors may be provided that drive each other in turn until the work is completed.
 
-<p>Assuming we have some deferred/manual executor named <code>magic_deferred_executor</code> (same caveat about naming) type that guarantees not to execute work immediately but to run it when the executor is driven later via the <code>.magic_drive</code> member function (same caveat about naming), we can ensure when we return a future from a library we can defer work until the caller calls <code>.get</code> or chains work through an executor of their choice. 
+<p>Assuming we have some deferred/manual executor type named <code>magic_deferred_executor</code> (same caveat about naming) that guarantees not to execute work immediately but to run it when the executor is driven later via the <code>.magic_drive</code> member function (same caveat about naming), we can ensure when we return a future from a library we can defer work until the caller calls <code>.get</code> or chains work through an executor of their choice. 
 This means code like the following can be made to work:
 <pre>
 std::future&lt;T&gt; LibraryA::getFromSomewhere(Params params) {
