@@ -17,10 +17,10 @@ del { background-color: #FDD; }
         </tr>
         <tr>
                 <th>Date:</th>
-                <td>2017-09-06</td>
+                <td>2017-09-11</td>
         </tr>
         <tr>
-            <th>Authors:</th><td>Lee Howes <a href="mailto:lwh@fb.com">lwh@fb.com</a>, Andrii Grynenko <a href="mailto:andrii@fb.com">andrii@fb.com</a></td>
+            <th>Authors:</th><td>Lee Howes <a href="mailto:lwh@fb.com">lwh@fb.com</a>, Andrii Grynenko <a href="mailto:andrii@fb.com">andrii@fb.com</a>, Jay Feldblum <a href="mailto:yfeldblum@fb.com">yfeldblum@fb.com</a></td>
         </tr>
         <tr>
                 <th>Reply-to:</th>
@@ -38,26 +38,41 @@ del { background-color: #FDD; }
 <h1>P0783: Continuations without overcomplicating the future</h1>
 
 <h2>Background</h2>
-<p>In the Concurrency TS, <code>std::future</code> was augmented with support for continuations. However, the feedback leading up to and during the recent meeting in Toronto was that the specification for continuation support in the TS was insufficient. The absence of support for executors made it hard to control. LWG2533 expressed concern about where the continuation is run, and other papers including P0667, P0679 and P0701 expressed concerns with various parts of the proposal. Much of this
-feedback relates to the ongoing work on executors that is as yet incomplete. The continuation elements of the Concurrency TS were subsequently not merged into the C++20 standard draft at Toronto.
+<p>In the Concurrency TS, <code>std::future</code> was augmented with support for continuations. 
+However, the feedback leading up to and during the recent meeting in Toronto was that the specification for continuation support in the TS was insufficient. 
+The absence of support for executors made it hard to control. LWG2533 expressed concern about where the continuation is run, and other papers including P0667, P0679 and P0701 pointed out areas of improvement. 
+Much of this feedback relates to the ongoing work on executors that is as yet incomplete but is detailed in P0443. 
+The continuation elements of the Concurrency TS were subsequently not merged into the C++20 standard draft at Toronto.
 
-<p>At Facebook we, like many companies, have considerable experience of using continuations on futures. Our folly library is widely used within the company, and is open source. Folly supports executors and continuations. From the widespread use of folly inside Facebook we have learned many lessons. One of the big lessons is very similar to that expressed in LWG2533: that it needs to be very well defined precisely where a continuation will run when applied to a Future. In the absence of a very
-strong rule, there is an inherent non-determinism:
+<p>At Facebook we, like many companies, have considerable experience of using continuations on futures. 
+The open source <a href="https://github.com/facebook/folly">Folly library</a> encapsulates a set of primitives widely used within Facebook. 
+Folly supports executors and continuations. 
+From the widespread use of folly inside Facebook we have learned many lessons. 
+One of the big lessons is very similar to that expressed in LWG2533: that it needs to be defined precisely where a continuation will run when applied to a Future. 
+In the absence of a very strong rule, there is an inherent non-determinism:
 <ul>
     <li>If the future is complete at the time of adding the continuation, will it run in the calling thread of execution?</li>
     <li>If the future is incomplete at the time of adding the continuation, is it possible for it to complete in the same thread of execution that completes the preceding task?</li>
     <li>Will the continuation always run in a well-defined thread-of-execution, whatever the completion state is of the future? To achieve this, the thread of execution has to be guaranteed to survive long enough to make this possible.</li>
 </ul>
 
-<p>Our experience leads us to believe that an executor should always be available to any attempt to add a continuation to a future, and where the continuation runs should be explicitly defined by the rules of that executor. In this way everything is clean as long as the lifetime of the executor can be guaranteed (which is out of scope of this paper).
+<p>Our experience leads us to believe that a known executor should always be available at the point of adding a continuation to a future, and where the continuation runs should be explicitly defined by the rules of that executor. 
+In this way everything is clean as long as the lifetime of the executor can be guaranteed.
+Executor lifetimes have partly been considered by making them value types in P0443, and recent experience in Folly (where they are not value types) validates this design decision.
+The actual management of executor lifetimes is out of scope of this paper and should be clarified as executors are specified.
 
-<p>Always requiring specification of an executor is possible, but clumsy. During discussions in Toronto more than one person expressed a wish to allow a default executor, that would be used if none was provided to the call to <code>.then</code>. If this is allowed then we have further questions:
+<p>Always requiring specification of an executor at the point of continuation attachment (calls to <code>.then</code>) is possible, but clumsy. 
+During discussions in Toronto more than one person expressed a wish to allow a default executor, that would be used if none was provided to the call to <code>.then</code>. 
+If this is allowed then we have further questions:
 <ul>
     <li>Should the default executor be a global default? This will be suboptimal for cases where it makes more sense to allow the continuation task to run on same thread-of-execution as task that results in the future's result.</li>
-    <li>Should an executor be embedded in the future? In this situation a continuation added with <code>.then</code> would run on the same thread-of-execution as the future completes on. This would work well in many situations, but for libraries to safely return a future that did not allow the caller to run work on the library's internal threads-of-execution this might mean modifying the executor attached to the returned future before returning said future</li>
+    <li>Should an executor be attached to the future or its core state? In this situation a continuation added with <code>.then</code> would run on the same thread-of-execution as the completion of the future.</li>
 </ul>
 
-<p>The second option here is often used in Facebook's libraries. The result is that asynchronous libraries will require an executor to be passed into the library, so that the library can attach that continuation to the future before returning it to provide the clean execution boundary required. The cost of this is that executor parameters need to be widespread and intrude in places where they are not relevant.
+<p>Something close to the second option here is often used in Facebook's libraries. 
+Asynchronous libraries will often require an executor to be passed in, and the returned future will complete on that executor, whether or not any other work is to be performed on the executor. 
+The result is that asynchronous libraries will require an executor to be passed into the library, so that the library can attach that continuation to the future before returning it to provide the clean execution boundary required. 
+The cost of this is that executor parameters need to be widespread and intrude in places where they are not relevant.
 
 <p>Take a simple example of a library that gets a future and passes it into some other library:
 <pre>
@@ -68,25 +83,29 @@ void myForwardingFunction() {
 }
 </pre>
 
-<p>In this case, why did <code>myForwardingFunction</code> need to know about an executor at all? It would be difficult to choose an excecutor here that guarantees forward progress and yet does not impose a high cost. 
-In practice, <code>LibraryB</code> should use its own exector to run the continuation, but this is not something that <code>LibraryA</code> can rely on while providing a safe separation of concerns.
+<p>In this case, why did <code>myForwardingFunction</code> need to know about an executor at all? 
+It would be difficult to choose an executor here that guarantees forward progress and yet does not impose a high cost (in construction of a thread, ensuring presence of an additional thread pool etc). 
+In practice, <code>LibraryB</code> should use its own executor to run the continuation, but this is not something that <code>LibraryA</code> can rely on while providing a safe separation of concerns.
 
-<p>A final reason for being concerned about executor guarantees is to ensure that in any inter-library interaction both the caller and callee can protect themselves from having the other's work run on their threads. 
-An IO library may not want the caller to enqueue work on the IO thread pool, at the risk of starving IO of threads to service incoming requests; in this situation that library may have to attach a temporary executor, possibly on yet another thread, to safely bound the interaction. 
-On the other hand a function that is running work on an inline executor may want to ensure that the library it is passing a future to will definitely not run whatever work it has to do on the caller's thread - so again the caller may have to create an executor on a new thread just in case. 
-In either case this extra thread adds cost, even if it never runs tasks, and the additional executors should be unnecessary with well-behaved code.
+<p>Yet this approach is common to ensure that in any inter-library interaction both the caller and callee can protect themselves from having the other's work run on their threads. 
+An IO library may not want the caller to enqueue work on the IO thread pool, at the risk of starving IO of threads to service incoming requests.
+On the other hand a function that is running work on an inline executor may want to ensure that the library it is passing a future to will definitely not run whatever work it has to do on the caller's thread.
+In either case the extra executor adds cost, even if it never runs tasks, and the additional executors should be unnecessary with well-behaved code.
 
 <h2>A simpler addition to std::future</h2>
 We propose continuing to treat <code>std::future</code> as the vocabulary type for potentially asynchronous execution. 
-We should not require that <code>std::future</code> make available a default executor and try to minimise the set of cases where it is not clear on what executor work will run.
+We should not require that <code>std::future</code> make available any user-visible executor, and minimise the set of cases where it is not clear on what executor work will run.
 
 <p>Instead, we propose modifying std::future to add a <code>.via()</code> method that takes an executor. 
-<code>std::future::via</code> should consume the <code>std::future</code> and return a new future type. This new future type is yet to be defined but should embody some of the same capabilities that are in <code>std::experimental::future</code>. 
-It should add support for continuations using <code>.then</code> methods. 
+<code>std::future::via</code> should consume the <code>std::future</code> and return a new future type. 
+
+<p>This new future type is yet to be defined but should embody some of the same capabilities that are in <code>std::experimental::future</code> or <code>folly::Future</code>. 
+In particular, it should add support for continuations using <code>.then</code> methods, as most people expect. 
 We will call this <code>magic_future</code> here, in the knowledge that this name is not what we really want, to avoid bikeshedding. 
-<code>magic_future</code> should store its executor internally, which means that it is well-defined to add an overload of <code>.then</code> that takes no executor. 
-It may make sense to remove the <code>.then</code> overloads that do take executors to make it absolutely explicit that at any point in the code, continuations are enqueued on the executor contained within the future and to remove potential confusion over whether <code>.then(executor, task)</code> has sticky behaviour, such that the future is now bound to <code>executor</code> or non-sticky behaviour such that the future's executor returns to its original value. 
-It is open to discussion whether this method should be restricted to r-value references. We additionally add a conversion, possibly implicit, from magic_future to <code>std::future</code>. 
+<code>magic_future</code> should store its executor internally, such that it is well-defined to add an overload of <code>.then</code> that takes no executor. 
+We would also argue that it makes sense to not add any <code>then</code> overloads that take an executor, because this leads to confusion about stickiness, and that chaining calls to <code>.via</code> and <code>.then</code> is just as readable and efficient.
+It is open to discussion whether this method should be restricted to r-value futures. 
+We additionally add a conversion, possibly implicit, from <code>magic_future</code> to <code>std::future</code>. 
 
 <p>Therefore we might aim for something similar to:
 
@@ -131,40 +150,40 @@ void myForwardingFunction() {
 }
 </pre>
 
-<p>We no longer need to tell <code>LibraryA</code> what executor to return us a future on, which means that <code>myForwardingFunction</code> now does not need to know about executors at all. Why should it care? <code>LibraryA</code> did some work, <code>LibraryB</code> will do some more work dependent on <code>LibraryA</code>'s work. The forwarder need not know what that is, and in addition need not incur any extra cost of adding a shunt-type executor that exists purely to protect
-<code>LibraryA</code> from its callers.
+<p>We no longer need to tell <code>LibraryA</code> what executor to complete its future on. <code>myForwardingFunction</code> does not need to know about executors at all. <code>LibraryA</code> did some work, <code>LibraryB</code> will do some more work dependent on <code>LibraryA</code>'s work. 
+The forwarder should not incur any mental load or runtime cost to construct an executor that exists purely to protect <code>LibraryA</code> from its callers.
 
-<p>As <code>std::future</code> will be carrying potentially unexecuted tasks, to allow safe chaining it may be necessary to include a type-erased executor as a field in the future core, but this appears to be an implementation detail. It is probably also safe to share the same core, with continuation support, between <code>std::future</code> and <code>std::magic_future</code> making the required set of conversion operations low-to-zero cost. 
-We have implemented this in Folly as <code>folly::SemiFuture</code> representing <code>std::Future</code> and the original, more feature-rich, <code>folly::Future</code> as the derived type. 
-Note, though, that we are not proposing <code>folly::Future</code> as an optimal choice for standardisation.
+<p>As <code>std::future</code> will be carrying potentially unexecuted tasks, its core will likely have to carry a type-erased executor as a field in the future core. 
+This appears to be an implementation detail. Moreover, it is probably also safe to share the same core, with continuation support, between <code>std::future</code> and <code>std::magic_future</code> making the required set of conversion operations low-to-zero cost. 
+We have implemented this in Folly by adding a <code>folly::SemiFuture</code> representing <code>std::future</code> and the original, more feature-rich, <code>folly::Future</code> as the derived type, which contains the functionality that we would expect <code>magic_future</code> to have, and more. 
 
 
 
 <h2>Templating the new future</h2>
-If we continue to use <code>std::future</code> as the vocabulary type for APIs, we can consider templating our new future on the executor type for efficiency. So our new future then becomes typed:
+If we continue to use <code>std::future</code> as the vocabulary type for APIs, we can consider templating our new future on the executor type, both for efficiency and for interface precision. 
+So our new future then becomes typed:
 
 <pre>
 template&lt;class T, class ExecutorT&gt; class magic_future;
 </pre>
 
-<p>This strong typing offers some interesting properties. 
-It means we do not pass a future that supports continuations and yet has an unknown executor type (and hence set of capabilities) across library boundaries. 
+<p>The stronger typing means we do not pass a future that supports continuations and yet has an unknown executor type (and hence set of capabilities) across library boundaries unless we explicitly do so with a polymorphic executor. 
 This is important because it also means we do not pass a future that supports continuations and has an unknown forward progress guarantee for those continuations.
 
 <p>In the concurrency TS design we pass the future to the continuation. At Facebook we pass the value or a Try type that wraps the value or an exception. 
-Instead we might either pass a strongly-typed future, or to simplify the argument list and avoid implying the full set of future capabilities, optionally pass a separate executor to the continuation:
+Instead we should either pass a strongly-typed future, or to simplify the argument list and avoid implying the full set of future capabilities, optionally pass a separate executor to the continuation:
 
 <pre>
-f.then([](Executor&amp; e, auto value){...});
+f.then([](ExecutorType&amp; e, auto value){...});
 </pre>
 
 <p>If the future is templated on the executor type we can use this information in the continuation. For example, if we want to enqueue work on the same executor as the current task is running on:
 
 <pre>
-f.then([](Executor&amp; e, auto value){e.execute([](Executor&amp; e){....});});
+f.then([](ExecutorType&amp; e, auto value){e.execute([](ExecutorType&amp; e){....});});
 </pre>
 
-<p>Of course we could achieve the same with a future parameter to the task as in the concurrency TS. However, knowing the precise type of the executor can offer us a more sophisticated interface, for example using knowledge about the structure of the executor type hierarchy:
+<p>With the precise type of the executor we can use the interface more flexibly, for example using knowledge about the structure of the executor type hierarchy:
 
 <pre>
 f.then([](ThreadPoolThreadExecutor&amp; e, auto value){
@@ -174,28 +193,29 @@ f.then([](ThreadPoolThreadExecutor&amp; e, auto value){
 </pre>
 
 <p>In this case we know we are running on a member thread of a thread pool. 
-We use this knowledge to get an executor representing the entire pool (or alternatively get a strongly typed context from which we can get a member executor, it might depend on how we expect load balancing to work and when). 
+We use this knowledge to get an executor representing the entire pool, or a strongly typed context from which we can get a member executor. 
 We defer knowledge of which thread to allocate the task to to the runtime, and once our task starts we have a thread pool thread executor again.
 
 <p>Note that we can default this type to be the polymophic executor wrapper, which would provide us minimal information about the executor in the task. 
-We can also consider allowing converting a <code>std::magic_future&lt;Type, Executor&gt;</code> to a <code>std::magic_future&lt;Type, PolymorphicExecutorWrapper&gt;</code> for whatever wrapper type is appropriately generic.
+We may also allow converting a <code>std::magic_future&lt;Type, Executor&gt;</code> to a <code>std::magic_future&lt;Type, PolymorphicExecutorWrapper&gt;</code> for whatever wrapper type is appropriately generic.
 
-<p>We can discuss in proposals to replace <code>std::experimental::future</code> whether this has value, but we believe that by separating the two types rather than attempting to drastically widen the interface of <code>std::future</code> we have the option.
+<p>We believe that by separating the two types rather than attempting to drastically widen the interface of <code>std::future</code> we have much more flexibility in the design choices we make.
 
 
 <h2>Boost blocking and deferred execution</h2>
 In p0679r0 Torvald Riegel expressed a desire to ensure that continuations and result extraction for futures provide boost-blocking guarantees. 
 folly::future and its executors do not provide this: we require a call to getVia to ensure that a callback that has no currently known executor gets one, and chains of continuations with undriven executors will not execute.
 
-<p>In looking at whether we can produce a continuation-less version of <code>folly::future</code>. We do see a common case where a library wants to do some work on its own executor, and also on some provided executor. 
-For example, much of Facebook's networking code will deserialize on a provided executor. The above code where we need to pass an executor to the library call is an example of this, and it causes problems in practice from users finding libraries hard to learn, to the addition of additional shunt executors and threads just to chain calls together.
+<p>In looking at whether we can produce a continuation-less version of <code>folly::Future</code> we saw a common case where a library wants to do some work on its own executor, and also on some provided executor. 
+For example, much of Facebook's networking code will deserialize on a provided executor. 
+This causes problems in practice from users finding libraries hard to learn, as it isn't obvious at the call site what the purpose of the executor is.
 
 <p>With good boost-blocking support we can avoid this. 
-The proposal is that <code>.get</code> boost-blocks the executor attached to the future. 
-<code>.via</code> similarly boost blocks, but it does it by ensuring that a task is added to the provided executor that drives, if necessary, the previously attached executor to ensure earlier tasks complete. 
+<code>.get</code> should boost-block the executor attached to the future. 
+<code>.via</code> similarly leads to boost-blocking, but by ensuring that a task is added to the provided executor that drives, if necessary, the previously attached executor to ensure earlier tasks complete. 
 In this way a whole chain of inline executors may be provided that drive each other in turn until the work is completed.
 
-<p>Assuming we have some deferred/manual executor type that guarantees not to execute work immediately but to run it when the executor is driven later (ie inline but with an <code>execute</code> method that calls <code>post</code. or <code>defer</code>). 
+<p>Assuming we have some deferred/manual executor type that guarantees not to execute work immediately but to run it when the executor is driven later we can ensure when we return a future from a library we can defer work until the caller calls <code>.get</code> or chains work through an executor of their choice. 
 This means code like the following can be made to work:
 <pre>
 std::future&lt;ResultType&gt; LibraryA::getFromSomewhere(ParamType params) {
@@ -216,9 +236,11 @@ int main() {
 
 <code>.then</code> need not boost-block here, as that behaviour is a property of the executors, and any application of boost-blocking is thus defined by points at which executors are connected together - with the clarification that a call to <code>f.get()</code> is logically equivalent to <code>InlineExecutor e; auto f2 = f.via(e); e.drive(); f2.get();</code> 
 
-<p>Boost-blocking of executors still has to be considered carefully, of course, to avoid recursive driving behaviour. We merely use a <code>drive()</code> method as a potential interface for this that internals of futures would use.
+<p>Boost-blocking of executors still has to be considered carefully, of course, to avoid recursive driving behaviour.
+We merely use a <code>drive()</code> method as a potential interface for this that internals of futures would use.
 
-<p>A requirement arising from this is that any executor attached to a <code>std::future</code> should, in context, be boost-blocking at a minimum. This does not preclude an executor that requires explicit driving being attached, but for any user of a <code>std::future</code> it is reasonable to expect that the future will complete eventually, but that the calling thread might have to do some additional work inline to achieve this.
+<p>A requirement arising from this is that any executor attached to a <code>std::future</code> should, in context, be boost-blocking at a minimum, or the work will never complete. 
+For any user of a <code>std::future</code> it is reasonable to expect that the future will complete eventually, but that the calling thread might have to do some additional work inline to achieve this.
 
 
 <h2>Adding support for coroutines</h2>
@@ -227,8 +249,12 @@ Folly code that uses fibers (based on <code>boost::context</code>) appears synch
 Similarly, it is reasonable to extend the basic synchronous interface to the future to be awaitable and work with <code>co_await</code>.
 In both these cases information about the calling executor can be implicit in the calling context, either because it is really synchronous on a single executor in the case of a fiber or because the calling coroutine frame can carry information about where it is executing.
 We therefore are less likely to see issues with enqueuing a continuation onto an unexpected executor.
-Coroutines on <code>std::future</code> should be considered to be safe across these library boudaries. 
 
-<p>We would hence argue that a <code>std::future</code>, not extended with continuations but with support for awaitability, is a cleaner primary model than a complex future with continuations.
+<h2>In summary</h2>
+<p>We argue that <code>std::future</code> should not be extended with continuations.
+It should remain a simple, wait-only type that serves a concrete purpose of synchronously waiting on potentially asynchronous work.
+We should extend <code>std::future</code> only to allow it to convert in the presence of an executor into a more sophisticated future type and to add the approriate requirements for forward progress guarantees.
+This is extensibile and flexible, and enables specialization based on the provided executor.
+
 
 </p></body></html>
