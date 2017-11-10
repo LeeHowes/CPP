@@ -4,6 +4,19 @@
 struct ZeroOverheadAwaitable {
     struct promise_type;
     using handle = std::experimental::coroutine_handle<promise_type>;
+
+    ZeroOverheadAwaitable(ZeroOverheadAwaitable&& rhs) : coroutine_handle_{std::move(rhs.coroutine_handle_)} {
+        std::cout << "Zero move\n";
+        rhs.coroutine_handle_ = {};
+    }
+    ZeroOverheadAwaitable(handle&& rhs) : coroutine_handle_{std::move(rhs)} {
+    }
+    ~ZeroOverheadAwaitable() {
+        std::cout << "~Zero\n";
+        if(coroutine_handle_) {
+           coroutine_handle_.destroy();
+        }
+    }
     struct promise_type {
             int value = 0;
             
@@ -12,7 +25,8 @@ struct ZeroOverheadAwaitable {
             }
 
             auto final_suspend() {
-                return std::experimental::suspend_never{};
+                std::cout << "Zero final_suspend\n";
+                return std::experimental::suspend_always{};
             }
 
             void return_value(int val) {
@@ -32,7 +46,7 @@ struct ZeroOverheadAwaitable {
         std::cout << "await_suspend zero\n";
         coroutine_handle_.resume();
         std::cout << "Middle\n";
-        h.resume();
+        if(h) h.resume();
         std::cout << "end await_suspend zero\n";
     }
     auto await_resume() {
@@ -46,6 +60,19 @@ struct ZeroOverheadAwaitable {
 struct SyncAwaitAwaitable {
     struct promise_type;
     using handle = std::experimental::coroutine_handle<promise_type>;
+
+    SyncAwaitAwaitable(SyncAwaitAwaitable&& rhs) : coroutine_handle_{std::move(rhs.coroutine_handle_)} {
+        std::cout << "Zero move\n";
+        rhs.coroutine_handle_ = {};
+    }
+    SyncAwaitAwaitable(handle&& rhs) : coroutine_handle_{std::move(rhs)} {
+    }
+    ~SyncAwaitAwaitable() {
+        std::cout << "~Sync\n";
+        if(coroutine_handle_) {
+             coroutine_handle_.destroy();
+        }
+    } 
     struct promise_type {
             int value = 0;
             
@@ -54,7 +81,8 @@ struct SyncAwaitAwaitable {
             }
 
             auto final_suspend() {
-                return std::experimental::suspend_never{};
+                std::cout << "Sync final suspend\n";
+                return std::experimental::suspend_always{};
             }
 
             void return_value(int val) {
