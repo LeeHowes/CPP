@@ -57,6 +57,7 @@ struct ZeroOverheadAwaitable {
     handle coroutine_handle_;
 };
 
+template<class T>
 struct SyncAwaitAwaitable {
     struct promise_type;
     using handle = std::experimental::coroutine_handle<promise_type>;
@@ -74,7 +75,7 @@ struct SyncAwaitAwaitable {
         }
     } 
     struct promise_type {
-            int value = 0;
+            T value{};
             
             auto initial_suspend() {
                 return std::experimental::suspend_always{};
@@ -85,7 +86,7 @@ struct SyncAwaitAwaitable {
                 return std::experimental::suspend_always{};
             }
 
-            void return_value(int val) {
+            void return_value(T val) {
                 std::cerr << "\tSet Sync return value: " << val << "\n";
                 value = std::move(val);
             }
@@ -98,29 +99,23 @@ struct SyncAwaitAwaitable {
             }
     };
 
-    int value() {
-        return coroutine_handle_.promise().value;
-    }
-
-    void run() {
+    T get() {
         coroutine_handle_.resume();
+        return coroutine_handle_.promise().value;
     }
 
     handle coroutine_handle_;
 };
 
-template<class Awaitable>
-int sync_await(Awaitable&& aw) {
-    auto syncAW = [&]() -> SyncAwaitAwaitable {
-        std::cout << "\tSync await function\n";
-        int val = co_await std::forward<Awaitable>(aw);
-        std::cout << "\tSync await val: " << val << "\n";
-        co_return val;
-    }();
-    std::cout << "Before run\n";
-    syncAW.run();
-    std::cout << "After run\n";
-    return syncAW.value();
+template<class Awaitable, class T = std::decay_t<decltype(std::declval<Awaitable>().await_resume())>>
+auto sync_await(Awaitable&& aw) -> T {
+    return  
+        [&]() -> SyncAwaitAwaitable<T> {
+            std::cout << "\tSync await function\n";
+            int val = co_await std::forward<Awaitable>(aw);
+            std::cout << "\tSync await val: " << val << "\n";
+            co_return val;
+        }().get();
 }
 
 ZeroOverheadAwaitable adder(int value) {
