@@ -6,31 +6,37 @@ struct ZeroOverheadAwaitable {
     using handle = std::experimental::coroutine_handle<promise_type>;
 
     ZeroOverheadAwaitable(ZeroOverheadAwaitable&& rhs) : coroutine_handle_{std::move(rhs.coroutine_handle_)} {
-        std::cout << "Zero move\n";
         rhs.coroutine_handle_ = {};
     }
     ZeroOverheadAwaitable(handle&& rhs) : coroutine_handle_{std::move(rhs)} {
     }
     ~ZeroOverheadAwaitable() {
-        std::cout << "~Zero\n";
         if(coroutine_handle_) {
            coroutine_handle_.destroy();
         }
     }
     struct promise_type {
             int value = 0;
+            std::experimental::coroutine_handle<> waiter;
+            struct final_suspend_result : std::experimental::suspend_always {
+                promise_type *promise_;
+                final_suspend_result(promise_type* promise) : promise_{promise} {}
+                bool await_reday(){ return false; }
+                void await_suspend(std::experimental::coroutine_handle<>) {
+                    promise_->waiter.resume();
+                }
+                void await_resume() {}
+            };
             
             auto initial_suspend() {
                 return std::experimental::suspend_always{};
             }
 
             auto final_suspend() {
-                std::cout << "Zero final_suspend\n";
-                return std::experimental::suspend_always{};
+                return final_suspend_result{this};
             }
 
             void return_value(int val) {
-                std::cerr << "\tSet return value: " << val << "\n";
                 value = std::move(val);
             }
 
@@ -43,14 +49,10 @@ struct ZeroOverheadAwaitable {
     };
     bool await_ready() { return false; }
     void await_suspend(std::experimental::coroutine_handle<> h) {
-        std::cout << "await_suspend zero\n";
+        coroutine_handle_.promise().waiter = h;
         coroutine_handle_.resume();
-        std::cout << "Middle\n";
-        if(h) h.resume();
-        std::cout << "end await_suspend zero\n";
     }
     auto await_resume() {
-        std::cout << "Await_resume\n";
         return coroutine_handle_.promise().value;
     }
     
@@ -63,13 +65,11 @@ struct SyncAwaitAwaitable {
     using handle = std::experimental::coroutine_handle<promise_type>;
 
     SyncAwaitAwaitable(SyncAwaitAwaitable&& rhs) : coroutine_handle_{std::move(rhs.coroutine_handle_)} {
-        std::cout << "Zero move\n";
         rhs.coroutine_handle_ = {};
     }
     SyncAwaitAwaitable(handle&& rhs) : coroutine_handle_{std::move(rhs)} {
     }
     ~SyncAwaitAwaitable() {
-        std::cout << "~Sync\n";
         if(coroutine_handle_) {
              coroutine_handle_.destroy();
         }
@@ -82,12 +82,10 @@ struct SyncAwaitAwaitable {
             }
 
             auto final_suspend() {
-                std::cout << "Sync final suspend\n";
                 return std::experimental::suspend_always{};
             }
 
             void return_value(T val) {
-                std::cerr << "\tSet Sync return value: " << val << "\n";
                 value = std::move(val);
             }
 
@@ -111,30 +109,23 @@ template<class Awaitable, class T = std::decay_t<decltype(std::declval<Awaitable
 auto sync_await(Awaitable&& aw) -> T {
     return  
         [&]() -> SyncAwaitAwaitable<T> {
-            std::cout << "\tSync await function\n";
             int val = co_await std::forward<Awaitable>(aw);
-            std::cout << "\tSync await val: " << val << "\n";
             co_return val;
         }().get();
 }
 
 ZeroOverheadAwaitable adder(int value) {
-    std::cout << "\t\t\tAdder with value " << value << "\n";
     co_return (value + 3);
 }
 
 ZeroOverheadAwaitable entryPoint(int value) {
-    std::cout << "\t\tentryPoint with value " << value << "\n";
     auto v = co_await(adder(value));
-    std::cout << "v: " << v << "\n";
     co_return v + 5;
 }
 
 int main() {
-    std::cout << "Hello world\n";
     auto aw = entryPoint(1);
-    std::cout << "After entryPoint\n";
     auto val = sync_await(std::move(aw));
-    std::cout << "After sync\n";
+    std::cout << "Value: " << val << "\n";
     return 0;
 }
