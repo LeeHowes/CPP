@@ -120,7 +120,8 @@ ZeroOverheadAwaitable adder(int value) {
 
 ZeroOverheadAwaitable entryPoint(int value) {
     auto v = co_await(adder(value));
-    co_return v + 5;
+    auto v2 = co_await(adder(value+5));
+    co_return v + v2;
 }
 
 int main() {
