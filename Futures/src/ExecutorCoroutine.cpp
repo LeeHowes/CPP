@@ -1,8 +1,18 @@
 #include <iostream>
+#include <sstream>
 #include <thread>
 #include <experimental/coroutine>
 
 #include "Executor.h"
+
+// Temporarily make a global executor
+std::shared_ptr<DrivenExecutor> globalExecutor;
+
+std::string where() {
+    std::stringstream ss;
+    ss << "On thread: " << std::this_thread::get_id();
+    return ss.str();
+}
 
 struct ZeroOverheadAwaitable {
     struct promise_type;
@@ -21,6 +31,8 @@ struct ZeroOverheadAwaitable {
     struct promise_type {
             int value = 0;
             std::experimental::coroutine_handle<> waiter;
+            std::shared_ptr<DrivenExecutor> executor;
+
             struct final_suspend_result : std::experimental::suspend_always {
                 promise_type *promise_;
                 final_suspend_result(promise_type* promise) : promise_{promise} {}
@@ -51,9 +63,87 @@ struct ZeroOverheadAwaitable {
             }
     };
     bool await_ready() { return false; }
-    void await_suspend(std::experimental::coroutine_handle<> h) {
+    template<class PromiseType>
+    void await_suspend(std::experimental::coroutine_handle<PromiseType> h) {
+        // Update executor in promise with that from handle's promise
+        // Carry the executor through the zero overhead chain, though it will not be 
+        // used by this awaitable
         coroutine_handle_.promise().waiter = h;
+        coroutine_handle_.promise().executor = h.promise().executor;
         coroutine_handle_.resume();
+    }
+    auto await_resume() {
+        return coroutine_handle_.promise().value;
+    }
+    
+    handle coroutine_handle_;
+};
+
+// Awaitable that always resumes the coroutine on a particular executor.
+struct AsyncAwaitable {
+    struct promise_type;
+    using handle = std::experimental::coroutine_handle<promise_type>;
+
+    AsyncAwaitable(AsyncAwaitable&& rhs) : coroutine_handle_{std::move(rhs.coroutine_handle_)} {
+        rhs.coroutine_handle_ = {};
+    }
+    AsyncAwaitable(handle&& rhs) : coroutine_handle_{std::move(rhs)} {
+    }
+    ~AsyncAwaitable() {
+        if(coroutine_handle_) {
+           coroutine_handle_.destroy();
+        }
+    }
+    struct promise_type {
+            int value = 0;
+            std::experimental::coroutine_handle<> waiter;
+        
+            std::shared_ptr<DrivenExecutor> executor;
+            std::shared_ptr<DrivenExecutor> waiterExecutor;
+
+            // For now, async awaitable can use the global executor
+            promise_type() {
+                executor = globalExecutor;
+            }
+
+            struct final_suspend_result : std::experimental::suspend_always {
+                promise_type *promise_;
+                final_suspend_result(promise_type* promise) : promise_{promise} {}
+                bool await_ready(){ return false; }
+                void await_suspend(std::experimental::coroutine_handle<>) {
+                    // Here we want to resume waiter on its executor to give correct async behaviour
+                    // Resume immediately resumes the body and is type erased. So how do we get the executor from it?
+                    promise_->waiterExecutor->execute([promise = promise_](){promise->waiter.resume();});
+                }
+                void await_resume() {}
+            };
+           
+            auto initial_suspend() {
+                return std::experimental::suspend_always{};
+            }
+
+            auto final_suspend() {
+                return final_suspend_result{this};
+            }
+
+            void return_value(int val) {
+                value = std::move(val);
+            }
+
+            auto get_return_object() {
+                return AsyncAwaitable{handle::from_promise(*this)};
+            }
+
+            void unhandled_exception() {
+            }
+    };
+    bool await_ready() { return false; }
+    template<class PromiseType>
+    void await_suspend(std::experimental::coroutine_handle<PromiseType> h) {
+        coroutine_handle_.promise().waiter = h;
+        coroutine_handle_.promise().waiterExecutor = h.promise().executor;
+        // Resume this handle on its executor
+        coroutine_handle_.promise().executor->execute([this](){coroutine_handle_.resume();});
     }
     auto await_resume() {
         return coroutine_handle_.promise().value;
@@ -79,13 +169,30 @@ struct SyncAwaitAwaitable {
     } 
     struct promise_type {
             T value{};
-            
+            std::shared_ptr<DrivenExecutor> executor;
+
+            // Sync awaitable has an executor that will be driven inline in the caller
+            promise_type() {
+                executor = std::make_shared<DrivenExecutor>();
+            }
+
+            struct final_suspend_result : std::experimental::suspend_always {
+                promise_type *promise_;
+                final_suspend_result(promise_type* promise) : promise_{promise} {}
+                bool await_reday(){ return false; }
+                void await_suspend(std::experimental::coroutine_handle<>) {
+                    // Final suspend should tell the executor to terminate to unblock it
+                    promise_->executor->terminate();
+                }
+                void await_resume() {}
+            };
+ 
             auto initial_suspend() {
                 return std::experimental::suspend_always{};
             }
 
             auto final_suspend() {
-                return std::experimental::suspend_always{};
+                return final_suspend_result{this};
             }
 
             void return_value(T val) {
@@ -101,7 +208,8 @@ struct SyncAwaitAwaitable {
     };
 
     T get() {
-        coroutine_handle_.resume();
+        coroutine_handle_.promise().executor->execute([this](){coroutine_handle_.resume();});
+        coroutine_handle_.promise().executor->run();
         return coroutine_handle_.promise().value;
     }
 
@@ -118,32 +226,37 @@ auto sync_await(Awaitable&& aw) -> T {
 }
 
 ZeroOverheadAwaitable adder(int value) {
+    std::cout << "adder; " << where() << "\n";
     co_return (value + 3);
 }
 
 ZeroOverheadAwaitable entryPoint(int value) {
+    std::cout << "entryPoint; " << where() << "\n";
     auto v = co_await(adder(value));
     auto v2 = co_await(adder(value+5));
     co_return v + v2;
 }
 
 int main() {
+    // Temporarily create this globally
+    globalExecutor = std::make_shared<DrivenExecutor>();
+
+
     auto aw = entryPoint(1);
     auto val = sync_await(std::move(aw));
     std::cout << "Value: " << val << "\n";
 
 
     // Test executor
-    DrivenExecutor e;
     std::thread t([&](){
         std::cout << "Before run\n";
-        e.run();
+        globalExecutor->run();
         std::cout << "After run\n";
       });
     for(int i = 0; i < 100; ++i ) {
-        e.execute([i](){std::cout << "\tTask " << i << "\n";});
+        globalExecutor->execute([i](){std::cout << "\tTask " << i << "; " << where() << "\n";});
     }
-    e.terminate();
+    globalExecutor->terminate();
     t.join();
     std::cout << "END\n";
 
