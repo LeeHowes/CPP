@@ -1,5 +1,4 @@
 #include <iostream>
-#include <sstream>
 #include <thread>
 #include <experimental/coroutine>
 
@@ -8,10 +7,8 @@
 // Temporarily make a global executor
 std::shared_ptr<DrivenExecutor> globalExecutor;
 
-std::string where() {
-    std::stringstream ss;
-    ss << "On thread: " << std::this_thread::get_id();
-    return ss.str();
+void where(std::string name) {
+    std::cout << name << "; On thread: " << std::this_thread::get_id() << "\n";
 }
 
 struct ZeroOverheadAwaitable {
@@ -226,31 +223,31 @@ auto sync_await(Awaitable&& aw) -> T {
 }
 
 ZeroOverheadAwaitable adder(int value) {
-    std::cout << "adder; " << where() << "\n";
+    where("adder");
     co_return (value + 3);
 }
 
 ZeroOverheadAwaitable entryPoint(int value) {
-    std::cout << "entryPoint; " << where() << "\n";
+    where("entryPoint");
     auto v = co_await(adder(value));
     auto v2 = co_await(adder(value+5));
     co_return v + v2;
 }
 
 AsyncAwaitable asyncEntryPoint(int value) {
-    std::cout << "asyncEntryPoint; " << where() << "\n";
+    where("asyncEntryPoint");
     auto v = co_await(adder(value));
     auto v2 = co_await(adder(value+5));
     co_return v + v2;
 }
 
 AsyncAwaitable asyncAdder(int value) {
-    std::cout << "asyncAdder; " << where() << "\n";
+    where("asyncAdder");
     co_return (value + 4);
 }
 
 ZeroOverheadAwaitable entryPoint2(int value) {
-    std::cout << "entryPoint2; " << where() << "\n";
+    where("entryPoint2");
     auto v1 = co_await(asyncAdder(value));
     auto v2 = co_await(adder(value + 5));
     auto v3 = co_await(asyncAdder(value + 6));
@@ -266,7 +263,7 @@ ZeroOverheadAwaitable entryPoint2(int value) {
 int main() {
     // Temporarily create this globally
     globalExecutor = std::make_shared<DrivenExecutor>();
-    std::cout << "main(); " << where() << "\n";
+    where("main()");
 
     {
         auto val = sync_await(entryPoint(1));
@@ -277,9 +274,9 @@ int main() {
 
     // Test executor
     std::thread t([&](){
-        std::cout << "Helper thread start; " << where() << "\n";
+        where("Helper thread start");
         globalExecutor->run();
-        std::cout << "Helper thread end; " << where() << "\n";
+        where("Helper thread end");
       });
 
     std::cout << "Before async after thread started\n";
@@ -295,10 +292,7 @@ int main() {
         auto val = sync_await(entryPoint2(17));
         std::cout << "Value: " << val << "\n";
     }
-
-    for(int i = 0; i < 10; ++i ) {
-        globalExecutor->execute([i](){std::cout << "\tTask " << i << "; " << where() << "\n";});
-    }
+    
     globalExecutor->terminate();
     t.join();
     std::cout << "END\n";
