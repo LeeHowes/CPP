@@ -237,23 +237,66 @@ ZeroOverheadAwaitable entryPoint(int value) {
     co_return v + v2;
 }
 
+AsyncAwaitable asyncEntryPoint(int value) {
+    std::cout << "asyncEntryPoint; " << where() << "\n";
+    auto v = co_await(adder(value));
+    auto v2 = co_await(adder(value+5));
+    co_return v + v2;
+}
+
+AsyncAwaitable asyncAdder(int value) {
+    std::cout << "asyncAdder; " << where() << "\n";
+    co_return (value + 4);
+}
+
+ZeroOverheadAwaitable entryPoint2(int value) {
+    std::cout << "entryPoint2; " << where() << "\n";
+    auto v1 = co_await(asyncAdder(value));
+    auto v2 = co_await(adder(value + 5));
+    auto v3 = co_await(asyncAdder(value + 6));
+    auto v4 = co_await [=]() -> AsyncAwaitable {
+        auto v1 = co_await adder(value);
+        auto v2 = co_await(asyncAdder(value));
+        co_return v1 + v2;
+    }();
+    co_return v1 + v2 + v3 + v4;
+}
+
+
 int main() {
     // Temporarily create this globally
     globalExecutor = std::make_shared<DrivenExecutor>();
+    std::cout << "main(); " << where() << "\n";
 
+    {
+        auto val = sync_await(entryPoint(1));
+        std::cout << "Value: " << val << "\n";
+    }
 
-    auto aw = entryPoint(1);
-    auto val = sync_await(std::move(aw));
-    std::cout << "Value: " << val << "\n";
-
+    std::cout << "About to start thread\n";
 
     // Test executor
     std::thread t([&](){
-        std::cout << "Before run\n";
+        std::cout << "Helper thread start; " << where() << "\n";
         globalExecutor->run();
-        std::cout << "After run\n";
+        std::cout << "Helper thread end; " << where() << "\n";
       });
-    for(int i = 0; i < 100; ++i ) {
+
+    std::cout << "Before async after thread started\n";
+    
+    {
+        auto val = sync_await(asyncEntryPoint(1));
+        std::cout << "Value: " << val << "\n";
+    }
+
+    std::cout << "Before complex async\n";
+    
+    {
+        auto val = sync_await(entryPoint2(17));
+        std::cout << "Value: " << val << "\n";
+    }
+
+    for(int i = 0; i < 10; ++i ) {
         globalExecutor->execute([i](){std::cout << "\tTask " << i << "; " << where() << "\n";});
     }
     globalExecutor->terminate();
