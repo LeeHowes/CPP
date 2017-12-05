@@ -45,8 +45,7 @@ struct AsyncAwaitable {
                 final_suspend_result(promise_type* promise) : promise_{promise} {}
                 bool await_ready(){ return false; }
                 void await_suspend(std::experimental::coroutine_handle<>) {
-                    // Here we want to resume waiter on its executor to give correct async behaviour
-                    // Resume immediately resumes the body and is type erased. So how do we get the executor from it?
+                    // Resume the waiter on its executor to give correct async behaviour
                     promise_->waiterExecutor->execute([promise = promise_](){promise->waiter.resume();});
                 }
                 void await_resume() {}
