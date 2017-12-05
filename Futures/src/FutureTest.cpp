@@ -5,7 +5,9 @@
 #include "Executor.h"
 #include "SimpleAwaitable.h"
 #include "MyAsyncLibrary.h"
+#include "Future.h"
 
+#if 0
 ZeroOverheadAwaitable adder(int value) {
     where("adder");
     co_return (value + 3);
@@ -42,33 +44,20 @@ ZeroOverheadAwaitable entryPoint2(int value) {
     }();
     co_return v1 + v2 + v3 + v4;
 }
-
+#endif
 
 int main() {
     // Temporarily create this globally
     where("main()");
-
-    {
-        auto val = sync_await(entryPoint(1));
-        std::cout << "Value: " << val << "\n";
-    }
-    
     MyLibrary::init();
-
-    std::cout << "Before async after thread started\n";
-    
+   
     {
-        auto val = sync_await(asyncEntryPoint(1));
-        std::cout << "Value: " << val << "\n";
-    }
-
-    std::cout << "Before complex async\n";
-    
-    {
-        auto val = sync_await(entryPoint2(17));
-        std::cout << "Value: " << val << "\n";
+        auto f = make_future(3);
+        std::cout << "Future: " << f.get() << "\n";
     }
     
+
+
     MyLibrary::shutdown();
     std::cout << "END\n";
 
