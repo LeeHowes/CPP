@@ -45,6 +45,14 @@ int main() {
         std::cout << "AsyncAwaitableFuture: " << f.get() << "\n";
     }
 
+    {
+        where("Before make promise");
+        Promise<int> p;
+        auto f = p.get_future();
+        p.set_value(5);
+        std::cout << "Promise future: " << f.get() << "\n";
+    }
+
     MyLibrary::shutdown();
     std::cout << "END\n";
 

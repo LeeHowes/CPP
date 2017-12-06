@@ -21,9 +21,44 @@ struct AwaitableCore : CoreBase<T> {
     AwaitableT awaitable_;
 };
 
-// TODO: This is the core that would be shared with a promise
 template<class T>
 struct ValueCore : CoreBase<T> {
+    T get() {
+        std::lock_guard<std::mutex> lg{mtx_};
+        if(!value_) {
+            throw std::logic_error("Value not set on promise");
+        }
+        return *std::move(value_);
+    }
+
+    void set_value(T value) {
+        std::lock_guard<std::mutex> lg{mtx_};
+        value_ = std::move(value);
+    }
+
+    std::mutex mtx_;
+    std::optional<T> value_;
+};
+
+template<class T>
+class Future;
+
+template<class T>
+class Promise {
+public:
+    Promise() : core_{std::make_shared<ValueCore<T>>()} {
+    }
+
+    void set_value(T value) {
+        core_->set_value(std::move(value));
+    }
+
+    Future<T> get_future() {
+        return Future<T>{std::shared_ptr<CoreBase<T>>{core_}};
+    }
+
+private:
+    std::shared_ptr<ValueCore<T>> core_;
 };
 
 template<class T>
@@ -51,6 +86,7 @@ private:
     Future<FriendT> make_future(FriendT);
     template<class FriendT, class AwaitableT> friend
     Future<FriendT> make_awaitable_future(AwaitableT);
+    friend class Promise<T>;
 
     std::optional<T> value_;
     std::shared_ptr<CoreBase<T>> core_;
