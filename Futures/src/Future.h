@@ -177,7 +177,10 @@ public:
         // This is the simple future/promise pair for a continuable core
         Promise<T> prom;
         auto f = prom.get_future().via(core_->getExecutor());
-        core_->setCallback([p = std::move(prom)](T val) mutable {p.set_value(val);});
+        core_->setCallback([p = std::move(prom), cb = std::move(callback)](T val) mutable {
+                auto v = cb(std::move(val));
+                p.set_value(std::move(v));
+            });
         return f;
     }
 

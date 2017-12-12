@@ -56,20 +56,17 @@ int main() {
     {
         where("Via and then");
         Promise<int> p;
-        std::cerr << "Promise\n";
         auto f = p.get_future();
-        std::cerr << "Future\n";
         auto exec = std::make_shared<DrivenExecutor>(); 
         std::atomic<int> val = 0;
-        std::cerr << "Atomic\n";
         auto cf = f.via(exec).then([&](int oldVal){val = oldVal; std::cout << "Running\n"; return 2;});
-        std::cerr << "via and then\n";
         auto t = std::thread([&](){
                 exec->run();
             });
-        std::cout << "Val before\n";
         p.set_value(7);
         while(val == 0) {}
+        exec->terminate();
+        t.join();
         std::cout << "Val: " << val << " and returned " << cf.get() << "\n";
     }
 
