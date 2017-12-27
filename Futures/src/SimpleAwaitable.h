@@ -26,7 +26,7 @@ struct ZeroOverheadAwaitable {
             struct final_suspend_result : std::experimental::suspend_always {
                 promise_type *promise_;
                 final_suspend_result(promise_type* promise) : promise_{promise} {}
-                bool await_reday(){ return false; }
+                bool await_ready(){ return false; }
                 void await_suspend(std::experimental::coroutine_handle<>) {
                     promise_->waiter.resume();
                 }

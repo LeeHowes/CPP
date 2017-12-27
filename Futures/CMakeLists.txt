@@ -8,6 +8,11 @@ add_executable(simple_test src/SimpleTest.cpp)
 target_link_libraries(simple_test asynclib)
 target_compile_options(simple_test PUBLIC -stdlib=libc++ -fcoroutines-ts -std=c++17 -g)
 
+add_executable(async_await_test src/AsyncAwaitTest.cpp src/Executor.h src/AsyncAwait.h)
+target_link_libraries(async_await_test asynclib)
+target_compile_options(async_await_test PUBLIC -stdlib=libc++ -fcoroutines-ts -std=c++17 -g)
+
+
 add_executable(executor_test src/ExecutorTest.cpp src/Executor.h)
 target_link_libraries(executor_test asynclib)
 target_compile_options(executor_test PUBLIC -stdlib=libc++ -fcoroutines-ts -std=c++17 -g)
