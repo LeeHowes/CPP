@@ -34,7 +34,7 @@ struct AsyncAwaitAwaitable {
                 bool await_ready(){ return false; }
                 void await_suspend(std::experimental::coroutine_handle<>) {
                     promise_->executor->execute(
-                        [cb = promise_->callback, val = promise_->value](){
+                        [cb = std::move(promise_->callback), val = promise_->value](){
                             cb(std::move(val));
                         });
                 }
@@ -76,15 +76,18 @@ struct AsyncAwaitAwaitable {
 template<class Awaitable, class T = std::decay_t<decltype(std::declval<Awaitable>().await_resume())>, class F>
 void async_await(
         std::shared_ptr<DrivenExecutor> exec, 
-        Awaitable&& aw, 
+        Awaitable&& aw,
         F&& callback) {
-    auto a = [](Awaitable aw) mutable -> AsyncAwaitAwaitable<T> {
+    auto a = [](Awaitable aw) -> AsyncAwaitAwaitable<T> {
             int val = co_await aw;
             co_return val;
         };
     auto spa = std::make_shared<AsyncAwaitAwaitable<T>>(a(std::forward<Awaitable>(aw)));
     spa->setExecutor(exec);
-    spa->setCallback(std::function<void(T)>{std::move(callback)});
+    // Ensure that spa stays alive at least until the callback completes
+    spa->setCallback(std::function<void(T)>{[spa, cb = std::move(callback)](T&& val){
+            cb(std::move(val));
+        }});
     // Move awaitable onto the heap to extend its lifetime, enqueue a task that resumes it
     spa->coroutine_handle_.promise().executor->execute([spa](){
             spa->coroutine_handle_.resume();});

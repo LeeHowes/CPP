@@ -76,7 +76,8 @@ struct AsyncAwaitable {
         coroutine_handle_.promise().waiter = h;
         coroutine_handle_.promise().waiterExecutor = h.promise().executor;
         // Resume this handle on its executor
-        coroutine_handle_.promise().executor->execute([this](){coroutine_handle_.resume();});
+        coroutine_handle_.promise().executor->execute([this](){
+                coroutine_handle_.resume();});
     }
     auto await_resume() {
         return coroutine_handle_.promise().value;
