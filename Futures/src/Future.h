@@ -3,6 +3,7 @@
 #include <optional>
 
 #include "SimpleAwaitable.h"
+#include "AsyncAwait.h"
 
 template<class T>
 struct CoreBase {
@@ -21,6 +22,7 @@ struct CoreBase {
 template<class T, class AwaitableT>
 struct AwaitableCore : CoreBase<T> {
     AwaitableCore(AwaitableT&& awaitable) : awaitable_(std::move(awaitable)) {}
+
     virtual T get() {
         return sync_await(std::move(awaitable_));
     }
@@ -29,8 +31,8 @@ struct AwaitableCore : CoreBase<T> {
         this->exec_ = std::move(exec);
     }
 
-    virtual void setCallback(std::function<void(T)>) {
-        throw std::logic_error("Need to work out the sequence of operations for a callback on an awaitable core");
+    virtual void setCallback(std::function<void(T)> cb) {
+        async_await(this->exec_, std::move(awaitable_), std::move(cb));
     }
  
     virtual std::shared_ptr<DrivenExecutor> getExecutor() {
@@ -131,7 +133,9 @@ public:
         }
         throw std::logic_error("Incomplete future");
     }
-
+    
+    // TODO: via should check if the core is an Awaitable or SemiAwaitable, if the latter 
+    // the via call should forward to the core.
     ContinuableFuture<T> via(std::shared_ptr<DrivenExecutor>);
 
 private:
@@ -163,17 +167,6 @@ public:
     }
 
     ContinuableFuture<T> then(std::function<T(T)> callback) {
-        // TODO: What we do here depends on whether the core is awaitable or not.
-        // If there is a promise involved, then satisfying that promise will call the callback
-        // so we need to return a new future/promise pair chained off of that callback
-        // and carrying the same executor.
-        // If the core is awaitable we need to simulate a coroutine on the awaitable.
-        // I think we need a lambda that is an AsyncAwaitable that waits on the core
-        // such that when the core is reenabled it calls resume onto the async awaitable's 
-        // executor. So... we replace the core with an async awaitable core? How do we actually
-        // drive it correctly, though? Just make sure we have a function that runs initially and 
-        // stores the awaitable somewhere?
-       
         // This is the simple future/promise pair for a continuable core
         Promise<T> prom;
         auto f = prom.get_future().via(core_->getExecutor());

@@ -70,6 +70,22 @@ int main() {
         std::cout << "Val: " << val << " and returned " << cf.get() << "\n";
     }
 
+    {
+        where("Via and then from awaitable");
+        auto f = make_awaitable_future<int>(asyncEntryPoint(5));
+        auto exec = std::make_shared<DrivenExecutor>(); 
+        std::atomic<int> val = 0;
+        auto cf = f.via(exec).then([&](int oldVal){val = oldVal; std::cout << "Running\n"; return 3;});
+        auto t = std::thread([&](){
+                exec->run();
+            });
+        while(val == 0) {}
+        exec->terminate();
+        t.join();
+        std::cout << "Val: " << val << " and returned " << cf.get() << "\n";
+    }
+
+
     MyLibrary::shutdown();
     std::cout << "END\n";
 
