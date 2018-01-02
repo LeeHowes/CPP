@@ -4,6 +4,32 @@
 
 #include "SimpleAwaitable.h"
 #include "AsyncAwait.h"
+#include "MyAsyncLibrary.h"
+
+struct VirtualAwaitable {
+    ~VirtualAwaitable() {}
+    virtual bool await_ready() = 0;
+    virtual void await_suspend(std::experimental::coroutine_handle<>) = 0;
+    virtual void await_resume() = 0;
+};
+
+template<class AwaitableT> 
+struct VirtualAwaitableImpl : public VirtualAwaitable {
+    VirtualAwaitableImpl(AwaitableT& awaitable) : awaitable_{awaitable} {}
+    bool await_ready() override {
+        return awaitable_.await_ready();
+    }
+
+    void await_suspend(std::experimental::coroutine_handle<> h) override {
+        awaitable_.await_suspend(h);
+    }
+
+    void await_resume() override {
+        awaitable_.await_resume();
+    }
+
+    AwaitableT& awaitable_;
+};
 
 template<class T>
 struct CoreBase {
@@ -12,6 +38,9 @@ struct CoreBase {
     virtual void setExecutor(std::shared_ptr<DrivenExecutor> exec) = 0;
     virtual std::shared_ptr<DrivenExecutor> getExecutor() = 0;
     virtual void setCallback(std::function<void(T)>) = 0;
+    virtual bool isAwaitable() = 0;
+    virtual VirtualAwaitable& getAwaitable() = 0;
+
     std::shared_ptr<DrivenExecutor> exec_;
 };
 
@@ -21,30 +50,39 @@ struct CoreBase {
 // where synchronization is absolutely necessary.
 template<class T, class AwaitableT>
 struct AwaitableCore : CoreBase<T> {
-    AwaitableCore(AwaitableT&& awaitable) : awaitable_(std::move(awaitable)) {}
+    AwaitableCore(AwaitableT&& awaitable) : awaitable_(std::move(awaitable)), vAwaitable_{awaitable_} {}
 
-    virtual T get() {
+    T get() override {
         return sync_await(std::move(awaitable_));
     }
 
-    virtual void setExecutor(std::shared_ptr<DrivenExecutor> exec) {
+    void setExecutor(std::shared_ptr<DrivenExecutor> exec) override {
         this->exec_ = std::move(exec);
     }
 
-    virtual void setCallback(std::function<void(T)> cb) {
+    void setCallback(std::function<void(T)> cb) override {
         async_await(this->exec_, std::move(awaitable_), std::move(cb));
     }
  
-    virtual std::shared_ptr<DrivenExecutor> getExecutor() {
+    std::shared_ptr<DrivenExecutor> getExecutor() override {
         return this->exec_;
     }
 
+    bool isAwaitable() override {
+        return true;
+    }
+
+    VirtualAwaitable& getAwaitable() override {
+        return vAwaitable_;
+    }
+
     AwaitableT awaitable_;
+    VirtualAwaitableImpl<AwaitableT> vAwaitable_;
 };
 
 template<class T>
 struct ValueCore : CoreBase<T> {
-    T get() {
+    T get() override {
         std::lock_guard<std::mutex> lg{mtx_};
         if(!value_) {
             throw std::logic_error("Value not set on promise");
@@ -66,17 +104,17 @@ struct ValueCore : CoreBase<T> {
         }
     }
 
-    virtual void setExecutor(std::shared_ptr<DrivenExecutor> exec) {         
+    void setExecutor(std::shared_ptr<DrivenExecutor> exec) override {         
         std::lock_guard<std::mutex> lg{mtx_};
         this->exec_ = std::move(exec);
     }
  
-    virtual std::shared_ptr<DrivenExecutor> getExecutor() {
+    std::shared_ptr<DrivenExecutor> getExecutor() override {
         std::lock_guard<std::mutex> lg{mtx_};
         return this->exec_;
     }
 
-    virtual void setCallback(std::function<void(T)> callback) {
+    void setCallback(std::function<void(T)> callback) override {
         std::lock_guard<std::mutex> lg{mtx_};
         if(!this->exec_) {
             throw std::logic_error("Setting a callback without an executor is invalid");
@@ -92,6 +130,15 @@ struct ValueCore : CoreBase<T> {
         }
     }
 
+    bool isAwaitable() override {
+        return false;
+    }
+
+    VirtualAwaitable& getAwaitable() override {
+        // TODO: Maybe this does make sense and we can construct one by value?
+        throw std::logic_error("makes no sense for this path");
+    }
+
     std::mutex mtx_;
     std::optional<T> value_;
     std::function<void(T)> callback_;
@@ -99,6 +146,12 @@ struct ValueCore : CoreBase<T> {
 
 template<class T>
 class Future;
+
+template<class T>
+Future<T> make_future(T);
+template<class T, class AwaitableT>
+Future<T> make_awaitable_future(AwaitableT);
+
 
 template<class T>
 class Promise {
@@ -166,6 +219,7 @@ public:
         throw std::logic_error("Incomplete future");
     }
 
+    // TODO: Generalise type
     ContinuableFuture<T> then(std::function<T(T)> callback) {
         // This is the simple future/promise pair for a continuable core
         Promise<T> prom;
@@ -175,6 +229,26 @@ public:
                 p.set_value(std::move(v));
             });
         return f;
+    }
+
+    // TODO: Generalise type
+    template<class F>
+    ContinuableFuture<T> thenAwait(F&& callback) {
+        if(core_->isAwaitable()) {
+            // TODO: Actual awaitable used here could differ based on executor pair
+            // or a single ThenAwaitable could handle that (ie do callback directly if
+            // on same executor).
+            // TODO: AsyncAwaitable is fixed to int
+            using AA = MyLibrary::AsyncAwaitable; 
+            auto coroutine = [core = this->core_, cb = std::forward<F>(callback)]() -> AA {
+                auto& aw = core->getAwaitable();
+                auto v = co_await aw; 
+                co_return cb(v);
+            };
+            return make_awaitable_future<T>(coroutine);
+        } else {
+            return then(std::forward<F>(callback));
+        }
     }
 
 private:
