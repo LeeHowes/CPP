@@ -1,0 +1,24 @@
+<pre class='metadata'>
+Title: A more flexible FutureContinuation concept 
+Shortname: PTODO
+URL: wg21.link/PTODO
+Revision: 0
+Audience: SG1
+Status: D
+Group: WG21
+!Source: <a href="https://github.com/LeeHowes/CPP/blob/master/future_continuation.bs">https://github.com/LeeHowes/CPP/blob/master/future_continuations.bs</a>
+No Abstract: yes
+Markup Shorthands: markdown yes
+Markup Shorthands: biblio yes
+Editor: Lee Howes, Facebook, lwh@fb.com
+</pre>
+
+Introduction {#intro}
+=====================
+
+TODO
+
+Proposed New Wording
+====================
+
+
