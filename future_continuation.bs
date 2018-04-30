@@ -1,5 +1,5 @@
 <pre class='metadata'>
-Title: A more flexible FutureContinuation concept 
+Title: A more flexible FutureContinuation concept
 Shortname: PTODO
 URL: wg21.link/PTODO
 Revision: 0
@@ -15,10 +15,138 @@ Editor: Lee Howes, Facebook, lwh@fb.com
 
 Introduction {#intro}
 =====================
+[p0443](https://wg21.link/P0443) defines interfaces for executors and the continuation functions passed to them.
+The current design of the continuation functions passed to then_execute are based on invokability.
 
-TODO
+In essence the continuations have an interface similar to:
+```
+struct callable {
+  R operator()(T);
+  R operator()(exception_arg_t, e);
+};
+```
+
+where either function is optional, and in that situation the other operation will act as a passthrough.
+One reason for designing the API in this way is to allow a simple lambda function to be passed to `then_execute`:
+```
+e.then_execute([](T value){return value;}, input_future);
+```
+
+The downsides of this design are twofold:
+ * The description of the continuation is based on invokability. There is then potential for errors that would easily slip through code review, and silently cause unexpected runtime behaviour.
+ * The parallel pipe mechanismm of describing the continuation removes the ability to catch and pass an exception from the value operator, or to log and passthrough an exception from the exception operator without rethrowing the exception.
+
+On the first point, consider the following struct that an author might write in an attempt to handle both values and exceptions at some stage in the pipeline:
+```
+struct callable {
+  int operator()(int value) {
+    return value + 1;
+  }
+  int operator()(std::exception_ptr e) {
+    return 0;
+  }
+};
+```
+
+This is a trivial example of ignoring the precise exception and attempting to recover.
+Note that the reality here, based on the [p0443](https://wg21.link/P0443) definition is that the exception function is not callable as the `EXCEPTIONAL` case.
+It will therefore not be called and an exception will bypass.
+In effect, this struct is semantically equivalent to:
+```
+struct callable {
+  int operator()(int value) {
+    return value + 1;
+  }
+  int operator()(exception_arg_t, std::exception_ptr e) {
+    std::rethrow_exception(e);
+  }
+};
+```
+
+where we have silently lost our recovery, passed the error through with potentially negative consequences.
+There is no compilation or runtime error here, and this kind of problem could be hard to catch in code review.
+
+On the second point, consider an exception handler that only exists to log that an exception reached a point in the stream:
+```
+struct callable {
+  int operator()(int value) {
+    return value + 1;
+  }
+  int operator()(exception_arg_t, std::exception_ptr e) {
+    std::cerr << "Have exception\n";
+    std::rethrow_exception(e);
+  }
+};
+```
+
+This is an expensive means of doing nothing to the exception.
+With potential extensions to `std::exception_ptr` that would allow peeking at the exception without rethrow, there is a wide scope of lost optimisation here.
+
+What we might prefer, would be to implement this as:
+```
+struct callable {
+  int operator()(int value) {
+    return value + 1;
+  }
+  std::exception_ptr operator()(exception_arg_t, std::exception_ptr e) {
+    std::cerr << "Have exception\n";
+    return e;
+  }
+};
+```
+
+but then we lose the ability to recreate the value.
+
+We consider these two flaws, one of safety and the other of flexibility, as unfortunate limitations of a low-level API like executors.
+
+
+
+Requirements
+=====================
+
+TODO: This section is about the use cases as requirements, not as actual code.
+
+### then_value
+
+
+### then_error
+
+### then_variant
+
+### then_value_logging_error
+TODO: value plus logging existence of error with passthrough
+
+
+Concept
+=====================
+TODO: Fundamentally we need something that has a promise as input, and a promise as output, and where the value and error operations can be mixed based on the implementation
+This is fully general.
+
+TODO: So what does this look like? Because the Promises are both concepts, not types, we need to be able to generate this code. So given that we define the input promise,
+that is the task itself, what we need is a way to take the output promise as input. We need to construct a usable task from some partial task, taking a promise as input.
+The continuation, then, is a function of a Promise to a Promise.
+
+Examples
+=====================
+In this section we show the fundamental examples and what they look like as a
+function of a promise to a promise, with code hosted on godbolt to show it compiles and that it optimises away when necessary.
+
+### then_value
+[then_value optimising away](https://godbolt.org/g/RLb4ft)
+
+### then_error
+TODO: godbolt
+
+### then_variant
+TODO: godbolt
+
+### then_value_logging_error
+TODO: godbolt
 
 Proposed New Wording
 ====================
 
+### Promise
 
+
+### FutureContinuation
