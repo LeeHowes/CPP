@@ -100,25 +100,102 @@ but then we lose the ability to recreate the value.
 We consider these two flaws, one of safety and the other of flexibility, as unfortunate limitations of a low-level API like executors.
 
 
-
 Requirements
 =====================
-
-TODO: This section is about the use cases as requirements, not as actual code.
+If we look at some example continuation constructions based on those in [PTODO] we can see what kind of functionality we might want here.
 
 ### then_value
+This is the simple passthrough of the exception, while applying some operation to the value.
 
+The callback we expect to create looks like:
+```
+then_value([](T value){operation(value);});
+```
+
+As a flow diagram, something like:
+```
+set_value --------- Perform Operation ----- return_value
+
+set_exception ----------------------------- return_exception
+```
 
 ### then_error
+The equivalent where we apply some operation to the exception, but not the value.
+A good example of this might be error recovery. Note that in this case we are breaking the exception chain.
+The callback we expect to create looks like:
+```
+then_error([](std::exception_ptr e){
+  try {
+   std::rethrow_exception(e);
+  } catch(recoverable_exception) {
+    return 0;
+  } catch(...) {
+    std::rethrow_exception(std::current_exception());
+  }});
+```
+
+Or:
+```
+set_value -------------------------------------------------------/----- return_value
+                                            /----- Recover -----/
+set_exception ----- Perform Operation ----- |
+                                            \----- Do not recover ----- return_exception
+```
+
+Note that in this case we rethrow twice. Logically the first is just to check the exception type.
+The second is just returning the exception and relying on external logic to catch as we do not have two outputs in the syntax.
+Improvements to `exception_ptr` (along the lines of folly's [`exception_wrapper`](https://github.com/facebook/folly/blob/master/folly/ExceptionWrapper.h)) could mitigate the first.
+Ability to return either an `exception_ptr` or a `T` from the error case could remove the second throw.
 
 ### then_variant
+Here our operation might take a variant of a value and an exception so that we can write a single function that decides what to do:
+The callback we expect to create looks like:
+```
+then_variant([](std::variant<T, std::exception_ptr> v){operation(v);});
+```
+
+Diagrammatically:
+```
+set_value -----\                             /----- return_value
+               |----- Perform Operation -----|
+set_exception -/                             \----- return_exception
+```
+
+This is a very common pattern in Facebook's code where `folly::Try<T>`, which carries a value and exception, is the preferred means of parameterising future continuations.
 
 ### then_value_logging_error
-TODO: value plus logging existence of error with passthrough
+Here we merely log the existence of an error, and pass it through.
+We might write this as:
+```
+then_exception_filter(
+  [](T value){operation(v);},
+  [](std::exception_ptr e){std::cerr << "Have an exception\n"; return e;});
+```
+
+Here we have a very simple pair of parallel operations:
+```
+set_value --------- Perform Operation ----- return_value
+
+set_exception ----- Log ------------------- return_exception
+```
+Note though that it relies on allowing return of an `exception_ptr` from the exception path to do this without a throw.
 
 
 Concept
 =====================
+As an alternative way of thinking about this problem we should step back and think about what we want from the solution.
+Fundamentally, a continuation is a function from a value input or an exceptional input, to a value output or an exceptional output.
+<pre class='railroad'>
+Choice:
+ T: set_value
+ T: set_exception
+N: Perform operation
+Choice:
+ T: return_value
+ T: return_exception
+</pre>
+
+
 TODO: Fundamentally we need something that has a promise as input, and a promise as output, and where the value and error operations can be mixed based on the implementation
 This is fully general.
 
