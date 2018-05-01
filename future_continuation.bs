@@ -218,9 +218,9 @@ This is fully general, and moreover by requiring that both of these functions be
 The `set_value` input can map to either the `return_value` or `return_exception` output, and similarly for the `set_exception` input.
 
 So what does this look like? Because the Promises are both concepts, not types, we need to be able to generate this code.
-The input promise is a feature of the task we constructor. This much is simple.
+The input promise is a feature of the task we construct. This much is simple.
 In addition, we need a way to take the output promise as an input. That is, we need to construct a usable task from some partial task, plus a promise.
-The continuation, then, is a an object that is parameterised by a Promise, to construct a new object that is itself a Promise.
+The continuation, then, is an object that is parameterised by a Promise, to construct a new object that is itself a Promise.
 
 Examples {#examples}
 =====================
@@ -230,7 +230,7 @@ Given a continuation provided by some continuation construction function (some
 examples of which we see below), we can use the continuation by constructing
 some internal `Promise` that is used to initialise our output `Future`, pass
 it to the returned continuation function and call the appropriate operation on
-it with data from out input `Future`:
+it with data from our input `Future`:
 ```
 OutputFuture process_continuation() {
   OutputPromise p;
@@ -512,17 +512,17 @@ Proposed New Wording {#wording}
 ## Promise
 ```
 template <class P, class Value, class Error = std::exception_ptr>
-concept bool Promise = requires (P& p, Value&& value, Error&& error) {
-  p.set_value((Value&&) value);
-  p.set_exception((Error&&) error);
+concept Promise = requires (P& p, Value&& value, Error&& error) {
+  {p.set_value((Value&&) value)} noexcept;
+  {p.set_exception((Error&&) error)} noexcept;
 };
 ```
 
 ## FutureContinuation
 ```
-template<class F, class PIn, class POut>
-concept bool FutureContinuation =
-    Promise<PIn> && Promise<POut> && requires (F& f, PIn&& pin) {
-  f((PIn&&) pin) -> POut
+template<class PIn, class POut>
+concept FutureContinuation =
+    Promise<PIn> && Promise<POut> && requires (PIn&& pin) {
+  { f((PIn&&) pin) } -> POut
 }
 ```
