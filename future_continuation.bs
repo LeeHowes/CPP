@@ -1,9 +1,9 @@
 <pre class='metadata'>
-Title: A more flexible FutureContinuation concept
+Title: Future-proofing the Executor Continuation concept
 Shortname: PTODO
 URL: wg21.link/PTODO
 Revision: 0
-Audience: SG1
+Audience: SG1, LEWG
 Status: D
 Group: WG21
 !Source: <a href="https://github.com/LeeHowes/CPP/blob/master/future_continuation.bs">https://github.com/LeeHowes/CPP/blob/master/future_continuations.bs</a>
@@ -11,12 +11,14 @@ No Abstract: yes
 Markup Shorthands: markdown yes
 Markup Shorthands: biblio yes
 Editor: Lee Howes, Facebook, lwh@fb.com
+Editor: Andrii Grynenko, Facebook, andrii@fb.com
+Editor: Jay Feldblum, Facebook, yfeldblum@fb.com
 </pre>
 
 Introduction {#intro}
 =====================
 [p0443](https://wg21.link/P0443) defines interfaces for executors and the continuation functions passed to them.
-The current design of the continuation functions passed to then_execute are based on invokability.
+The current design of the continuation functions passed to then_execute are based on the ability of the executor to invoke the continuation.
 
 In essence the continuations have an interface similar to:
 ```
@@ -33,8 +35,8 @@ e.then_execute([](T value){return value;}, input_future);
 ```
 
 The downsides of this design are twofold:
- * The description of the continuation is based on invokability. There is then potential for errors that would easily slip through code review, and silently cause unexpected runtime behaviour.
- * The parallel pipe mechanismm of describing the continuation removes the ability to catch and pass an exception from the value operator, or to log and passthrough an exception from the exception operator without rethrowing the exception.
+ * The description of the continuation is based on ability to invoke it. There is then potential for errors that would easily slip through code review, and silently cause unexpected runtime behaviour.
+ * The parallel pipe mechanism of describing the continuation removes the ability to catch and pass an exception from the value operator, or to log and passthrough an exception from the exception operator without rethrowing the exception.
 
 On the first point, consider the following struct that an author might write in an attempt to handle both values and exceptions at some stage in the pipeline:
 ```
@@ -100,11 +102,11 @@ but then we lose the ability to recreate the value.
 We consider these two flaws, one of safety and the other of flexibility, as unfortunate limitations of a low-level API like executors.
 
 
-Requirements
+Requirements {#require}
 =====================
 If we look at some example continuation constructions based on those in [PTODO] we can see what kind of functionality we might want here.
 
-### then_value
+## then_value
 This is the simple passthrough of the exception, while applying some operation to the value.
 
 The callback we expect to create looks like:
@@ -119,7 +121,7 @@ set_value --------- Perform Operation ----- return_value
 set_exception ----------------------------- return_exception
 ```
 
-### then_error
+## then_error
 The equivalent where we apply some operation to the exception, but not the value.
 A good example of this might be error recovery. Note that in this case we are breaking the exception chain.
 The callback we expect to create looks like:
@@ -147,7 +149,7 @@ The second is just returning the exception and relying on external logic to catc
 Improvements to `exception_ptr` (along the lines of folly's [`exception_wrapper`](https://github.com/facebook/folly/blob/master/folly/ExceptionWrapper.h)) could mitigate the first.
 Ability to return either an `exception_ptr` or a `T` from the error case could remove the second throw.
 
-### then_variant
+## then_variant
 Here our operation might take a variant of a value and an exception so that we can write a single function that decides what to do:
 The callback we expect to create looks like:
 ```
@@ -163,7 +165,7 @@ set_exception -/                             \----- return_exception
 
 This is a very common pattern in Facebook's code where `folly::Try<T>`, which carries a value and exception, is the preferred means of parameterising future continuations.
 
-### then_value_logging_error
+## then_value_logging_error
 Here we merely log the existence of an error, and pass it through.
 We might write this as:
 ```
@@ -181,49 +183,333 @@ set_exception ----- Log ------------------- return_exception
 Note though that it relies on allowing return of an `exception_ptr` from the exception path to do this without a throw.
 
 
-Concept
+Concept {#concept}
 =====================
 As an alternative way of thinking about this problem we should step back and think about what we want from the solution.
 Fundamentally, a continuation is a function from a value input or an exceptional input, to a value output or an exceptional output.
-<pre class='railroad'>
-Choice:
- T: set_value
- T: set_exception
-N: Perform operation
-Choice:
- T: return_value
- T: return_exception
-</pre>
+```
+set_value -----\                             /----- return_value
+               |----- Perform Operation -----|
+set_exception -/                             \----- return_exception
+```
 
+This basic structure covers all of the above uses. The question becomes how we can build this in an efficient manner?
 
-TODO: Fundamentally we need something that has a promise as input, and a promise as output, and where the value and error operations can be mixed based on the implementation
-This is fully general.
+One option is to do what we do in a lot of Facebook's code, and implement the operation in terms of `folly::Try<T>` putting all functionality in the continuation itself.
+Unfortunately, it is clumsy to write efficient code that wants to ignore one or other path entirely using this structure. We are forced into the combined structure in the code.
 
-TODO: So what does this look like? Because the Promises are both concepts, not types, we need to be able to generate this code. So given that we define the input promise,
-that is the task itself, what we need is a way to take the output promise as input. We need to construct a usable task from some partial task, taking a promise as input.
-The continuation, then, is a function of a Promise to a Promise.
+Abstractly, though, if we assume that these operations are inputs and outputs from some class, we see that the input is a `Promise` type:
+```
+                                     /----- return_value
+Promise ----- Perform Operation -----|
+                                     \----- return_exception
+```
 
-Examples
+Where a promise is a class concept consisting of two `void`-returning functions: `set_value` and `return_value`.
+
+Taking a further look at this we realise that actually the output path is merely the input to another operation - one owned by the executor itself. So we see another `Promise` lying in wait for us:
+
+```
+Promise ----- Perform Operation ----- Promise
+```
+
+Fundamentally, then, each of the continuation constructors should produce something that has a promise as input, and a promise as output, and where the value and error operations can be mixed based on the implementation.
+This is fully general, and moreover by requiring that both of these functions be provided and thus called by the implementation, safe because the compiler will fail if a function fails to compile.
+The `set_value` input can map to either the `return_value` or `return_exception` output, and similarly for the `set_exception` input.
+
+So what does this look like? Because the Promises are both concepts, not types, we need to be able to generate this code.
+The input promise is a feature of the task we constructor. This much is simple.
+In addition, we need a way to take the output promise as an input. That is, we need to construct a usable task from some partial task, plus a promise.
+The continuation, then, is a an object that is parameterised by a Promise, to construct a new object that is itself a Promise.
+
+Examples {#examples}
 =====================
-In this section we show the fundamental examples and what they look like as a
-function of a promise to a promise, with code hosted on godbolt to show it compiles and that it optimises away when necessary.
+Let's take a few examples of what this looks to implement.
 
-### then_value
-[then_value optimising away](https://godbolt.org/g/RLb4ft)
+Given a continuation provided by some continuation construction function (some
+examples of which we see below), we can use the continuation by constructing
+some internal `Promise` that is used to initialise our output `Future`, pass
+it to the returned continuation function and call the appropriate operation on
+it with data from out input `Future`:
+```
+OutputFuture process_continuation() {
+  OutputPromise p;
+  OutputFuture f(p);
+  if(have_value()) {
+    continuation(p).set_value(value());
+  } else {
+    continuation(p).set_exception(exception());
+  }
+  return f;
+}
+```
 
-### then_error
-TODO: godbolt
 
-### then_variant
-TODO: godbolt
+## then_value
+`then_value` takes a function from a value to a value and returns a function that can be passed a Promise, and which constructs a Promise:
+```
+// F = function(int(int))
+template <typename F>
+auto then_value(F&& continuationFunction) {
+    return [continuationFunction = std::forward<F>(continuationFunction)](
+          auto&& outputPromise) mutable {
+        using OutputPromiseRef = decltype(outputPromise);
+        using OutputPromise = typename std::remove_reference<OutputPromiseRef>::type;
 
-### then_value_logging_error
-TODO: godbolt
+        class InputPromise {
+        public:
+            InputPromise(
+                F&& f, OutputPromise&& outputPromise) :
+                f_(std::move(f)), outputPromise_(std::move(outputPromise)) {}
 
-Proposed New Wording
+            void set_value(int value) {
+                try {
+                    auto resultOfOperation = f_(value);
+                    outputPromise_.set_value(resultOfOperation);
+                } catch (...) {
+                    outputPromise_.set_exception(std::current_exception());
+                }
+            }
+
+            void set_exception(std::exception_ptr e) {
+                outputPromise_.set_exception(std::move(e));
+            }
+
+        private:
+            F f_;
+            OutputPromise outputPromise_;
+        };
+
+        return InputPromise(
+            std::move(continuationFunction),
+            std::forward<OutputPromiseRef>(outputPromise));
+    };
+}
+```
+
+and constructs as:
+```
+auto continuation = then_value([](int x) {return x*2;});
+```
+
+As an example of using these constructs as if as a simple callback, for an
+executor that only supports simple callback mechanisms, we can see that all of
+this code optimises to [nothing](https://godbolt.org/g/pxHGRR).
+
+
+## then_error
+Here we construct a continuation from a function from exception_ptr to exception_ptr.
+
+```
+// F = function(exception_ptr(exception_ptr))
+template <typename F>
+auto then_error(F&& continuationFunction) {
+    return [continuationFunction = std::forward<F>(continuationFunction)](
+          auto&& outputPromise) mutable {
+        using OutputPromiseRef = decltype(outputPromise);
+        using OutputPromise = typename std::remove_reference<OutputPromiseRef>::type;
+
+        class InputPromise {
+        public:
+            InputPromise(
+                F&& f, OutputPromise&& outputPromise) :
+                f_(std::move(f)), outputPromise_(std::move(outputPromise)) {}
+
+            void set_value(int value) {
+                outputPromise_.set_value(value);
+            }
+
+            void set_exception(std::exception_ptr e) {
+                try {
+                    auto resultOfOperation = f_(std::move(e));
+                    // Set the exception from the return value
+                    outputPromise_.set_exception(resultOfOperation);
+                } catch (...) {
+                    // Also catch the error for completeness.
+                    outputPromise_.set_exception(std::current_exception());
+                }
+            }
+
+        private:
+            F f_;
+            OutputPromise outputPromise_;
+        };
+
+        return InputPromise(
+            std::move(continuationFunction),
+            std::forward<OutputPromiseRef>(outputPromise));
+    };
+}
+```
+
+We can construct a simple exception processing continuation as:
+```
+auto continuation = then_error([](std::exception_ptr e) {
+  std::cerr << "Log!\n"; return e;});
+```
+
+Note that even here, if we do not end up using the exception path, all of this
+[optimises away](https://godbolt.org/g/xRm2oH)
+
+
+## then_variant
+We can implement a version that passes variants through as:
+```
+// F = function(variant<int, exception_ptr>(variant<int, exception_ptr>))
+template <typename F>
+auto then_variant(F&& continuationFunction) {
+    return [continuationFunction = std::forward<F>(continuationFunction)](
+          auto&& outputPromise) mutable {
+        using OutputPromiseRef = decltype(outputPromise);
+        using OutputPromise = typename std::remove_reference<OutputPromiseRef>::type;
+
+        class InputPromise {
+        public:
+            InputPromise(
+                F&& f, OutputPromise&& outputPromise) :
+                f_(std::move(f)), outputPromise_(std::move(outputPromise)) {}
+
+            void set_value(int value) {
+                apply(value);
+            }
+
+            void set_exception(std::exception_ptr e) {
+                apply(std::move(e));
+            }
+
+        private:
+            F f_;
+            OutputPromise outputPromise_;
+
+            void apply(std::variant<int, std::exception_ptr> v) {
+                struct visitor {
+                    void operator()(int result) {
+                        outputPromise_.set_value(std::move(result));
+                    }
+                    void operator()(std::exception_ptr ex) {
+                        outputPromise_.set_exception(std::move(ex));
+                    }
+                    OutputPromise& outputPromise_;
+                };
+                try {
+                    auto intermediateValue = f_(std::move(v));
+                    std::visit(visitor{outputPromise_}, std::move(intermediateValue));
+                } catch(...) {
+                    outputPromise_.set_exception(std::current_exception());
+                }
+            }
+        };
+
+        return InputPromise(
+            std::move(continuationFunction),
+            std::forward<OutputPromiseRef>(outputPromise));
+    };
+}
+```
+
+Constructing the continuation with:
+```
+struct visitor {
+    std::variant<int, std::exception_ptr> operator()(int val) const {return val + 1;}
+    std::variant<int, std::exception_ptr> operator()(std::exception_ptr ex) const {return ex;}
+};
+auto continuation = then_variant(
+    [](std::variant<int, std::exception_ptr> v) -> std::variant<int, std::exception_ptr> {
+        return std::visit(visitor{}, std::move(v));
+    });
+```
+
+Again, with use of variants, if we do not actually use the `exception_ptr` route
+this [optimises away](https://godbolt.org/g/AZRAeK).
+
+## then_value_logging_error
+Finally, we can build an operation that takes two functions, where the error
+handler simply passes through the exception with logging:
+```
+
+// F = function(int(int))
+template <typename F, typename FE>
+auto then_value_log_exception(F&& valueContinuation, FE&& errorContinuation) {
+    return [valueContinuation = std::forward<F>(valueContinuation),
+            errorContinuation = std::forward<FE>(errorContinuation)](
+          auto&& outputPromise) mutable {
+        using OutputPromiseRef = decltype(outputPromise);
+        using OutputPromise = typename std::remove_reference<OutputPromiseRef>::type;
+
+        class InputPromise {
+        public:
+            InputPromise(
+                F&& f, FE&& fe, OutputPromise&& outputPromise) :
+                f_(std::move(f)), fe_(std::move(fe)), outputPromise_(std::move(outputPromise)) {}
+
+            void set_value(int value) {
+                try {
+                    auto resultOfOperation = f_(value);
+                    outputPromise_.set_value(resultOfOperation);
+                } catch (...) {
+                    outputPromise_.set_exception(std::current_exception());
+                }
+            }
+
+            void set_exception(std::exception_ptr e) {
+                outputPromise_.set_exception(fe_(std::move(e)));
+            }
+
+        private:
+            F f_;
+            FE fe_;
+            OutputPromise outputPromise_;
+        };
+
+        return InputPromise(
+            std::move(valueContinuation),
+            std::move(errorContinuation),
+            std::forward<OutputPromiseRef>(outputPromise));
+    };
+}
+```
+
+and where we might construct this as:
+```
+auto continuation = then_value_log_exception(
+    [](int x) {return x*2;},
+    [](std::exception_ptr e){std::cerr << "Have exception\n"; return e;});
+```
+
+Note that with improvements to `exception_ptr` this is where we could benefit
+from snooping on the exception without rethrow, as `folly::exception_wrapper`
+enables. Full source example [here](https://godbolt.org/g/Xbp5xK).
+
+Noexcept and bulk execution {#noexcept}
 ====================
 
-### Promise
+To simplify the executors specification we suggest two further changes.
+
+The first is that the methods on `FutureContinuation` should be noexcept.
+Any exception handling should be handled as part of the `FutureContinuation`
+task and passed to the error output.
+With this change, the executors do not need exception propagation properties,
+nor do they need to expose queries that specify what happens when an exception
+leaks from a continuation because this cannot happen.
+
+The second is that we should encode bulk operations as extended continuations.
+Encoding the bulk functionality as part of the continuation, rather than the
+executor API, would allow us to halve the number of executor entry points.
+One option to achieve this would be to pass the result and synchroniser
+factories to the continuation constructor, and to pass the shape with the input
+parameters.
+Making the shape part of the data stream, and allowing the executor to expose a
+set of parallel task adaptations would make integrating bulk execution with
+other language functionality, such as futures, a cleaner and more flexible
+design.
+
+We leave this out of the current concrete proposal but suggest it be worth
+investigating before bulk execution is merged into the standard.
+
+Proposed New Wording {#wording}
+====================
+
+## Promise
 
 
-### FutureContinuation
+## FutureContinuation
