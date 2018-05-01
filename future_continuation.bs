@@ -1,7 +1,7 @@
 <pre class='metadata'>
 Title: Future-proofing the Executor Continuation concept
-Shortname: PTODO
-URL: wg21.link/PTODO
+Shortname: P1053
+URL: wg21.link/P1053
 Revision: 0
 Audience: SG1, LEWG
 Status: D
@@ -104,7 +104,8 @@ We consider these two flaws, one of safety and the other of flexibility, as unfo
 
 Requirements {#require}
 =====================
-If we look at some example continuation constructions based on those in [PTODO] we can see what kind of functionality we might want here.
+If we look at some example continuation constructions based on those in [PTODO]
+we can see what kind of functionality we might want here.
 
 ## then_value
 This is the simple passthrough of the exception, while applying some operation to the value.
