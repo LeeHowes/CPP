@@ -205,7 +205,7 @@ Promise ----- Perform Operation -----|
                                      \----- return_exception
 ```
 
-Where a promise is a class concept consisting of two `void`-returning functions: `set_value` and `return_value`.
+Where a promise is a class concept consisting of two `void`-returning functions: `set_value` and `set_exception`.
 
 Taking a further look at this we realise that actually the output path is merely the input to another operation - one owned by the executor itself. So we see another `Promise` lying in wait for us:
 
@@ -521,7 +521,7 @@ concept bool Promise = requires (P& p, Value&& value, Error&& error) {
 ## FutureContinuation
 ```
 template<class F, class PIn, class POut>
-concept bool FutureContinuation = 
+concept bool FutureContinuation =
     Promise<PIn> && Promise<POut> && requires (F& f, PIn&& pin) {
   f((PIn&&) pin) -> POut
 }
