@@ -510,6 +510,19 @@ Proposed New Wording {#wording}
 ====================
 
 ## Promise
-
+```
+template <class P, class Value, class Error = std::exception_ptr>
+concept bool Promise = requires (P& p, Value&& value, Error&& error) {
+  p.set_value((Value&&) value);
+  p.set_exception((Error&&) error);
+};
+```
 
 ## FutureContinuation
+```
+template<class F, class PIn, class POut>
+concept bool FutureContinuation = 
+    Promise<PIn> && Promise<POut> && requires (F& f, PIn&& pin) {
+  f((PIn&&) pin) -> POut
+}
+```
