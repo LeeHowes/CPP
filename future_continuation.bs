@@ -496,34 +496,101 @@ leaks from a continuation because this cannot happen.
 The second is that we should encode bulk operations as extended continuations.
 Encoding the bulk functionality as part of the continuation, rather than the
 executor API, would allow us to halve the number of executor entry points.
-One option to achieve this would be to pass the result and synchroniser
-factories to the continuation constructor, and to pass the shape with the input
-parameters.
-Making the shape part of the data stream, and allowing the executor to expose a
-set of parallel task adaptations would make integrating bulk execution with
-other language functionality, such as futures, a cleaner and more flexible
-design.
-
-We leave this out of the current concrete proposal but suggest it be worth
-investigating before bulk execution is merged into the standard.
+Further, bulk continuations need not be part of the fundamental concepts and
+instead we can encode the interface simply as an extended set of task
+construction functions as in [PTODO](PTODO).
 
 Proposed New Wording {#wording}
 ====================
 
-## Promise
+`Promise` requirements
+--------------------
+
+A type `P` meets the `Promise` requirements for some value type `T` if an
+instance `p` of `P` satisfies the requirements in the table below.
+
+<table>
+  <tr>
+    <th>Expression</th>
+    <th>Return Type</th>
+    <th>Operational semantics</th>
+  </tr>
+  <tr>
+    <td>`p.set_value(T)`</td>
+    <td>void</td>
+    <td>Defined if T is not null. Completes the promise with a value.</td>
+  </tr>
+  <tr>
+    <td>`p.set_value()`</td>
+    <td>void</td>
+    <td>Defined if T is null. Completes the promise with no value.</td>
+  </tr>
+  <tr>
+    <td>`p.set_exception(std::exception_ptr)`</td>
+    <td>void</td>
+    <td>Completes the promise with an exception wrapped in a `std::exception_ptr`.</td>
+  </tr>
+</table>
+
+Conceptually:
 ```
-template <class P, class Value, class Error = std::exception_ptr>
-concept Promise = requires (P& p, Value&& value, Error&& error) {
+template <class Value, class P, class Error = std::exception_ptr>
+concept ValuePromise = requires (P& p, Value&& value, Error&& error) {
   {p.set_value((Value&&) value)} noexcept;
+  {p.set_exception((Error&&) error)} noexcept;
+};
+template <class P, class Error = std::exception_ptr>
+concept VoidPromise = requires (P& p, Value&& value, Error&& error) {
+  {p.set_value()} noexcept;
   {p.set_exception((Error&&) error)} noexcept;
 };
 ```
 
-## FutureContinuation
+OneWayFutureContinuation requirements
+--------------------
+A type `OFC` meets the OneWayFutureContinuation requirements if for an instance
+`ofc` of `OFC`, `INVOKE(std::forward<OFC>(ofc))` is valid.
+
+As a concrete concept:
 ```
-template<class PIn, class POut>
-concept FutureContinuation =
-    Promise<PIn> && Promise<POut> && requires (PIn&& pin) {
-  { f((PIn&&) pin) } -> POut
-}
+template <class OFC, class Error = std::exception_ptr>
+concept OneWayFutureContinuation = requires (OFC& ofc) {
+  {ofc()} noexcept;
+};
+```
+
+TwoWayFutureContinuation requirements
+--------------------
+A type `TFC` meets the `TwoWayFutureContinuation` requirements if, for an
+instance `tfc` of `TFC` and a value `p` whose type, `P` satisfies the `Promise`
+requirements and for which `INVOKE(std::forward<P>(p))` is valid.
+
+As a concrete concept:
+```
+template <class TFC, class P, class T, class Error = std::exception_ptr>
+concept TwoWayFutureContinuation =
+    (VoidPromise<P> || ValuePromise<P<T>>) && requires (TFC& tfc, P<T>&& p) {
+  {tfc(std::forward<P>(p))} noexcept;
+};
+```
+
+ThenFutureContinuation requirements
+--------------------
+A type `THFC` meets the `TwoWayFutureContinuation` requirements if, for an
+instance `thfc` of `TFC` and a value `p` whose type, `P` that satisfies the
+`Promise` requirements and where `INVOKE(std::forward<P>(p))` is valid and
+returns a value `pout` of type `POUT` that satisfies the `Promise` requirements
+for some value type `TIn`, potentially `void`, that is known to the caller.
+
+As a concrete concept:
+```
+template <
+  class THFC, class PIn, class TIn, class POut, class TOut,
+  class Error = std::exception_ptr>
+concept ThenFutureContinuation =
+    (VoidPromise<PIn> || ValuePromise<PIn<TIn>>) &&
+    (VoidPromise<POut> || ValuePromise<POut<TOut>>) &&
+    requires (TFC& tfc, PIn<TIn>&& pin, POut<TOut> pout) {
+  {thfc(std::forward<P>(p))} noexcept -> pout;
+};
 ```
