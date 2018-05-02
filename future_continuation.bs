@@ -295,7 +295,7 @@ auto continuation = then_value([](int x) {return x*2;});
 
 As an example of using these constructs as if as a simple callback, for an
 executor that only supports simple callback mechanisms, we can see that all of
-this code optimises to [nothing](https://godbolt.org/g/pxHGRR).
+this code optimises to [nothing](https://godbolt.org/g/QZLL7o).
 
 
 ## then_error
@@ -548,8 +548,9 @@ concept VoidPromise = requires (P& p, Value&& value, Error&& error) {
 
 OneWayFutureContinuation requirements
 --------------------
-A type `OFC` meets the OneWayFutureContinuation requirements if for an instance
-`ofc` of `OFC`, `INVOKE(std::forward<OFC>(ofc))` is valid.
+A type `OFC` meets the OneWayFutureContinuation requirements if `OFC` satisfies
+the requirements of `MoveConstructible` and for an instance `ofc` of `OFC`,
+`INVOKE(std::forward<OFC>(ofc))` is valid.
 
 As a concrete concept:
 ```
@@ -561,9 +562,10 @@ concept OneWayFutureContinuation = requires (OFC& ofc) {
 
 TwoWayFutureContinuation requirements
 --------------------
-A type `TFC` meets the `TwoWayFutureContinuation` requirements if, for an
-instance `tfc` of `TFC` and a value `p` whose type, `P` satisfies the `Promise`
-requirements and for which `INVOKE(std::forward<P>(p))` is valid.
+A type `TFC` meets the `TwoWayFutureContinuation` requirements if `TFC`
+satisfies the requirements of `MoveConstructible` and for an instance `tfc` of
+`TFC` and  a value `p` whose type, `P` satisfies the `Promise` requirements and
+for which  `INVOKE(std::forward<P>(p))` is valid.
 
 As a concrete concept:
 ```
@@ -576,7 +578,8 @@ concept TwoWayFutureContinuation =
 
 ThenFutureContinuation requirements
 --------------------
-A type `THFC` meets the `TwoWayFutureContinuation` requirements if, for an
+A type `THFC` meets the `TwoWayFutureContinuation` requirements if `THFC`
+satisfies the requirements of `MoveConstructible`, and for an
 instance `thfc` of `TFC` and a value `p` whose type, `P` that satisfies the
 `Promise` requirements and where `INVOKE(std::forward<P>(p))` is valid and
 returns a value `pout` of type `POUT` that satisfies the `Promise` requirements
@@ -594,3 +597,50 @@ concept ThenFutureContinuation =
   {thfc(std::forward<P>(p))} noexcept -> pout;
 };
 ```
+
+Changes to OneWayExecutor requirements
+--------------------
+In the Table below, `x` denotes a (possibly const) executor object of type `X`
+and `f` denotes an object of type `F&&` that satisfies the requirements
+of `OneWayFutureContinuation`.
+
+Changes to TwoWayExecutor requirements
+--------------------
+In the Table below, `x` denotes a (possibly const) executor object of type `X`,
+`f` denotes a an object of type `F&&` that satisfies the requirements of
+`TwoWayFutureContinuation` and `R` is `void` or denotes the value type of a
+value `p` of type `P&&` that satisfies the `Promise` requirements for value type
+`R` and that may be passed to the expression
+`DECAY_COPY(std::forward<F>(f))(std::move(p))`.
+
+<table>
+  <tr>
+    <th>Expression</th>
+    <th>Return Type</th>
+    <th>Operational semantics</th>
+  </tr>
+  <tr>
+    <td>`p.execute(f)`</td>
+    <td>
+      A type that satisfies the Future requirements for the value type `R`.
+    </td>
+    <td>
+      Creates an execution agent which invokes
+      `DECAY_COPY( std::forward<F>(f))(p)` for some type `p` that satisfies
+      the requirements of `Promise` for value type `R`, with the call to
+      `DECAY_COPY` being evaluated in the thread that called `twoway_execute`.
+
+      May block pending completion of DECAY_COPY( std::forward<F>(f))(p).
+
+      The invocation of twoway_execute synchronizes with
+      (C++Std [intro.multithread]) the invocation of f.
+
+      Stores the result of a call to `p.set_value(r)`, `p.set_value()`, or
+      `p.set_exception(e)` for `r` of type `R` or `e` of type
+      `std::exception_ptr` in the associated shared state of the resulting
+      `Future`.
+    </td>
+  </tr>
+</table>
+
+TODO: Then
