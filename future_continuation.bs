@@ -620,15 +620,16 @@ value `p` of type `P&&` that satisfies the `Promise` requirements for value type
     <th>Operational semantics</th>
   </tr>
   <tr>
-    <td>`p.execute(f)`</td>
+    <td>`p.twoway_execute(f)`</td>
     <td>
       A type that satisfies the Future requirements for the value type `R`.
     </td>
     <td>
       Creates an execution agent which invokes
-      `DECAY_COPY( std::forward<F>(f))(p)` for some type `p` that satisfies
-      the requirements of `Promise` for value type `R`, with the call to
-      `DECAY_COPY` being evaluated in the thread that called `twoway_execute`.
+      `DECAY_COPY( std::forward<F>(f))(p)` for some value `p` of type `P` that
+      satisfies the requirements of `Promise` for value type `R`, with the call
+      to `DECAY_COPY` being evaluated in the thread that called
+      `twoway_execute`.
 
       May block pending completion of DECAY_COPY( std::forward<F>(f))(p).
 
@@ -643,4 +644,47 @@ value `p` of type `P&&` that satisfies the `Promise` requirements for value type
   </tr>
 </table>
 
-TODO: Then
+
+Changes to ThenExecutor requirements
+--------------------
+In the Table below, `x` denotes a (possibly const) executor object of type `X`,
+`fut` denotes a future object satisfying the `Future` requirements, `f` denotes
+a function object of type `F&&` that satisfies the requirements of
+`ThenFutureContinuation` and `R` is `void` or denotes the value type of a value
+`p` of type `P&&` that satisfies the `Promise` requirements for value type `R`
+and that may be passed to the expression
+`DECAY_COPY(std::forward<F>(f))(std::move(p))`.
+
+<table>
+  <tr>
+    <th>Expression</th>
+    <th>Return Type</th>
+    <th>Operational semantics</th>
+  </tr>
+  <tr>
+    <td>`p.then_execute(f, fut)`</td>
+    <td>
+      A type that satisfies the Future requirements for the value type `R`.
+    </td>
+    <td>
+      When `fut` is ready, creates an execution agent which invokes
+      `DECAY_COPY( std::forward<F>(f))(p)` for some value `p` of type `P` that
+      satisfies the `Promise` requirements for value type `R`, with the call to
+      `DECAY_COPY` being evaluated in the thread that called then_execute.
+
+      May block pending completion of `DECAY_COPY( std::forward<F>(f))(p)`.
+
+      The invocation of `then_execute` synchronizes with (C++Std
+      [intro.multithread]) the invocation of `f`.
+
+      If `fut` is ready with a value, calls `f.set_value(r)`, if `fut` is ready
+      and the value is void calls `f.set_value()`. If `fut` is ready with an
+      exception calls `f.set_exception(e)`.
+
+      Stores the result of a call to `p.set_value(r)`, `p.set_value()`, or
+      `p.set_exception(e)` for `r` of type `R` or `e` of type
+      `std::exception_ptr` in the associated shared state of the resulting
+      `Future`.
+    </td>
+  </tr>
+</table>
