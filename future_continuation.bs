@@ -18,14 +18,20 @@ Editor: Jay Feldblum, Facebook, yfeldblum@fb.com
 
 Introduction {#intro}
 =====================
-[p0443](https://wg21.link/P0443) defines interfaces for executors and the continuation functions passed to them.
-The current design of the continuation functions passed to then_execute are based on the ability of the executor to invoke the continuation.
+[p0443](https://wg21.link/P0443) defines interfaces for executors and the
+continuation functions passed to them.
+[P1054](wg21.link/P1054) utilises these fundamental interfaces to build
+expressive concepts for future types where continuations are cleanly mapped
+through continuation construction functions.
+
+The current design of the continuation functions passed to then_execute are
+based on the ability of the executor to invoke the continuation.
 
 In essence the continuations have an interface similar to:
 ```
 struct callable {
   R operator()(T);
-  R operator()(exception_arg_t, e);
+  R operator()(exception_arg, e);
 };
 ```
 
@@ -60,7 +66,7 @@ struct callable {
   int operator()(int value) {
     return value + 1;
   }
-  int operator()(exception_arg_t, std::exception_ptr e) {
+  int operator()(exception_arg, std::exception_ptr e) {
     std::rethrow_exception(e);
   }
 };
@@ -75,7 +81,7 @@ struct callable {
   int operator()(int value) {
     return value + 1;
   }
-  int operator()(exception_arg_t, std::exception_ptr e) {
+  int operator()(exception_arg, std::exception_ptr e) {
     std::cerr << "Have exception\n";
     std::rethrow_exception(e);
   }
@@ -91,7 +97,7 @@ struct callable {
   int operator()(int value) {
     return value + 1;
   }
-  std::exception_ptr operator()(exception_arg_t, std::exception_ptr e) {
+  std::exception_ptr operator()(exception_arg, std::exception_ptr e) {
     std::cerr << "Have exception\n";
     return e;
   }
@@ -100,13 +106,26 @@ struct callable {
 
 but then we lose the ability to recreate the value.
 
-We consider these two flaws, one of safety and the other of flexibility, as unfortunate limitations of a low-level API like executors.
+We consider these two flaws, one of safety and the other of flexibility, as
+unfortunate limitations of a low-level API like executors.
+
+The same modifications we propose in this paper apply to both
+[p0443](https://wg21.link/P0443) and [P1054](wg21.link/P1054).
+Uses of the types in [P1054](wg21.link/P1054) are unaffected, only the results
+of calling the `FutureContinuation` helper functions that are then passed
+down to the underlying executor.
+
+Given the existence of these helper functions, and the clean readable code they
+lead to, there is no need to simplify the continuation itself to be a trivial
+callable, and we gain a lot of flexibility by consciously deciding to not
+simplify it in that way.
 
 
 Requirements {#require}
 =====================
-If we look at some example continuation constructions based on those in [PTODO]
-we can see what kind of functionality we might want here.
+If we look at some example continuation constructions based on those in
+[P1054](wg21.link/P1054) we can see what kind of functionality we might want
+here.
 
 ## then_value
 This is the simple passthrough of the exception, while applying some operation to the value.
@@ -499,9 +518,10 @@ Encoding the bulk functionality as part of the continuation, rather than the
 executor API, would allow us to halve the number of executor entry points.
 Further, bulk continuations need not be part of the fundamental concepts and
 instead we can encode the interface simply as an extended set of task
-construction functions as in [PTODO](PTODO).
+construction functions as in [P1054](wg21.link/P1054).
 
-Proposed New Wording {#wording}
+
+Proposed New Wording {#wording} for P0443
 ====================
 
 `Promise` requirements
@@ -694,3 +714,8 @@ and that may be passed to the expression
     </td>
   </tr>
 </table>
+
+
+Changes to Bulk requirements in general
+--------------------
+Separate all bulk-related operations into a separate document targeted at a TS.
