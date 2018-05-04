@@ -315,7 +315,8 @@ auto continuation = then_value([](int x) {return x*2;});
 
 As an example of using these constructs as if as a simple callback, for an
 executor that only supports simple callback mechanisms, we can see that all of
-this code optimises to [nothing](https://godbolt.org/g/m3qvoj).
+this code optimises to nothing
+([https://godbolt.org/g/m3qvoj](https://godbolt.org/g/m3qvoj)).
 
 
 ## then_error
@@ -370,7 +371,7 @@ auto continuation = then_error([](std::exception_ptr e) {
 ```
 
 Note that even here, if we do not end up using the exception path, all of this
-[optimises away](https://godbolt.org/g/xRm2oH)
+optimises away ([https://godbolt.org/g/xRm2oH](https://godbolt.org/g/xRm2oH))
 
 
 ## then_variant
@@ -441,7 +442,8 @@ auto continuation = then_variant(
 ```
 
 Again, with use of variants, if we do not actually use the `exception_ptr` route
-this [optimises away](https://godbolt.org/g/AZRAeK).
+this optimises away
+([https://godbolt.org/g/AZRAeK](https://godbolt.org/g/AZRAeK)).
 
 ## then_value_logging_error
 Finally, we can build an operation that takes two functions, where the error
@@ -499,7 +501,8 @@ auto continuation = then_value_log_exception(
 
 Note that with improvements to `exception_ptr` this is where we could benefit
 from snooping on the exception without rethrow, as `folly::exception_wrapper`
-enables. Full source example [here](https://godbolt.org/g/Xbp5xK).
+enables. Full source example:
+[https://godbolt.org/g/Xbp5xK](https://godbolt.org/g/Xbp5xK).
 
 Noexcept {#noexcept}
 ====================
@@ -510,7 +513,7 @@ task and passed to the error output.
 With this change, the executors do not need exception propagation properties,
 nor do they need to expose queries that specify what happens when an exception
 leaks from a continuation because this cannot happen. This is a considerable
-simplification.
+simplification and reduction in committee work that is still in progress.
 
 Rethinking bulk execution {#bulk}
 ====================
@@ -520,14 +523,14 @@ Encoding the bulk functionality as part of the continuation, rather than the
 executor API, would allow us to halve the number of executor entry points.
 Further, bulk continuations need not be part of the fundamental concepts and
 instead we can encode the interface simply as an extended set of task
-construction functions as in [P1054](wg21.link/P1054).
+construction functions as in [P1054](https://wg21.link/P1054).
 
 We are confident that bulk can be cleanly implemented in this model, but would
 want to see implementation work done. Implementation work is already necessary
 to give confidence for the bulk implementations in
 [p0443](https://wg21.link/P0443), particularly for `bulk_then_execute`.
 
-The bulk API can be achieved in multiple ways. FutureContinuation's definition
+The bulk API can be achieved in multiple ways. `FutureContinuation`'s definition
 should be extended to map a `Promise` to a `BulkPromise`.
 
 The interface of `BulkPromise` offers multiple options. Let's assume that we
@@ -540,7 +543,9 @@ based on the same parameters of `then_execute` in
 [p0443](https://wg21.link/P0443).
 
 One option is that we allow `set_value` and `set_exception` to be called
-multiple times, encapsulating the shape and a completion message in the API.
+multiple times, encapsulating the shape and a completion signal in the API of
+the continuation.
+
 For example:
 ```
 void set_value(int idx, int& value);
@@ -550,7 +555,7 @@ void done();
 ```
 
 Building on earlier examples, this might be implemented more fully as:
-[https://godbolt.org/g/87BgJG](https://godbolt.org/g/87BgJG).
+[https://godbolt.org/g/PPTtrW](https://godbolt.org/g/PPTtrW).
 We need `get_shape` to know what iteration
 domain to call `set_value` over, and `done` because in a parallel use case the
 continuation itself cannot know when it is complete.
@@ -585,7 +590,8 @@ Finally, in rethinking bulk in this way we should consider what the factory
 functions mean, in two specific areas:
  * Should the factory functions be independent of the data stream, or should
      they be part of the data processing operation?
- * Should we explicitly translate the result variable into an output.
+ * Should the continuation explicitly translate the result variable into an
+     output?
 
 For the first, we might consider changing the factory function API to be
 parameterized by the value and the shape. This falls cleanly out of the
@@ -607,9 +613,13 @@ processing that unpacks this again. Clearly with the above task proposal we
 can do this as part of the `done()` call - so exposing a means to modify that
 operation is a powerful primitive.
 
+A very limited implementation of parameterising the result factory can be seen
+in [https://godbolt.org/g/jDVhPC](https://godbolt.org/g/jDVhPC).
+
 In practice, if we produce a general bulk task, we do not have to constrain the
 factory functions in any way - they are all properties of the task and called
-when the executor performs certain operations.
+when the executor performs certain operations. We should only specify a few
+standard ones that implement reasonable basic semantics.
 
 This is a more flexible and powerful model, and we believe one that is equally
 easy to understand. There may be concerned about implementation cost: is running
@@ -617,6 +627,7 @@ work in `done()` a costly piece of additional work after performing the primary
 bulk operation. In practice, though, given that we have to return the object
 anyway, and that object might have an arbitrary move constructor, we believe any
 such concerns would need strong justification.
+
 
 
 
