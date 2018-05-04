@@ -11,6 +11,7 @@ No Abstract: yes
 Markup Shorthands: markdown yes
 Markup Shorthands: biblio yes
 Editor: Lee Howes, Facebook, lwh@fb.com
+Editor: Eric Niebler, Facebook, eniebler@fb.com
 Editor: Andrii Grynenko, Facebook, andrii@fb.com
 Editor: Jay Feldblum, Facebook, yfeldblum@fb.com
 </pre>
@@ -166,7 +167,7 @@ set_exception -/                             \----- return_exception
 
 This is a very common pattern in Facebook's code where `folly::Try<T>`, which carries a value and exception, is the preferred means of parameterising future continuations.
 
-## then_value_logging_error
+## then_exception_filter
 Here we merely log the existence of an error, and pass it through.
 We might write this as:
 ```
@@ -295,7 +296,7 @@ auto continuation = then_value([](int x) {return x*2;});
 
 As an example of using these constructs as if as a simple callback, for an
 executor that only supports simple callback mechanisms, we can see that all of
-this code optimises to [nothing](https://godbolt.org/g/QZLL7o).
+this code optimises to [nothing](https://godbolt.org/g/m3qvoj).
 
 
 ## then_error
@@ -516,9 +517,12 @@ instance `p` of `P` satisfies the requirements in the table below.
     <th>Operational semantics</th>
   </tr>
   <tr>
-    <td>`p.set_value(T)`</td>
+    <td>`p.set_value(T&&)`</td>
     <td>void</td>
-    <td>Defined if T is not null. Completes the promise with a value.</td>
+    <td>
+      Defined if T is not null. Completes the promise with a value.
+      Should accept by forwarding reference.
+    </td>
   </tr>
   <tr>
     <td>`p.set_value()`</td>
@@ -528,7 +532,9 @@ instance `p` of `P` satisfies the requirements in the table below.
   <tr>
     <td>`p.set_exception(std::exception_ptr)`</td>
     <td>void</td>
-    <td>Completes the promise with an exception wrapped in a `std::exception_ptr`.</td>
+    <td>
+      Completes the promise with an exception wrapped in a `std::exception_ptr`.
+    </td>
   </tr>
 </table>
 
