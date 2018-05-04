@@ -650,14 +650,14 @@ instance `p` of `P` satisfies the requirements in the table below.
     <td>`p.set_value(T&&)`</td>
     <td>void</td>
     <td>
-      Defined if T is not null. Completes the promise with a value.
+      Defined if T is not void. Completes the promise with a value.
       Should accept by forwarding reference.
     </td>
   </tr>
   <tr>
     <td>`p.set_value()`</td>
     <td>void</td>
-    <td>Defined if T is null. Completes the promise with no value.</td>
+    <td>Defined if T is void. Completes the promise with no value.</td>
   </tr>
   <tr>
     <td>`p.set_exception(std::exception_ptr)`</td>
