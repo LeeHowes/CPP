@@ -501,24 +501,123 @@ Note that with improvements to `exception_ptr` this is where we could benefit
 from snooping on the exception without rethrow, as `folly::exception_wrapper`
 enables. Full source example [here](https://godbolt.org/g/Xbp5xK).
 
-Noexcept and bulk execution {#noexcept}
+Noexcept {#noexcept}
 ====================
 
-To simplify the executors specification we suggest two further changes.
-
-The first is that the methods on `FutureContinuation` should be noexcept.
+The methods on `FutureContinuation` should be noexcept.
 Any exception handling should be handled as part of the `FutureContinuation`
 task and passed to the error output.
 With this change, the executors do not need exception propagation properties,
 nor do they need to expose queries that specify what happens when an exception
-leaks from a continuation because this cannot happen.
+leaks from a continuation because this cannot happen. This is a considerable
+simplification.
 
-The second is that we should encode bulk operations as extended continuations.
+Rethinking bulk execution {#bulk}
+====================
+
+We should encode bulk operations as extended continuations.
 Encoding the bulk functionality as part of the continuation, rather than the
 executor API, would allow us to halve the number of executor entry points.
 Further, bulk continuations need not be part of the fundamental concepts and
 instead we can encode the interface simply as an extended set of task
 construction functions as in [P1054](wg21.link/P1054).
+
+We are confident that bulk can be cleanly implemented in this model, but would
+want to see implementation work done. Implementation work is already necessary
+to give confidence for the bulk implementations in
+[p0443](https://wg21.link/P0443), particularly for `bulk_then_execute`.
+
+The bulk API can be achieved in multiple ways. FutureContinuation's definition
+should be extended to map a `Promise` to a `BulkPromise`.
+
+The interface of `BulkPromise` offers multiple options. Let's assume that we
+base them around task construction that might look like:
+```
+FutureContinuation bulk_then_value(F, S, RF, SF);
+```
+
+based on the same parameters of `then_execute` in
+[p0443](https://wg21.link/P0443).
+
+One option is that we allow `set_value` and `set_exception` to be called
+multiple times, encapsulating the shape and a completion message in the API.
+For example:
+```
+void set_value(int idx, int& value);
+void set_exception(int idx, std::exception_ptr& e);
+const int& get_shape() const;
+void done();
+```
+
+Building on earlier examples, this might be implemented more fully as:
+[https://godbolt.org/g/87BgJG](https://godbolt.org/g/87BgJG).
+We need `get_shape` to know what iteration
+domain to call `set_value` over, and `done` because in a parallel use case the
+continuation itself cannot know when it is complete.
+
+There would be some cost here in deciding repeatedly to skip the exception.
+
+Another option is to say that set_exception only be callable once.
+```
+void set_value(int idx, int& value);
+void set_exception(std::exception_ptr e);
+const int& get_shape() const;
+void done();
+```
+
+which means that the code can pass an exception through more
+directly as in [https://godbolt.org/g/gLN72t](https://godbolt.org/g/gLN72t).
+
+We might also separate iteration from initialization, and allow the promise to
+consume its inputs immediately, executing trivially under certain circumstances:
+```
+void set_value(int value);
+void set_exception(std::exception_ptr e);
+const int& get_shape() const;
+void execute_at(int idx);
+void done();
+```
+
+which could be utilized as in
+[https://godbolt.org/g/RmhaFb](https://godbolt.org/g/RmhaFb).
+
+Finally, in rethinking bulk in this way we should consider what the factory
+functions mean, in two specific areas:
+ * Should the factory functions be independent of the data stream, or should
+     they be part of the data processing operation?
+ * Should we explicitly translate the result variable into an output.
+
+For the first, we might consider changing the factory function API to be
+parameterized by the value and the shape. This falls cleanly out of the
+separated `executor_at` design above, such that the factory functions run when
+`set_value` and `set_exception` are called. For example, if we take a vector as
+input, it would make a lot of sense to be able to generate an output that
+matches the input vector size, based on a size that was computed in the
+processing stream.
+
+The shape could also be considered in this way. The shape could be computed from
+the input: if we have an exception, return a shape of 1 and we immediately tell
+the executor that we want to handle the exception as a single stream. If we do
+not do this.
+
+Output processing at the moment is slightly difficult in that while we can
+manually perform a reduction operation such that the result variable is a
+reduced value or exception, we have no function that runs at the end of
+processing that unpacks this again. Clearly with the above task proposal we
+can do this as part of the `done()` call - so exposing a means to modify that
+operation is a powerful primitive.
+
+In practice, if we produce a general bulk task, we do not have to constrain the
+factory functions in any way - they are all properties of the task and called
+when the executor performs certain operations.
+
+This is a more flexible and powerful model, and we believe one that is equally
+easy to understand. There may be concerned about implementation cost: is running
+work in `done()` a costly piece of additional work after performing the primary
+bulk operation. In practice, though, given that we have to return the object
+anyway, and that object might have an arbitrary move constructor, we believe any
+such concerns would need strong justification.
+
 
 
 Proposed New Wording {#wording} for P0443
