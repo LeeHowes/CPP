@@ -1,5 +1,5 @@
 <pre class='metadata'>
-Title: Future-proofing the Executor Continuation concept
+Title: Future-proofing continuations for executors
 Shortname: P1053
 URL: wg21.link/P1053
 Revision: 0
