@@ -12,9 +12,15 @@ Markup Shorthands: markdown yes
 Markup Shorthands: biblio yes
 Editor: Lee Howes, Facebook, lwh@fb.com
 Editor: Eric Niebler, Facebook, eniebler@fb.com
-Editor: Andrii Grynenko, Facebook, andrii@fb.com
-Editor: Jay Feldblum, Facebook, yfeldblum@fb.com
 </pre>
+
+<!-- Keep this alphabetical by last name -->
+
+Contributors:
+
+* Jay      Feldblum
+* Andrii   Grynenko
+* Kirk     Shoop
 
 Introduction {#intro}
 =====================
