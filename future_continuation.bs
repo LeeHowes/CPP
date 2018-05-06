@@ -139,7 +139,8 @@ If we look at some example continuation constructions based on those in
 [p1054](wg21.link/P1054) we can see what kind of functionality we might want
 here.
 
-## then_value
+then_value {#helper_thenvalue}
+--------------------
 This is the simple passthrough of the exception, while applying some operation to the value.
 
 The callback we expect to create looks like:
@@ -154,7 +155,8 @@ set_value --------- Perform Operation ----- return_value
 set_exception ----------------------------- return_exception
 ```
 
-## then_error
+then_error {#helper_thenerror}
+--------------------
 The equivalent where we apply some operation to the exception, but not the value.
 A good example of this might be error recovery. Note that in this case we are breaking the exception chain.
 The callback we expect to create looks like:
@@ -182,7 +184,8 @@ The second is just returning the exception and relying on external logic to catc
 Improvements to `exception_ptr` (along the lines of folly's [`exception_wrapper`](https://github.com/facebook/folly/blob/master/folly/ExceptionWrapper.h)) could mitigate the first.
 Ability to return either an `exception_ptr` or a `T` from the error case could remove the second throw.
 
-## then_variant
+then_variant {#helper_thenvariant}
+--------------------
 Here our operation might take a variant of a value and an exception so that we can write a single function that decides what to do:
 The callback we expect to create looks like:
 ```
@@ -198,7 +201,8 @@ set_exception -/                             \----- return_exception
 
 This is a very common pattern in Facebook's code where `folly::Try<T>`, which carries a value and exception, is the preferred means of parameterising future continuations.
 
-## then_exception_filter
+then_exception_filter {#helper_thenexceptionfilter}
+--------------------
 Here we merely log the existence of an error, and pass it through.
 We might write this as:
 ```
@@ -278,7 +282,8 @@ OutputFuture process_continuation() {
 ```
 
 
-## then_value
+then_value {#thenvalue_example}
+--------------------
 `then_value` takes a function from a value to a value and returns a function that can be passed a Promise, and which constructs a Promise:
 ```
 // F = function(int(int))
@@ -331,7 +336,8 @@ this code optimises to nothing
 ([https://godbolt.org/g/m3qvoj](https://godbolt.org/g/m3qvoj)).
 
 
-## then_error
+then_error {#thenerror_example}
+--------------------
 Here we construct a continuation from a function from exception_ptr to exception_ptr.
 
 ```
@@ -386,7 +392,8 @@ Note that even here, if we do not end up using the exception path, all of this
 optimises away ([https://godbolt.org/g/xRm2oH](https://godbolt.org/g/xRm2oH))
 
 
-## then_variant
+then_variant {#thenvariant_example}
+--------------------
 We can implement a version that passes variants through as:
 ```
 // F = function(variant<int, exception_ptr>(variant<int, exception_ptr>))
@@ -457,7 +464,8 @@ Again, with use of variants, if we do not actually use the `exception_ptr` route
 this optimises away
 ([https://godbolt.org/g/AZRAeK](https://godbolt.org/g/AZRAeK)).
 
-## then_value_logging_error
+then_value_logging_error {#thenvalueloggingerror_example}
+--------------------
 Finally, we can build an operation that takes two functions, where the error
 handler simply passes through the exception with logging:
 ```
@@ -643,10 +651,10 @@ such concerns would need strong justification.
 
 
 
-Proposed New Wording {#wording} for P0443
+Proposed New Wording for P0443 {#wording}
 ====================
 
-`Promise` requirements
+`Promise` requirements {#promiserequire}
 --------------------
 
 A type `P` meets the `Promise` requirements for some value type `T` if an
@@ -694,7 +702,7 @@ concept VoidPromise = requires (P& p, Value&& value, Error&& error) {
 };
 ```
 
-OneWayFutureContinuation requirements
+OneWayFutureContinuation requirements {#onewayrequire}
 --------------------
 A type `OFC` meets the OneWayFutureContinuation requirements if `OFC` satisfies
 the requirements of `MoveConstructible` and for an instance `ofc` of `OFC`,
@@ -708,7 +716,7 @@ concept OneWayFutureContinuation = requires (OFC& ofc) {
 };
 ```
 
-TwoWayFutureContinuation requirements
+TwoWayFutureContinuation requirements  {#twowayrequire}
 --------------------
 A type `TFC` meets the `TwoWayFutureContinuation` requirements if `TFC`
 satisfies the requirements of `MoveConstructible` and for an instance `tfc` of
@@ -724,7 +732,7 @@ concept TwoWayFutureContinuation =
 };
 ```
 
-ThenFutureContinuation requirements
+ThenFutureContinuation requirements {#thenrequire}
 --------------------
 A type `THFC` meets the `TwoWayFutureContinuation` requirements if `THFC`
 satisfies the requirements of `MoveConstructible`, and for an
@@ -746,13 +754,13 @@ concept ThenFutureContinuation =
 };
 ```
 
-Changes to OneWayExecutor requirements
+Changes to OneWayExecutor requirements {#onewaychanges}
 --------------------
 In the Table below, `x` denotes a (possibly const) executor object of type `X`
 and `f` denotes an object of type `F&&` that satisfies the requirements
 of `OneWayFutureContinuation`.
 
-Changes to TwoWayExecutor requirements
+Changes to TwoWayExecutor requirements {#twowaychanges}
 --------------------
 In the Table below, `x` denotes a (possibly const) executor object of type `X`,
 `f` denotes a an object of type `F&&` that satisfies the requirements of
@@ -793,7 +801,7 @@ value `p` of type `P&&` that satisfies the `Promise` requirements for value type
 </table>
 
 
-Changes to ThenExecutor requirements
+Changes to ThenExecutor requirements {#thenchanges}
 --------------------
 In the Table below, `x` denotes a (possibly const) executor object of type `X`,
 `fut` denotes a future object satisfying the `Future` requirements, `f` denotes
@@ -838,6 +846,6 @@ and that may be passed to the expression
 </table>
 
 
-Changes to Bulk requirements in general
+Changes to Bulk requirements in general {#bulkchanges}
 --------------------
 Separate all bulk-related operations into a separate document targeted at a TS.
