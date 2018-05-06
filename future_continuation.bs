@@ -26,7 +26,7 @@ Introduction {#intro}
 =====================
 [p0443](https://wg21.link/P0443) defines interfaces for executors and the
 continuation functions passed to them.
-[P1054](wg21.link/P1054) utilises these fundamental interfaces to build
+[p1054](https://wg21.link/P1054) utilises these fundamental interfaces to build
 expressive concepts for future types where continuations are cleanly mapped
 through continuation construction functions.
 
@@ -49,7 +49,7 @@ e.then_execute([](T value){return value;}, input_future);
 
 The downsides of this design are twofold:
  * The description of the continuation is based on ability to invoke it. There is then potential for errors that would easily slip through code review, and silently cause unexpected runtime behaviour.
- * The parallel pipe mechanism of describing the continuation removes the ability to catch and pass an exception from the value operator, or to log and passthrough an exception from the exception operator without rethrowing the exception.
+ * The mechanism of describing the continuation with two parallel end-to-end data paths removes the ability to catch and pass an exception from the value operator, or to log and passthrough an exception from the exception operator without rethrowing the exception.
 
 On the first point, consider the following struct that an author might write in an attempt to handle both values and exceptions at some stage in the pipeline:
 ```
@@ -78,7 +78,7 @@ struct callable {
 };
 ```
 
-where we have silently lost our recovery, passed the error through with potentially negative consequences.
+where we have silently lost our recovery path and passed the error through with potentially negative consequences.
 There is no compilation or runtime error here, and this kind of problem could be hard to catch in code review.
 
 On the second point, consider an exception handler that only exists to log that an exception reached a point in the stream:
@@ -95,7 +95,9 @@ struct callable {
 ```
 
 This is an expensive means of doing nothing to the exception.
-With potential extensions to `std::exception_ptr` that would allow peeking at the exception without rethrow, there is a wide scope of lost optimisation here.
+With potential extensions to `std::exception_ptr` that would allow peeking at
+the exception without rethrow, there is potentially a wide range of
+optimisations that we lose the ability to perform.
 
 What we might prefer, would be to implement this as:
 ```
@@ -115,22 +117,26 @@ but then we lose the ability to recreate the value.
 We consider these two flaws, one of safety and the other of flexibility, as
 unfortunate limitations of a low-level API like executors.
 
-The same modifications we propose in this paper apply to both
-[p0443](https://wg21.link/P0443) and [P1054](wg21.link/P1054).
-Uses of the types in [P1054](wg21.link/P1054) are unaffected, only the results
-of calling the `FutureContinuation` helper functions that are then passed
-down to the underlying executor.
+Expected use of `FutureContinuation` as discussed in [p1054](wg21.link/P1054) is
+through the use of helper functions such as `on_value` and `on_error` that take
+a constrained callable and return a `FutureContinuation`.
+With these helper functions, and the clean readable code they lead to, there is
+no need to simplify the `FutureContinuation` to be a trivial callable, and we
+gain a lot of flexibility by consciously deciding to not simplify it in that
+way.
 
-Given the existence of these helper functions, and the clean readable code they
-lead to, there is no need to simplify the continuation itself to be a trivial
-callable, and we gain a lot of flexibility by consciously deciding to not
-simplify it in that way.
+The same modifications we propose in this paper apply to both
+[p0443](https://wg21.link/P0443) and [p1054](wg21.link/P1054).
+Uses of the types in [p1054](wg21.link/P1054) are unaffected but the description
+of the calling mechanism, return values of the construction functions
+(`on_value`, `on_error`) and precise semantics would require updates similar to
+those we propose for [p0443](https://wg21.link/P0443).
 
 
 Requirements {#require}
 =====================
 If we look at some example continuation constructions based on those in
-[P1054](wg21.link/P1054) we can see what kind of functionality we might want
+[p1054](wg21.link/P1054) we can see what kind of functionality we might want
 here.
 
 ## then_value
@@ -529,7 +535,7 @@ Encoding the bulk functionality as part of the continuation, rather than the
 executor API, would allow us to halve the number of executor entry points.
 Further, bulk continuations need not be part of the fundamental concepts and
 instead we can encode the interface simply as an extended set of task
-construction functions as in [P1054](https://wg21.link/P1054).
+construction functions as in [p1054](https://wg21.link/P1054).
 
 We are confident that bulk can be cleanly implemented in this model, but would
 want to see implementation work done. Implementation work is already necessary
