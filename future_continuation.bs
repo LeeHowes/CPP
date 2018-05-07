@@ -569,7 +569,8 @@ Noexcept {#noexcept}
 
 The methods on `FutureContinuation` should be noexcept.
 Any exception handling should be handled as part of the `FutureContinuation`
-task and passed to the error output.
+task and passed to the `set_exception` output.
+
 With this change, the executors do not need exception propagation properties,
 nor do they need to expose queries that specify what happens when an exception
 leaks from a continuation because this cannot happen. This is a considerable
@@ -579,6 +580,11 @@ Rethinking bulk execution {#bulk}
 ====================
 
 We should encode bulk operations as extended continuations.
+Bulk execution is a property of a task, not an executor. While we realise that
+the executor has influence on how the task runs and where, which may include
+how it is compiled to do bulk dispatch, the actual properties of the task
+are orthogonal to the API exposed by executors.
+
 Encoding the bulk functionality as part of the continuation, rather than the
 executor API, would allow us to halve the number of executor entry points.
 Further, bulk continuations need not be part of the fundamental concepts and
@@ -586,25 +592,22 @@ instead we can encode the interface simply as an extended set of task
 construction functions as in [p1054](https://wg21.link/P1054).
 
 We are confident that bulk can be cleanly implemented in this model, but would
-want to see implementation work done. Implementation work is already necessary
-to give confidence for the bulk implementations in
+want to see implementation work done. In our view, implementation work is
+already necessary to give confidence for the bulk implementations in
 [p0443](https://wg21.link/P0443), particularly for `bulk_then_execute`.
 
 The bulk API can be achieved in multiple ways. `FutureContinuation`'s definition
 should be extended to map a `Promise` to a `BulkPromise`.
-
 The interface of `BulkPromise` offers multiple options. Let's assume that we
-base them around task construction that might look like:
+base them around a task construction function based on the same parameters of
+`then_execute` in [p0443](https://wg21.link/P0443):
 ```
 FutureContinuation bulk_then_value(F, S, RF, SF);
 ```
 
-based on the same parameters of `then_execute` in
-[p0443](https://wg21.link/P0443).
-
-One option is that we allow `set_value` and `set_exception` to be called
-multiple times, encapsulating the shape and a completion signal in the API of
-the continuation.
+One implementation option is that we allow `set_value` and `set_exception` to
+be called multiple times, encapsulating the shape and a completion signal in the
+API of the continuation.
 
 For example:
 ```
@@ -616,13 +619,13 @@ void done();
 
 Building on earlier examples, this might be implemented more fully as:
 [https://godbolt.org/g/PPTtrW](https://godbolt.org/g/PPTtrW).
-We need `get_shape` to know what iteration
-domain to call `set_value` over, and `done` because in a parallel use case the
-continuation itself cannot know when it is complete.
+We need `get_shape` to know what iteration domain to call `set_value` over, and
+`done` because in a parallel use case the continuation itself cannot know when
+it is complete.
 
 There would be some cost here in deciding repeatedly to skip the exception.
 
-Another option is to say that set_exception only be callable once.
+Another option is to say that set_exception only be callable once:
 ```
 void set_value(int idx, int& value);
 void set_exception(std::exception_ptr e);
@@ -630,11 +633,12 @@ const int& get_shape() const;
 void done();
 ```
 
-which means that the code can pass an exception through more
+In this design the implementation can pass an exception through more
 directly as in [https://godbolt.org/g/gLN72t](https://godbolt.org/g/gLN72t).
 
 We might also separate iteration from initialization, and allow the promise to
-consume its inputs immediately, executing trivially under certain circumstances:
+consume its inputs immediately, executing trivially under certain circumstances,
+for example passing the exception through without practical iteration as above:
 ```
 void set_value(int value);
 void set_exception(std::exception_ptr e);
@@ -643,11 +647,12 @@ void execute_at(int idx);
 void done();
 ```
 
-which could be utilized as in
+This design could be utilized as in
 [https://godbolt.org/g/RmhaFb](https://godbolt.org/g/RmhaFb).
 
-Finally, in rethinking bulk in this way we should consider what the factory
-functions mean, in two specific areas:
+Finally, in rethinking bulk in this way we should consider what the result and
+shared factory functions (`RF` and `SF` types in the above) mean, in two
+specific areas:
  * Should the factory functions be independent of the data stream, or should
      they be part of the data processing operation?
  * Should the continuation explicitly translate the result variable into an
@@ -659,18 +664,20 @@ separated `executor_at` design above, such that the factory functions run when
 `set_value` and `set_exception` are called. For example, if we take a vector as
 input, it would make a lot of sense to be able to generate an output that
 matches the input vector size, based on a size that was computed in the
-processing stream.
+processing stream. If we pass a reference to the input value into the result
+factory, we can return a vector of that size directly as the result to write to.
 
-The shape could also be considered in this way. The shape could be computed from
-the input: if we have an exception, return a shape of 1 and we immediately tell
-the executor that we want to handle the exception as a single stream. If we do
-not do this.
+The shape can also be considered in this way, and be computed from the input.
+For example, if we have an exception, return a shape of 1 and we immediately
+tell the executor that we want to handle the exception as a single stream.
+If we do not do this we will always execute the full iteration domain, even if
+all but one instance is going to return directly.
 
-Output processing at the moment is slightly difficult in that while we can
-manually perform a reduction operation such that the result variable is a
-reduced value or exception, we have no function that runs at the end of
-processing that unpacks this again. Clearly with the above task proposal we
-can do this as part of the `done()` call - so exposing a means to modify that
+On the second point, output processing at the moment is slightly difficult in
+that while we can manually perform a reduction operation such that the result
+variable is a reduced value or exception, we have no function that runs at the
+end of processing that unpacks this again. Clearly with the above task proposal
+we can do this as part of the `done()` call - so exposing a means to modify that
 operation is a powerful primitive.
 
 A very limited implementation of parameterising the result factory can be seen
@@ -682,11 +689,12 @@ when the executor performs certain operations. We should only specify a few
 standard ones that implement reasonable basic semantics.
 
 This is a more flexible and powerful model, and we believe one that is equally
-easy to understand. There may be concerned about implementation cost: is running
-work in `done()` a costly piece of additional work after performing the primary
-bulk operation. In practice, though, given that we have to return the object
-anyway, and that object might have an arbitrary move constructor, we believe any
-such concerns would need strong justification.
+easy to understand. There may be concerns about implementation cost.
+For example, running work in `done()` may be a costly additional operation that
+needs pre-synchronization to work, after the primary bulk operation completes.
+In practice, though, given that we have to return the object anyway, and that
+object might have an arbitrary move constructor, we believe any such concerns
+would need strong justification.
 
 
 
