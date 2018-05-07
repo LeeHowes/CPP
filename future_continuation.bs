@@ -1,7 +1,7 @@
 <pre class='metadata'>
 Title: Future-proofing continuations for executors
 Shortname: P1053
-URL: wg21.link/P1053
+URL: https://wg21.link/P1053
 Revision: 0
 Audience: SG1, LEWG
 Status: D
@@ -118,7 +118,7 @@ but then we lose the ability to recreate the value.
 We consider these two flaws, one of safety and the other of flexibility, as
 unfortunate limitations of a low-level API like executors.
 
-Expected use of `FutureContinuation` as discussed in [p1054](wg21.link/P1054) is
+Expected use of `FutureContinuation` as discussed in [p1054](https://wg21.link/P1054) is
 through the use of helper functions such as `on_value` and `on_error` that take
 a constrained callable and return a `FutureContinuation`.
 With these helper functions, and the clean readable code they lead to, there is
@@ -126,18 +126,24 @@ no need to simplify the `FutureContinuation` to be a trivial callable, and we
 gain a lot of flexibility by consciously deciding to not simplify it in that
 way.
 
+The goal of this paper is to convince the reader that we should solidify the
+`FutureContinuation` with use cases and examples. We then build on this
+to demonstrate how bulk execution should be simplified based on similar
+properties, without committing to a design. Finally we propose wording changes
+to executors to make the changes concrete.
+
 The same modifications we propose in this paper apply to both
 [p0443](https://wg21.link/P0443) and [p1054](https://wg21.link/P1054).
-Uses of the types in [p1054](https://wg21.link/P1054) are unaffected but the description
-of the calling mechanism, return values of the construction functions
-(`on_value`, `on_error`) and precise semantics would require updates similar to
-those we propose for [p0443](https://wg21.link/P0443).
+Uses of the types in [p1054](https://wg21.link/P1054) are unaffected but the
+description of the calling mechanism, return values of the construction
+functions (`on_value`, `on_error`) and precise semantics would require updates
+similar to those we propose for [p0443](https://wg21.link/P0443).
 
 
 Requirements {#require}
 =====================
 If we look at some example continuation constructions based on those in
-[p1054](wg21.link/P1054) we can see what kind of functionality we might want
+[p1054](https://wg21.link/P1054) we can see what kind of functionality we might want
 here.
 
 then_value {#helper_thenvalue}
@@ -736,19 +742,6 @@ instance `p` of `P` satisfies the requirements in the table below.
   </tr>
 </table>
 
-Conceptually:
-```
-template <class Value, class P, class Error = std::exception_ptr>
-concept ValuePromise = requires (P& p, Value&& value, Error&& error) {
-  {p.set_value((Value&&) value)} noexcept;
-  {p.set_exception((Error&&) error)} noexcept;
-};
-template <class P, class Error = std::exception_ptr>
-concept VoidPromise = requires (P& p, Value&& value, Error&& error) {
-  {p.set_value()} noexcept;
-  {p.set_exception((Error&&) error)} noexcept;
-};
-```
 
 OneWayFutureContinuation requirements {#onewayrequire}
 --------------------
@@ -756,13 +749,6 @@ A type `OFC` meets the OneWayFutureContinuation requirements if `OFC` satisfies
 the requirements of `MoveConstructible` and for an instance `ofc` of `OFC`,
 `INVOKE(std::forward<OFC>(ofc))` is valid.
 
-As a concrete concept:
-```
-template <class OFC, class Error = std::exception_ptr>
-concept OneWayFutureContinuation = requires (OFC& ofc) {
-  {ofc()} noexcept;
-};
-```
 
 TwoWayFutureContinuation requirements  {#twowayrequire}
 --------------------
@@ -771,14 +757,6 @@ satisfies the requirements of `MoveConstructible` and for an instance `tfc` of
 `TFC` and  a value `p` whose type, `P` satisfies the `Promise` requirements and
 for which  `INVOKE(std::forward<P>(p))` is valid.
 
-As a concrete concept:
-```
-template <class TFC, class P, class T, class Error = std::exception_ptr>
-concept TwoWayFutureContinuation =
-    (VoidPromise<P> || ValuePromise<P<T>>) && requires (TFC& tfc, P<T>&& p) {
-  {tfc(std::forward<P>(p))} noexcept;
-};
-```
 
 ThenFutureContinuation requirements {#thenrequire}
 --------------------
@@ -788,19 +766,6 @@ instance `thfc` of `TFC` and a value `p` whose type, `P` that satisfies the
 `Promise` requirements and where `INVOKE(std::forward<P>(p))` is valid and
 returns a value `pout` of type `POUT` that satisfies the `Promise` requirements
 for some value type `TIn`, potentially `void`, that is known to the caller.
-
-As a concrete concept:
-```
-template <
-  class THFC, class PIn, class TIn, class POut, class TOut,
-  class Error = std::exception_ptr>
-concept ThenFutureContinuation =
-    (VoidPromise<PIn> || ValuePromise<PIn<TIn>>) &&
-    (VoidPromise<POut> || ValuePromise<POut<TOut>>) &&
-    requires (TFC& tfc, PIn<TIn>&& pin, POut<TOut> pout) {
-  {thfc(std::forward<P>(p))} noexcept -> pout;
-};
-```
 
 Changes to OneWayExecutor requirements {#onewaychanges}
 --------------------
