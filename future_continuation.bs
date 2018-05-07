@@ -4,7 +4,7 @@ Shortname: P1053
 URL: https://wg21.link/P1053
 Revision: 0
 Audience: SG1, LEWG
-Status: D
+Status: P
 Group: WG21
 !Source: <a href="https://github.com/LeeHowes/CPP/blob/master/future_continuation.bs">https://github.com/LeeHowes/CPP/blob/master/future_continuations.bs</a>
 No Abstract: yes
