@@ -279,30 +279,44 @@ In summary:
 
 Examples {#examples}
 =====================
-Let's take a few examples of what this looks to implement.
+Let's take a few examples of what this looks like to implement.
 
 Given a continuation provided by some continuation construction function (some
-examples of which we see below), we can use the continuation by constructing
-some internal `Promise` that is used to initialise our output `Future`, pass
-it to the returned continuation function and call the appropriate operation on
-it with data from our input `Future`:
+examples of which we see below) and passed to our processing function, we can
+use the continuation by:
+ 1) constructing internal `Promise` that is tied to  our output `Future`
+ 2) pass the output promise to the continuation as a means of constructing a
+       viable promise object.
+ 3) call the appropriate operation on the input with data from our input
+       `Future`.
+
+In code that general principle looks like:
 ```
-OutputFuture process_continuation() {
-  OutputPromise p;
-  OutputFuture f(p);
+OutputFuture process_continuation(FutureContinuation&& continuation) {
+  // Construct output promise/future contract
+  [outputPromise, outputFuture] make_promise_contract<T>();
+
+  // Construct the input promise by parameterising the continuation with the
+  // output promise.
+  auto inputPromise = std::move(continuation)(outputPromise);
+
+  // Call the appropriate input data path on the input promise
   if(have_value()) {
-    continuation(p).set_value(value());
+    std::move(inputPromise).set_value(value());
   } else {
-    continuation(p).set_exception(exception());
+    std::move(inputPromise).set_exception(exception());
   }
-  return f;
+
+  // Return the outputFuture that will include the result of the computation
+  return outputFuture;
 }
 ```
 
 
 then_value {#thenvalue_example}
 --------------------
-`then_value` takes a function from a value to a value and returns a function that can be passed a Promise, and which constructs a Promise:
+`then_value` takes a function from a value to a value and, as discussed above,
+returns a function that can be passed a Promise, and which constructs a Promise:
 ```
 // F = function(int(int))
 template <typename F>
@@ -343,7 +357,7 @@ auto then_value(F&& continuationFunction) {
 }
 ```
 
-and constructs as:
+and constructs the continuation as:
 ```
 auto continuation = then_value([](int x) {return x*2;});
 ```
@@ -356,7 +370,8 @@ this code optimises to nothing
 
 then_error {#thenerror_example}
 --------------------
-Here we construct a continuation from a function from exception_ptr to exception_ptr.
+Here we construct a continuation from a function from exception_ptr to
+exception_ptr as a means of only processing our error stream.
 
 ```
 // F = function(exception_ptr(exception_ptr))
@@ -469,8 +484,15 @@ auto then_variant(F&& continuationFunction) {
 Constructing the continuation with:
 ```
 struct visitor {
-    std::variant<int, std::exception_ptr> operator()(int val) const {return val + 1;}
-    std::variant<int, std::exception_ptr> operator()(std::exception_ptr ex) const {return ex;}
+    std::variant<int, std::exception_ptr>
+    operator()(int val) const {
+      return val + 1;
+    }
+
+    std::variant<int, std::exception_ptr>
+    operator()(std::exception_ptr ex) const {
+      return ex;
+    }
 };
 auto continuation = then_variant(
     [](std::variant<int, std::exception_ptr> v) -> std::variant<int, std::exception_ptr> {
