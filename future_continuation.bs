@@ -96,8 +96,9 @@ struct callable {
 
 This is an expensive means of doing nothing to the exception.
 With potential extensions to `std::exception_ptr` that would allow peeking at
-the exception without rethrow, there is potentially a wide range of
-optimisations that we lose the ability to perform.
+the exception without rethrow, for example [p1066](https://wg21.link/P1066),
+there is potentially a wide range of optimisations that we lose the ability to
+perform.
 
 What we might prefer, would be to implement this as:
 ```
@@ -126,8 +127,8 @@ gain a lot of flexibility by consciously deciding to not simplify it in that
 way.
 
 The same modifications we propose in this paper apply to both
-[p0443](https://wg21.link/P0443) and [p1054](wg21.link/P1054).
-Uses of the types in [p1054](wg21.link/P1054) are unaffected but the description
+[p0443](https://wg21.link/P0443) and [p1054](https://wg21.link/P1054).
+Uses of the types in [p1054](https://wg21.link/P1054) are unaffected but the description
 of the calling mechanism, return values of the construction functions
 (`on_value`, `on_error`) and precise semantics would require updates similar to
 those we propose for [p0443](https://wg21.link/P0443).
@@ -179,10 +180,14 @@ set_exception ----- Perform Operation ----- |
                                             \----- Do not recover ----- return_exception
 ```
 
-Note that in this case we rethrow twice. Logically the first is just to check the exception type.
-The second is just returning the exception and relying on external logic to catch as we do not have two outputs in the syntax.
-Improvements to `exception_ptr` (along the lines of folly's [`exception_wrapper`](https://github.com/facebook/folly/blob/master/folly/ExceptionWrapper.h)) could mitigate the first.
-Ability to return either an `exception_ptr` or a `T` from the error case could remove the second throw.
+Note that in this case we rethrow twice. Logically the first is just to check
+the exception type. The second is just returning the exception and relying on
+external logic to catch as we do not have two outputs in the syntax.
+Improvements to `exception_ptr` (along the lines of folly's
+[exception_wrapper](https://github.com/facebook/folly/blob/master/folly/ExceptionWrapper.h)
+or those proposed in [p1066](https://wg21.link/P1066)) could mitigate the first.
+Ability to return either an `exception_ptr` or a `T` from the error case could
+remove the second throw.
 
 then_variant {#helper_thenvariant}
 --------------------
@@ -199,14 +204,16 @@ set_value -----\                             /----- return_value
 set_exception -/                             \----- return_exception
 ```
 
-This is a very common pattern in Facebook's code where `folly::Try<T>`, which carries a value and exception, is the preferred means of parameterising future continuations.
+This is a very common pattern in Facebook's code where `folly::Try<T>`, which
+carries a value and exception, is the preferred means of parameterising future
+continuations.
 
-then_exception_filter {#helper_thenexceptionfilter}
+then_value_with_exception_log {#helper_thenexceptionfilter}
 --------------------
 Here we merely log the existence of an error, and pass it through.
 We might write this as:
 ```
-then_exception_filter(
+then_value_with_exception_log(
   [](T value){operation(v);},
   [](std::exception_ptr e){std::cerr << "Have an exception\n"; return e;});
 ```
@@ -217,7 +224,8 @@ set_value --------- Perform Operation ----- return_value
 
 set_exception ----- Log ------------------- return_exception
 ```
-Note though that it relies on allowing return of an `exception_ptr` from the exception path to do this without a throw.
+Note though that it relies on allowing return of an `exception_ptr` from the
+exception path to do this without a throw.
 
 
 Concept {#concept}
@@ -250,14 +258,24 @@ Taking a further look at this we realise that actually the output path is merely
 Promise ----- Perform Operation ----- Promise
 ```
 
-Fundamentally, then, each of the continuation constructors should produce something that has a promise as input, and a promise as output, and where the value and error operations can be mixed based on the implementation.
-This is fully general, and moreover by requiring that both of these functions be provided and thus called by the implementation, safe because the compiler will fail if a function fails to compile.
-The `set_value` input can map to either the `return_value` or `return_exception` output, and similarly for the `set_exception` input.
+Fundamentally, then, each of the continuation constructors should produce
+something that has a promise as input, and a promise as output, and where the
+value and error operations can be mixed based on the implementation.
+This is fully general. Moreover, by requiring that both of these functions be
+provided and thus called by the implementation, it is also safe because the
+compiler will fail if a function fails to compile.
+The `set_value` input can map to either the `return_value` or `return_exception`
+output, and similarly for the `set_exception` input.
 
-So what does this look like? Because the Promises are both concepts, not types, we need to be able to generate this code.
+So what does this look like? Because the Promises are both concepts, not types,
+we need to be able to generate this code.
 The input promise is a feature of the task we construct. This much is simple.
-In addition, we need a way to take the output promise as an input. That is, we need to construct a usable task from some partial task, plus a promise.
-The continuation, then, is an object that is parameterised by a Promise, to construct a new object that is itself a Promise.
+In addition, we need a way to take the output promise as an input. That is, we
+need to construct a usable task from some partial task, plus a promise.
+
+In summary:
+> The continuation is an object that, when passed a Promise as a parameter
+> constructs a new object that is itself a Promise.
 
 Examples {#examples}
 =====================
@@ -519,9 +537,9 @@ auto continuation = then_value_log_exception(
     [](std::exception_ptr e){std::cerr << "Have exception\n"; return e;});
 ```
 
-Note that with improvements to `exception_ptr` this is where we could benefit
+Note that with improvements to `exception_ptr`  this is where we could benefit
 from snooping on the exception without rethrow, as `folly::exception_wrapper`
-enables. Full source example:
+enables or is proposed in [p1066](https://wg21.link/P1066). Full source example:
 [https://godbolt.org/g/Xbp5xK](https://godbolt.org/g/Xbp5xK).
 
 Noexcept {#noexcept}
