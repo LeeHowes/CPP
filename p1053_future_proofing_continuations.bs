@@ -2,9 +2,9 @@
 Title: Future-proofing continuations for executors
 Shortname: P1053
 URL: https://wg21.link/P1053
-Revision: 0
+Revision: 1
 Audience: SG1, LEWG
-Status: P
+Status: D
 Group: WG21
 !Source: <a href="https://github.com/LeeHowes/CPP/blob/master/future_continuation.bs">https://github.com/LeeHowes/CPP/blob/master/future_continuations.bs</a>
 No Abstract: yes
@@ -21,6 +21,14 @@ Contributors:
 * Jay      Feldblum
 * Andrii   Grynenko
 * Kirk     Shoop
+
+Changelog {#changelog}
+=====================
+
+Revision 0 {#revision0}
+--------------------
+ * Initial design
+
 
 Introduction {#intro}
 =====================
