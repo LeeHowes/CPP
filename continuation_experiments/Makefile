@@ -1,5 +1,6 @@
 EXAMPLES = \
-	direct_bulk
+	direct_bulk \
+	bulk_driver
 
 TESTS = $(addsuffix .test, $(EXAMPLES))
 
