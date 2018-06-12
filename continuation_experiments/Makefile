@@ -1,6 +1,7 @@
 EXAMPLES = \
 	direct_bulk \
-	bulk_driver
+	bulk_driver \
+	bulk_driver_in_promise
 
 TESTS = $(addsuffix .test, $(EXAMPLES))
 
