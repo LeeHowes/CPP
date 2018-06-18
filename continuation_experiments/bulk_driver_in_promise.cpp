@@ -3,6 +3,19 @@
 #include <optional>
 #include <iostream>
 
+template<class T>
+class TrivialFuture {
+public:
+  TrivialFuture(T val) : val_{std::move(val)} {}
+
+  T get() && {
+    return val_;
+  }
+
+private:
+  T val_;
+};
+
 // Custom default driver for this promise
 template<class PromiseT>
 struct DefaultDriverImpl {
@@ -153,7 +166,7 @@ auto bulk_then_value(
 
 struct SimpleExecutor {
 template<class Continuation>
-int then_execute(Continuation&& cont, int inputFuture) {
+TrivialFuture<int> then_execute(Continuation&& cont, TrivialFuture<int> inputFuture) {
   class Promise {
   public:
       Promise(int& resultStorage, std::optional<std::exception_ptr>& exceptionStorage) : resultStorage_(resultStorage), exceptionStorage_(exceptionStorage) {}
@@ -182,10 +195,10 @@ int then_execute(Continuation&& cont, int inputFuture) {
 
   // Use default driver for this executor
   auto driver = boundCont.bulk_driver();
-  boundCont.set_value(inputFuture);
+  boundCont.set_value(std::move(inputFuture).get());
   driver.start();
   driver.end();
-  return resultStorage;
+  return TrivialFuture<int>{resultStorage};
 }
 };
 
@@ -194,7 +207,7 @@ struct BulkExecutor {
 // {or at least in this simple example, returns the value as a proxy for the
 // future}
 template<class Continuation>
-int then_execute(Continuation&& cont, int inputFuture) {
+TrivialFuture<int> then_execute(Continuation&& cont, TrivialFuture<int> inputFuture) {
   class Promise {
   public:
       Promise(int& resultStorage, std::optional<std::exception_ptr>& exceptionStorage) : resultStorage_(resultStorage), exceptionStorage_(exceptionStorage) {}
@@ -220,10 +233,10 @@ int then_execute(Continuation&& cont, int inputFuture) {
 
   // This executor uses the end driver
   auto driver = boundCont.bulk_driver();
-  boundCont.set_value(inputFuture);
+  boundCont.set_value(std::move(inputFuture).get());
   driver.start();
   driver.end();
-  return resultStorage;
+  return TrivialFuture<int>{resultStorage};
 }
 
 class OutputPromise {
@@ -254,11 +267,11 @@ static OutputPromise makeOutput(
 // Oneway execution that assumes that the continuation already has an output
 // bound
 template<class Continuation>
-void deferred_execute(Continuation&& cont, int inputFuture) {
+void deferred_execute(Continuation&& cont, TrivialFuture<int> inputFuture) {
   // Bind the EndDriver as the bulk driver of the continuation
   auto boundCont = std::forward<Continuation>(cont)(EndDriver{});
   auto driver = boundCont.bulk_driver();
-  boundCont.set_value(inputFuture);
+  boundCont.set_value(std::move(inputFuture).get());
   driver.start();
   driver.end();
 }
@@ -266,25 +279,25 @@ void deferred_execute(Continuation&& cont, int inputFuture) {
 
 int main() {
   {
-    auto inputFuture = 2;
+    TrivialFuture<int> inputFuture{2};
     auto p = bulk_then_value(
         [](const int& a, int /*idx*/, int &out){out+=a;},
         int{20}, // Shape
         []() -> int {return 0;});
-    auto resultF = SimpleExecutor{}.then_execute(p, inputFuture);
-    std::cout << resultF << "\n";
+    auto resultF = SimpleExecutor{}.then_execute(p, std::move(inputFuture));
+    std::cout << std::move(resultF).get() << "\n";
   }
   {
-    auto inputFuture = 2;
+    TrivialFuture<int> inputFuture{2};
     auto p = bulk_then_value(
         [](const int& a, int /*idx*/, int &out){out+=a;},
         int{20}, // Shape
         []() -> int {return 0;});
-    auto resultF = BulkExecutor{}.then_execute(p, inputFuture);
-    std::cout << resultF << "\n";
+    auto resultF = BulkExecutor{}.then_execute(p, std::move(inputFuture));
+    std::cout << std::move(resultF).get() << "\n";
   }
   {
-    auto inputFuture = 2;
+    TrivialFuture<int> inputFuture{2};
     auto p = bulk_then_value(
         [](const int& a, int /*idx*/, int &out){out+=a;},
         int{20}, // Shape
@@ -298,8 +311,11 @@ int main() {
     // Bind the output promise into the continuation immediately
     auto boundCont = std::move(p)(
       std::move(outputPromise));
-    BulkExecutor{}.deferred_execute(std::move(boundCont), inputFuture);
-    std::cout << resultStorage << "\n";
+    BulkExecutor{}.deferred_execute(
+      std::move(boundCont), std::move(inputFuture));
+    auto resultF = TrivialFuture<int>{resultStorage};
+
+    std::cout << std::move(resultF).get() << "\n";
   }
 
 
