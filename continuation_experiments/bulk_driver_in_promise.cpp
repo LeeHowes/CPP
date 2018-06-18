@@ -218,6 +218,40 @@ int then_execute(Continuation&& cont, int inputFuture) {
   driver.end();
   return resultStorage;
 }
+
+class OutputPromise {
+public:
+    OutputPromise(
+      int& resultStorage,
+      std::optional<std::exception_ptr>& exceptionStorage)
+      : resultStorage_(resultStorage), exceptionStorage_(exceptionStorage) {}
+
+    void set_value(int value) {
+        resultStorage_ = value;
+    }
+
+    void set_exception(std::exception_ptr e) {
+        exceptionStorage_ = std::move(e);
+    }
+
+private:
+    int& resultStorage_;
+    std::optional<std::exception_ptr>& exceptionStorage_;
+};
+
+static OutputPromise makeOutput(
+    int& resultStorage, std::optional<std::exception_ptr>& exceptionStorage) {
+  return OutputPromise{resultStorage, exceptionStorage};
+}
+
+template<class Continuation>
+void deferred_execute(Continuation&& cont, int inputFuture) {
+  // This executor uses the end driver
+  auto driver = cont.bulk_driver();
+  cont.set_value(inputFuture);
+  driver.start();
+  driver.end();
+}
 };
 
 int main() {
@@ -239,6 +273,29 @@ int main() {
     auto resultF = BulkExecutor{}.then_execute(p, inputFuture);
     std::cout << resultF << "\n";
   }
+  {
+    auto inputFuture = 2;
+    auto p = bulk_then_value(
+        [](const int& a, int /*idx*/, int &out){out+=a;},
+        int{20}, // Shape
+        []() -> int {return 0;});
+
+    // Place to put result for testing
+    int resultStorage;
+    std::optional<std::exception_ptr> exceptionStorage;
+    auto outputPromise =
+      BulkExecutor::makeOutput(resultStorage, exceptionStorage);
+    // Bind the output promise into the continuation immediately
+    auto boundCont = std::move(p)(
+      std::move(outputPromise),
+      EndDriver{});
+    // TODO: split binding the output and binding the bulk driver into separate
+    // operations
+    // TODO: Make a free function then to bind the promise
+    BulkExecutor{}.deferred_execute(std::move(boundCont), inputFuture);
+    std::cout << resultStorage << "\n";
+  }
+
 
   return 0;
 }
