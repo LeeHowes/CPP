@@ -128,20 +128,25 @@ auto bulk_then_value(
   return [continuationFunction = std::forward<F>(continuationFunction),
           resultFactory = std::forward<RF>(resultFactory),
           s = std::forward<Shape>(s)](
-        auto&& outputPromise,
-        auto&& bulkDriver) mutable {
+        auto&& outputPromise) mutable {
     using OutputPromiseRef = decltype(outputPromise);
     using OutputPromise = typename std::remove_reference<OutputPromiseRef>::type;
 
-    using BulkDriverRef = decltype(bulkDriver);
-    using BulkDriver = typename std::remove_reference<BulkDriverRef>::type;
+    return [continuationFunction = std::forward<F>(continuationFunction),
+            resultFactory = std::forward<RF>(resultFactory),
+            s = std::forward<Shape>(s),
+            outputPromise = std::forward<OutputPromiseRef>(outputPromise)](
+          auto&& bulkDriver) mutable {
+      using BulkDriverRef = decltype(bulkDriver);
+      using BulkDriver = typename std::remove_reference<BulkDriverRef>::type;
 
-    return InputPromise<F, OutputPromise, Shape, RF, BulkDriver>(
-        std::move(continuationFunction),
-        std::forward<OutputPromiseRef>(outputPromise),
-        resultFactory(),
-        s,
-        std::forward<decltype(bulkDriver)>(bulkDriver));
+      return InputPromise<F, OutputPromise, Shape, RF, BulkDriver>(
+          std::move(continuationFunction),
+          std::forward<OutputPromiseRef>(outputPromise),
+          resultFactory(),
+          s,
+          std::forward<decltype(bulkDriver)>(bulkDriver));
+    };
   };
 
 }
@@ -172,7 +177,7 @@ int then_execute(Continuation&& cont, int inputFuture) {
   // Decide where to get DefaultDriver from. Might be useful to make the
   // continuation a class and get it from there.
   auto boundCont = std::forward<Continuation>(cont)(
-    Promise{resultStorage, exceptionStorage},
+    Promise{resultStorage, exceptionStorage})(
     DefaultDriver{});
 
   // Use default driver for this executor
@@ -185,6 +190,9 @@ int then_execute(Continuation&& cont, int inputFuture) {
 };
 
 struct BulkExecutor {
+// Twoway execution function that returns a future
+// {or at least in this simple example, returns the value as a proxy for the
+// future}
 template<class Continuation>
 int then_execute(Continuation&& cont, int inputFuture) {
   class Promise {
@@ -208,8 +216,7 @@ int then_execute(Continuation&& cont, int inputFuture) {
   int resultStorage;
   std::optional<std::exception_ptr> exceptionStorage;
   auto boundCont = std::forward<Continuation>(cont)(
-    Promise{resultStorage, exceptionStorage},
-    EndDriver{});
+    Promise{resultStorage, exceptionStorage})(EndDriver{});
 
   // This executor uses the end driver
   auto driver = boundCont.bulk_driver();
@@ -244,11 +251,14 @@ static OutputPromise makeOutput(
   return OutputPromise{resultStorage, exceptionStorage};
 }
 
+// Oneway execution that assumes that the continuation already has an output
+// bound
 template<class Continuation>
 void deferred_execute(Continuation&& cont, int inputFuture) {
-  // This executor uses the end driver
-  auto driver = cont.bulk_driver();
-  cont.set_value(inputFuture);
+  // Bind the EndDriver as the bulk driver of the continuation
+  auto boundCont = std::forward<Continuation>(cont)(EndDriver{});
+  auto driver = boundCont.bulk_driver();
+  boundCont.set_value(inputFuture);
   driver.start();
   driver.end();
 }
@@ -287,11 +297,7 @@ int main() {
       BulkExecutor::makeOutput(resultStorage, exceptionStorage);
     // Bind the output promise into the continuation immediately
     auto boundCont = std::move(p)(
-      std::move(outputPromise),
-      EndDriver{});
-    // TODO: split binding the output and binding the bulk driver into separate
-    // operations
-    // TODO: Make a free function then to bind the promise
+      std::move(outputPromise));
     BulkExecutor{}.deferred_execute(std::move(boundCont), inputFuture);
     std::cout << resultStorage << "\n";
   }
