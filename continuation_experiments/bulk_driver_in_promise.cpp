@@ -66,11 +66,12 @@ template<class F, class OutputPromise, class Shape, class RF, class BulkDriver>
 class InputPromise {
 public:
   InputPromise(
-      F&& f, OutputPromise&& outputPromise, int initialResult, int shape) :
+      F&& f, OutputPromise&& outputPromise, int initialResult, int shape, BulkDriver&& bulk_driver) :
       f_(std::move(f)),
       outputPromise_(std::move(outputPromise)),
       result_{initialResult},
-      shape_{shape} {}
+      shape_{shape},
+      bulkDriver_{std::forward<BulkDriver>(bulk_driver)} {}
 
   void set_value(int value) {
     inputValue_ = std::move(value);
@@ -80,9 +81,9 @@ public:
     outputException_ = std::move(e);
   }
 
-  auto build_driver(BulkDriver driver = BulkDriver{}) {
-    return driver(*
-      this,
+  auto bulk_driver() {
+    return bulkDriver_(
+      *this,
       [this](){return this->get_shape();},
       [this](auto i){this->execute_at(i);},
       [this](){this->done();});
@@ -95,7 +96,7 @@ private:
   std::optional<std::exception_ptr> outputException_;
   int result_;
   int shape_;
-
+  BulkDriver bulkDriver_;
 
   friend struct DefaultDriverImpl<InputPromise>;
 
@@ -139,7 +140,8 @@ auto bulk_then_value(
         std::move(continuationFunction),
         std::forward<OutputPromiseRef>(outputPromise),
         resultFactory(),
-        s);
+        s,
+        std::forward<decltype(bulkDriver)>(bulkDriver));
   };
 
 }
@@ -174,7 +176,7 @@ int then_execute(Continuation&& cont, int inputFuture) {
     DefaultDriver{});
 
   // Use default driver for this executor
-  auto driver = boundCont.build_driver();
+  auto driver = boundCont.bulk_driver();
   boundCont.set_value(inputFuture);
   driver.start();
   driver.end();
@@ -210,7 +212,7 @@ int then_execute(Continuation&& cont, int inputFuture) {
     EndDriver{});
 
   // This executor uses the end driver
-  auto driver = boundCont.build_driver(EndDriver{});
+  auto driver = boundCont.bulk_driver();
   boundCont.set_value(inputFuture);
   driver.start();
   driver.end();
