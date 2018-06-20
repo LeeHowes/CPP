@@ -44,7 +44,6 @@ struct DefaultDriver {
   }
 };
 
-
 template<class PromiseT, class ShapeF, class AtF, class DoneF>
 struct EndDriverImpl {
   void start() {
@@ -56,10 +55,6 @@ struct EndDriverImpl {
       atF_(i);
     }
     doneF_();
-
-
-
-
   }
 
   PromiseT& promise_;
@@ -310,12 +305,17 @@ struct atomic_move_wrapper {
   std::atomic<T> val;
 };
 
+using InputT = int;
+using ShapeT = int; // Note that this should be a range in C++20.
+using ShapeElementT = int; // Note that this should be the value type of the range for C++20
+using SharedStateT = atomic_move_wrapper<int>;
+
 int main() {
   auto continuation = bulk_then_value(
-      [](const int& a, int /*idx*/, atomic_move_wrapper<int> &shared){*shared+=a;}, // Operation
-      [](int /*input value*/){return int{20};}, // Shape factory
-      [](int /*shape*/, int /*input value*/) -> atomic_move_wrapper<int> {return {0};}, // Shared factory
-      [](atomic_move_wrapper<int>&& shared, auto& outputPromise) {  // Result selector/output
+      [](const InputT& input, ShapeElementT /*idx*/, SharedStateT &shared){*shared+=input;}, // Operation
+      [](const InputT& /*input value*/){return int{20};}, // Shape factory.
+      [](const ShapeT& /*shape*/, const InputT& /*input value*/) -> SharedStateT {return {0};}, // Shared factory
+      [](SharedStateT&& shared, auto& outputPromise) {  // Result selector/output
         outputPromise.set_value(std::move(*shared));
       });
 
