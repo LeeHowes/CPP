@@ -315,8 +315,8 @@ int main() {
       [](const int& a, int /*idx*/, atomic_move_wrapper<int> &shared){*shared+=a;}, // Operation
       [](int /*input value*/){return int{20};}, // Shape factory
       [](int /*shape*/, int /*input value*/) -> atomic_move_wrapper<int> {return {0};}, // Shared factory
-      [](atomic_move_wrapper<int>&& shared, auto& p) {  // Result selector/output
-        p.set_value(std::move(*shared));
+      [](atomic_move_wrapper<int>&& shared, auto& outputPromise) {  // Result selector/output
+        outputPromise.set_value(std::move(*shared));
       });
 
   {
