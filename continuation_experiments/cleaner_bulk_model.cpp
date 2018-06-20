@@ -298,6 +298,7 @@ void deferred_execute(Continuation&& cont, TrivialFuture<int> inputFuture) {
 }
 };
 
+// Simple class to allow us to return an atomic from the shared factory
 template<class T>
 struct atomic_move_wrapper {
   template<class RHST>
@@ -310,47 +311,35 @@ struct atomic_move_wrapper {
 };
 
 int main() {
-  {
-    TrivialFuture<int> inputFuture{2};
-    auto p = bulk_then_value(
-        [](const int& a, int /*idx*/, atomic_move_wrapper<int> &shared){*shared+=a;},
-        [](int /*input value*/){return int{20};}, // Shape
-        [](int /*shape*/, int /*input value*/) -> atomic_move_wrapper<int> {return {0};},
-        [](atomic_move_wrapper<int>&& shared, auto& p) {
-          p.set_value(std::move(*shared));
-        });
-    auto resultF = SimpleExecutor{}.then_execute(p, std::move(inputFuture));
-    std::cout << std::move(resultF).get() << "\n";
-  }
-  {
-    TrivialFuture<int> inputFuture{2};
-    auto p = bulk_then_value(
-        [](const int& a, int /*idx*/, atomic_move_wrapper<int> &shared){*shared+=a;},
-        [](int /*input value*/){return int{20};}, // Shape
-        [](int /*shape*/, int /*input value*/) -> atomic_move_wrapper<int> {return {0};},
-        [](atomic_move_wrapper<int>&& shared, auto& p) {
-          p.set_value(std::move(*shared));
-        });
-    auto resultF = BulkExecutor{}.then_execute(p, std::move(inputFuture));
-    std::cout << std::move(resultF).get() << "\n";
-  }
-  {
-    TrivialFuture<int> inputFuture{2};
-    auto p = bulk_then_value(
-        [](const int& a, int /*idx*/, atomic_move_wrapper<int> &shared){*shared+=a;},
-        [](int /*input value*/){return int{20};}, // Shape
-        [](int /*shape*/, int /*input value*/) -> atomic_move_wrapper<int> {return {0};},
-        [](atomic_move_wrapper<int>&& shared, auto& p) {
-          p.set_value(std::move(*shared));
-        });
+  auto continuation = bulk_then_value(
+      [](const int& a, int /*idx*/, atomic_move_wrapper<int> &shared){*shared+=a;}, // Operation
+      [](int /*input value*/){return int{20};}, // Shape factory
+      [](int /*shape*/, int /*input value*/) -> atomic_move_wrapper<int> {return {0};}, // Shared factory
+      [](atomic_move_wrapper<int>&& shared, auto& p) {  // Result selector/output
+        p.set_value(std::move(*shared));
+      });
 
+  {
+    TrivialFuture<int> inputFuture{2};
+
+    auto resultF = SimpleExecutor{}.then_execute(continuation, std::move(inputFuture));
+    std::cout << std::move(resultF).get() << "\n";
+  }
+  {
+    TrivialFuture<int> inputFuture{2};
+
+    auto resultF = BulkExecutor{}.then_execute(continuation, std::move(inputFuture));
+    std::cout << std::move(resultF).get() << "\n";
+  }
+  {
+    TrivialFuture<int> inputFuture{2};
     // Place to put result for testing
     int resultStorage;
     std::optional<std::exception_ptr> exceptionStorage;
     auto outputPromise =
       BulkExecutor::makeOutput(resultStorage, exceptionStorage);
     // Bind the output promise into the continuation immediately
-    auto boundCont = std::move(p)(
+    auto boundCont = std::move(continuation)(
       std::move(outputPromise));
     BulkExecutor{}.deferred_execute(
       std::move(boundCont), std::move(inputFuture));
