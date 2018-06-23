@@ -1,7 +1,7 @@
 <pre class='metadata'>
 Title: Future-proofing continuations for executors
 Shortname: P1053
-URL: https://wg21.link/P1053
+URL: https://wg21.link/P1053R1
 Revision: 1
 Audience: SG1, LEWG
 Status: D
@@ -24,6 +24,12 @@ Contributors:
 
 Changelog {#changelog}
 =====================
+
+Revision 1 {#revision1}
+--------------------
+ * Added concrete bulk design.
+ * Proposed a more flexible bulk interface.
+ * Added a before/after comparison.
 
 Revision 0 {#revision0}
 --------------------
@@ -134,11 +140,194 @@ no need to simplify the `FutureContinuation` to be a trivial callable, and we
 gain a lot of flexibility by consciously deciding to not simplify it in that
 way.
 
-The goal of this paper is to convince the reader that we should solidify the
-`FutureContinuation` with use cases and examples. We then build on this
-to demonstrate how bulk execution should be simplified based on similar
-properties, without committing to a design. Finally we propose wording changes
-to executors to make the changes concrete.
+We propose to  solidify the `FutureContinuation` definition into a more
+fundamental and general task interface, without overload-resolution
+complexities. Rather than passing simple callables into the executor and future
+APIs, we propose a concrete continuation concept, based on promises.
+
+Syntactically, this proposal suggests only minor changes, and so usability for
+any direct user of executors is minimally affected:
+<table>
+ <tr>
+  <th>Comment</th>
+  <th>Before</th>
+  <th>After</th>
+ </tr>
+ <tr>
+  <td>One way</td>
+  <td>
+```
+executor.execute([](){task();});
+```
+  </td>
+  <td>
+```
+executor.execute(
+ then_value([](){
+  task();
+ }));
+```
+  </td>
+ </tr>
+ <tr>
+  <td>Bulk one way</td>
+  <td>
+```
+executor.bulk_execute(
+ [&out](
+   int idx,
+   long& shr){
+  out+=idx * shr;
+ },
+ int{20},
+ []() -> long {return 3;});
+```
+    </td>
+  <td>
+```
+executor.execute(
+ bulk_value(
+  [&out](
+   int idx,
+   long& shr){
+  out+=idx * shr;
+ },
+ int{20}, // Shape
+ []() -> long {return 3;}));
+```
+  </td>
+ </tr>
+ <tr>
+  <td>Two way</td>
+  <td>
+```
+auto f = executor.twoway_execute(
+ [](){return task();});
+```
+  </td>
+  <td>
+```
+auto f = executor.twoway_execute(
+ then_value([](){
+  return task();
+ }));
+```
+  </td>
+ </tr>
+ <tr>
+  <td>Bulk two way</td>
+  <td>
+```
+auto f =
+  executor.bulk_twoway_execute([](
+   int idx,
+   int& out,
+   long& shr){
+  out+=idx*shr;
+ },
+ int{20},
+ []() -> int {return 0;},
+ []() -> long {return 3;});
+```
+    </td>
+  <td>
+```
+auto f = executor.twoway_execute(
+ bulk_value(
+ [](
+   int idx,
+   int &out,
+   long& shr){
+  out+=idx*shr;
+ },
+ int{20}, // Shape
+ []() -> int {return 0;},
+ []() -> long {return 3;}));
+```
+  </td>
+ </tr>
+ <tr>
+  <td>Then</td>
+  <td>
+ ```
+auto f = executor.then_execute(
+ [](T t){return t;},
+ std::move(fut));
+ ```
+  </td>
+  <td>
+ ```
+auto f = executor.then_execute(
+ then_value([](auto t){
+  return t;
+ }),
+ std::move(fut));
+ ```
+  </td>
+ </tr>
+
+ <tr>
+  <td>Bulk</td>
+  <td>
+```
+auto f =
+ executor.bulk_then_execute([](
+   const int& in,
+   int idx,
+   int& out,
+   long& shr){
+  out+=in*(idx+shr);
+ },
+ int{20},
+ std::move(fut),
+ []() -> int {return 0;},
+ []() -> long {return 3;});
+```
+    </td>
+  <td>
+```
+auto f = executor.then_execute(
+ bulk_then_value(
+  [](
+    const int& in,
+    int /*idx*/,
+    int &out,
+    long& shr){
+   out+=in*(idx+shr);
+  },
+  int{20}, // Shape
+  []() -> int {return 0;},
+  []() -> long {return 0;}),
+ std::move(fut));
+```
+  </td>
+ </tr>
+</table>
+
+Future's continuation methods would be similarly modified to take the same
+continuation concepts, which pass directly down to executors:
+<tr>
+ <th>Comment</th>
+ <th>Before</th>
+ <th>After</th>
+</tr>
+<tr>
+ <td>One way</td>
+ <td>
+```
+makeFuture().via(e).then();
+```
+ </td>
+ <td>
+```
+executor.execute(
+ then_value([](){
+  task();
+ }));
+```
+ </td>
+</tr>
+
 
 The same modifications we propose in this paper apply to both
 [p0443](https://wg21.link/P0443) and [p1054](https://wg21.link/P1054).
@@ -147,16 +336,19 @@ description of the calling mechanism, return values of the construction
 functions (`on_value`, `on_error`) and precise semantics would require updates
 similar to those we propose for [p0443](https://wg21.link/P0443).
 
+The rest of this paper aims to justify the above design by explaining how we
+derive it, followed by concrete proposed wording.
 
 Requirements {#require}
 =====================
 If we look at some example continuation constructions based on those in
-[p1054](https://wg21.link/P1054) we can see what kind of functionality we might want
-here.
+[p1054](https://wg21.link/P1054) we can see what kind of functionality we might
+want here.
 
 then_value {#helper_thenvalue}
 --------------------
-This is the simple passthrough of the exception, while applying some operation to the value.
+This is the simple passthrough of the exception, while applying some operation
+to the value.
 
 The callback we expect to create looks like:
 ```
@@ -605,113 +797,183 @@ Further, bulk continuations need not be part of the fundamental concepts and
 instead we can encode the interface simply as an extended set of task
 construction functions as in [p1054](https://wg21.link/P1054).
 
-We are confident that bulk can be cleanly implemented in this model, but would
-want to see implementation work done. In our view, implementation work is
-already necessary to give confidence for the bulk implementations in
-[p0443](https://wg21.link/P0443), particularly for `bulk_then_execute`.
+Bulk as in P0443 {#p0443bulk}
+--------------------
 
-The bulk API can be achieved in multiple ways. `FutureContinuation`'s definition
-should be extended to map a `Promise` to a `BulkPromise`.
-The interface of `BulkPromise` offers multiple options. Let's assume that we
-base them around a task construction function based on the same parameters of
-`then_execute` in [p0443](https://wg21.link/P0443):
+Abstracted as a task and used in the executor or future API, a bulk operation would look like the following:
 ```
-FutureContinuation bulk_then_value(F, S, RF, SF);
-```
+auto continuation = bulk_then_value(
+    [](
+        const int& input,
+        int /*idx*/,
+        atomic<int>& /*shared*/,
+        int &out){
+      out+=input;
+    }, // Task
+    int{20}, // Shape
+    []() -> atomic<int> {return {0};}, // Shared factory
+    []() -> int {return 0;} // result factory);
 
-One implementation option is that we allow `set_value` and `set_exception` to
-be called multiple times, encapsulating the shape and a completion signal in the
-API of the continuation.
-
-For example:
-```
-void set_value(int idx, int& value);
-void set_exception(int idx, std::exception_ptr& e);
-const int& get_shape() const;
-void done();
-```
-
-Building on earlier examples, this might be implemented more fully as:
-[https://godbolt.org/g/PPTtrW](https://godbolt.org/g/PPTtrW).
-We need `get_shape` to know what iteration domain to call `set_value` over, and
-`done` because in a parallel use case the continuation itself cannot know when
-it is complete.
-
-There would be some cost here in deciding repeatedly to skip the exception.
-
-Another option is to say that set_exception only be callable once:
-```
-void set_value(int idx, int& value);
-void set_exception(std::exception_ptr e);
-const int& get_shape() const;
-void done();
+{
+  // As a task passed to an executor
+  TrivialFuture<int> inputFuture{2};
+  auto executorResultF =
+    BulkExecutor{}.then_execute(continuation, std::move(inputFuture));
+  std::cout << std::this_thread::future_get(std::move(executorResultF)) << "\n";
+}
+{
+  // As a task passed to a future
+  TrivialFuture<int> inputFuture{2};
+  auto futureResultF = std::move(inputFuture).then(continuation);
+  std::cout << std::this_thread::future_get(std::move(futureResultF)) << "\n";
+}
 ```
 
-In this design the implementation can pass an exception through more
-directly as in [https://godbolt.org/g/gLN72t](https://godbolt.org/g/gLN72t).
+The mechanism here is an extension of the non-bulk continuation type. Where for
+non-bulk tasks the continuation was:
 
-We might also separate iteration from initialization, and allow the promise to
-consume its inputs immediately, executing trivially under certain circumstances,
-for example passing the exception through without practical iteration as above:
+> An object that, when passed a Promise as a parameter
+> constructs a new object that is itself a Promise.
+
+Bulk is similar, but a little more complicated to allow an arbitrary executor to hook up the bulk algorithm.
+
+> An object that, when passed a Promise as a parameter
+> constructs a new object that, when passed a BulkDriver as a parameter,
+> returns a promise.
+
+That is that we add a stage to the setup algorithm that allows the executor to configure the execution.
+
+`bulk_then_value` becomes a function that returns a nested type:
 ```
-void set_value(int value);
-void set_exception(std::exception_ptr e);
-const int& get_shape() const;
-void execute_at(int idx);
-void done();
+
+template<class F, class Shape, class RF>
+auto bulk_then_value(
+    F&& continuationFunction,
+    Shape s,
+    RF&& resultFactory) {
+  return [continuationFunction = std::forward<F>(continuationFunction),
+          resultFactory = std::forward<RF>(resultFactory),
+          s = std::forward<Shape>(s)](
+        auto&& outputPromise) mutable {
+    using OutputPromiseRef = decltype(outputPromise);
+    using OutputPromise = typename std::remove_reference<OutputPromiseRef>::type;
+
+    return [continuationFunction = std::forward<F>(continuationFunction),
+            resultFactory = std::forward<RF>(resultFactory),
+            s = std::forward<Shape>(s),
+            outputPromise = std::forward<OutputPromiseRef>(outputPromise)](
+          auto&& bulkDriver) mutable {
+      using BulkDriverRef = decltype(bulkDriver);
+      using BulkDriver = typename std::remove_reference<BulkDriverRef>::type;
+
+      return InputPromise<F, OutputPromise, Shape, RF, BulkDriver>(
+          std::move(continuationFunction),
+          std::forward<OutputPromiseRef>(outputPromise),
+          resultFactory(),
+          s,
+          std::forward<decltype(bulkDriver)>(bulkDriver));
+    };
+  };
+}
 ```
 
-This design could be utilized as in
-[https://godbolt.org/g/RmhaFb](https://godbolt.org/g/RmhaFb).
+all this does is pass through the data, but defer binding of the output promise type and bulk driver type, effectively to construction of a later object.
+This approach ensures the greatest level of type visibility to the compiler and the most efficient, allocation-free code.
 
-Finally, in rethinking bulk in this way we should consider what the result and
-shared factory functions (`RF` and `SF` types in the above) mean, in two
-specific areas:
- * Should the factory functions be independent of the data stream, or should
-     they be part of the data processing operation?
- * Should the continuation explicitly translate the result variable into an
-     output?
+The bulk driver exposes an interface that a given task constructor can hook in to, but is under control of the executor such that the implementation of the operations is under the control of the target.
+For example, a very simple driver that runs the entire algorithm when the executor calls the `end()` method on the driver might look like:
+```
+template<class PromiseT, class ShapeF, class AtF, class DoneF>
+struct EndDriverImpl {
+  void start() {
+  }
 
-For the first, we might consider changing the factory function API to be
-parameterized by the value and the shape. This falls cleanly out of the
-separated `executor_at` design above, such that the factory functions run when
-`set_value` and `set_exception` are called. For example, if we take a vector as
-input, it would make a lot of sense to be able to generate an output that
-matches the input vector size, based on a size that was computed in the
-processing stream. If we pass a reference to the input value into the result
-factory, we can return a vector of that size directly as the result to write to.
+  void end() {
+    const auto& shape = shapeF_();
+    for(std::decay_t<decltype(shape)> i = 0; i < shape; ++i) {
+      atF_(i);
+    }
+    doneF_();
+  }
 
-The shape can also be considered in this way, and be computed from the input.
-For example, if we have an exception, return a shape of 1 and we immediately
-tell the executor that we want to handle the exception as a single stream.
-If we do not do this we will always execute the full iteration domain, even if
-all but one instance is going to return directly.
+  PromiseT& promise_;
+  ShapeF shapeF_;
+  AtF atF_;
+  DoneF doneF_;
+};
 
-On the second point, output processing at the moment is slightly difficult in
-that while we can manually perform a reduction operation such that the result
-variable is a reduced value or exception, we have no function that runs at the
-end of processing that unpacks this again. Clearly with the above task proposal
-we can do this as part of the `done()` call - so exposing a means to modify that
-operation is a powerful primitive.
+struct EndDriver {
+  template<class PromiseT, class ShapeF, class AtF, class DoneF>
+  auto operator()(PromiseT& prom, ShapeF&& shapeF, AtF&& atF, DoneF&& doneF){
+    return EndDriverImpl<PromiseT, ShapeF, AtF, DoneF>{
+      prom,
+      std::forward<ShapeF>(shapeF),
+      std::forward<AtF>(atF),
+      std::forward<DoneF>(doneF)};
+  }
+};
+```
 
-A very limited implementation of parameterising the result factory can be seen
-in [https://godbolt.org/g/jDVhPC](https://godbolt.org/g/jDVhPC).
+We add to the promise interface a `get_driver()` method that will return the driver:
+```
+auto bulk_driver() {
+  return bulkDriver_(
+    *this,
+    [this](){return this->get_shape();},
+    [this](auto i){this->execute_at(i);},
+    [this](){this->done();});
+}
+```
 
-In practice, if we produce a general bulk task, we do not have to constrain the
-factory functions in any way - they are all properties of the task and called
-when the executor performs certain operations. We should only specify a few
-standard ones that implement reasonable basic semantics.
+Remember, the Promise was constructed by the task - so the means of constructing the driver is under task control, but the driver type is under Executor control.
+The executor then is free to setup and run the algorithm as it sees fit, calling the functions passed to the driver's constructor through whatever means necessary.
+For example, when the input future is satisfied and the executor knows the value is ready, it might call:
+```
+auto driver = boundCont.bulk_driver();
+boundCont.set_value(std::move(inputFuture).get());
+driver.start();
+driver.end();
+```
 
-This is a more flexible and powerful model, and we believe one that is equally
-easy to understand. There may be concerns about implementation cost.
-For example, running work in `done()` may be a costly additional operation that
-needs pre-synchronization to work, after the primary bulk operation completes.
-In practice, though, given that we have to return the object anyway, and that
-object might have an arbitrary move constructor, we believe any such concerns
-would need strong justification.
+such that the call to end() runs the above sequence of calls into the task.
+That `end()` method could of course be implemented as an openmp parallel loop, a CUDA dispatch or any similar operation.
 
+The BulkDriver is defined as being a function that takes:
+ * A reference to the input promise (a reference to the current continuation).
+ * A nullary function that when called, returns the shape.
+ * A function that executes the continuation at some point in the shape, and takes an element from the shape range.
+ * A function to call on completion of the bulk execution.
 
+An opportunity: rethinking the bulk parameterisation
+--------------------
+Abstracting the execution algorithm offers us the opportunity to be flexible about the design of the continuation.
 
+As one example, when we were considering the design of bulk, we realised that there are some limitations:
+ * The shape is defined only at graph construction time.
+ * Shared state and output can not be constructed dependent on the input.
+ * The output has to map directly to the output future. This makes it hard to, for example, perform a final accumulation into an atomic because atomics are not movable.
+
+We therefore propose extending the definition of the continuation:
+ * Instead of a static shape we have a shape factory, that also takes the input by reference.
+   Note that this can be constexpr and ignore its input to regain the original behaviour.
+ * The shared state factory be extended to take the shape and input value.
+ * The output factory be replaced by an output selector, parameterised by the shared state and output promise, such that the output is transferred from the shared state to the output promise.
+
+Most importantly, this proposal is merely for the bulk_then_value continuation construction function we might consider putting into the standard library.
+It does not require a change to the BulkDriver design - the design is multi stage which allows the continuation to interact however it needs to.
+
+Instead we might modify `bulk_then_value` to be constructed as follows:
+```
+auto continuation = bulk_then_value(
+    [](const InputT& input, ShapeElementT /*idx*/, SharedStateT &shared){*shared+=input;}, // Operation
+    [](const InputT& /*input value*/){return int{20};}, // Shape factory.
+    [](const ShapeT& /*shape*/, const InputT& /*input value*/) -> SharedStateT {return {0};}, // Shared factory
+    [](SharedStateT&& shared, auto& outputPromise) {  // Result selector/output
+      outputPromise.set_value(std::move(*shared));
+    });
+```
+
+This only changes the implementation of the task - the basic algorithm the `BulkDriver` executes need not change if we define it correctly.
 
 Proposed New Wording for P0443 {#wording}
 ====================
@@ -869,4 +1131,9 @@ and that may be passed to the expression
 
 Changes to Bulk requirements in general {#bulkchanges}
 --------------------
-Separate all bulk-related operations into a separate document targeted at a TS.
+Precise wording TBD. Roughly:
+ * Remove bulk APIs from executor concepts.
+ * Define bulk continuation concepts as generalisations of the non-bulk continuation concepts.
+ * Define bulk driver concept.
+
+This will cleanly extend to adding a wider set of abstractions beyond basic bulk, orthogonally to the basic executor interface.
