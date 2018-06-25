@@ -27,16 +27,18 @@ Changelog {#changelog}
 
 Revision 1 {#revision1}
 --------------------
+ * Added a before/after comparison.
+ * Added TLDR to introduction.
  * Added concrete bulk design.
  * Proposed a more flexible bulk interface.
- * Added a before/after comparison.
+ * then_value -> on_value for consistency with [p1054](https://wg21.link/P1054).
 
 Revision 0 {#revision0}
 --------------------
  * Initial design
 
 
-Introduction {#intro}
+Introduction and TLDR {#intro}
 =====================
 [p0443](https://wg21.link/P0443) defines interfaces for executors and the
 continuation functions passed to them.
@@ -143,7 +145,18 @@ way.
 We propose to  solidify the `FutureContinuation` definition into a more
 fundamental and general task interface, without overload-resolution
 complexities. Rather than passing simple callables into the executor and future
-APIs, we propose a concrete continuation concept, based on promises.
+APIs, we propose a concrete continuation concept, based on promises. The API of
+a continuation, from the point of view of the input data, is:
+```
+void set_value();
+template<class T>
+void set_value(T&&);
+void set_exception(std::exception_ptr&&);
+```
+
+Bulk is also supported, but orthogonally to that fundamental data transfer API,
+which allows bulk tasks to be passed through higher-level dataflow-oriented
+abstractions such as futures..
 
 Syntactically, this proposal suggests only minor changes, and so usability for
 any direct user of executors is minimally affected:
@@ -163,7 +176,7 @@ executor.execute([](){task();});
   <td>
 ```
 executor.execute(
- then_value([](){
+ on_value([](){
   task();
  }));
 ```
@@ -186,7 +199,7 @@ executor.bulk_execute(
   <td>
 ```
 executor.execute(
- bulk_value(
+ bulk_on_value(
   [&out](
    int idx,
    long& shr){
@@ -208,7 +221,7 @@ auto f = executor.twoway_execute(
   <td>
 ```
 auto f = executor.twoway_execute(
- then_value([](){
+ on_value([](){
   return task();
  }));
 ```
@@ -233,7 +246,7 @@ auto f =
   <td>
 ```
 auto f = executor.twoway_execute(
- bulk_value(
+ bulk_on_value(
  [](
    int idx,
    int &out,
@@ -258,7 +271,7 @@ auto f = executor.then_execute(
   <td>
  ```
 auto f = executor.then_execute(
- then_value([](auto t){
+ on_value([](auto t){
   return t;
  }),
  std::move(fut));
@@ -287,7 +300,7 @@ auto f =
   <td>
 ```
 auto f = executor.then_execute(
- bulk_then_value(
+ bulk_on_value(
   [](
     const int& in,
     int /*idx*/,
@@ -305,29 +318,33 @@ auto f = executor.then_execute(
 </table>
 
 Future's continuation methods would be similarly modified to take the same
-continuation concepts, which pass directly down to executors:
+continuation concepts, which pass directly down to executors. For example:
+<table>
 <tr>
- <th>Comment</th>
  <th>Before</th>
  <th>After</th>
 </tr>
 <tr>
- <td>One way</td>
  <td>
 ```
-makeFuture().via(e).then();
+auto f = makeFuture<int>(3)
+  .via(e)
+  .then([](int a){return a;});
 ```
  </td>
  <td>
 ```
-executor.execute(
- then_value([](){
-  task();
- }));
+auto f = makeFuture<int>(3)
+  | via(e)
+  | on_value([](int a){return a;});
 ```
  </td>
 </tr>
+</table>
 
+Note that futures do not have to be expanded to support bulk explicitly, nor
+for any similar future concepts we add beyond bulk. This should lead to simpler
+expansions of the design in the future.
 
 The same modifications we propose in this paper apply to both
 [p0443](https://wg21.link/P0443) and [p1054](https://wg21.link/P1054).
@@ -345,14 +362,14 @@ If we look at some example continuation constructions based on those in
 [p1054](https://wg21.link/P1054) we can see what kind of functionality we might
 want here.
 
-then_value {#helper_thenvalue}
+on_value {#helper_thenvalue}
 --------------------
 This is the simple passthrough of the exception, while applying some operation
 to the value.
 
 The callback we expect to create looks like:
 ```
-then_value([](T value){operation(value);});
+on_value([](T value){operation(value);});
 ```
 
 As a flow diagram, something like:
@@ -362,13 +379,13 @@ set_value --------- Perform Operation ----- return_value
 set_exception ----------------------------- return_exception
 ```
 
-then_error {#helper_thenerror}
+on_error {#helper_thenerror}
 --------------------
 The equivalent where we apply some operation to the exception, but not the value.
 A good example of this might be error recovery. Note that in this case we are breaking the exception chain.
 The callback we expect to create looks like:
 ```
-then_error([](std::exception_ptr e){
+on_error([](std::exception_ptr e){
   try {
    std::rethrow_exception(e);
   } catch(recoverable_exception) {
@@ -395,12 +412,12 @@ or those proposed in [p1066](https://wg21.link/P1066)) could mitigate the first.
 Ability to return either an `exception_ptr` or a `T` from the error case could
 remove the second throw.
 
-then_variant {#helper_thenvariant}
+on_variant {#helper_thenvariant}
 --------------------
 Here our operation might take a variant of a value and an exception so that we can write a single function that decides what to do:
 The callback we expect to create looks like:
 ```
-then_variant([](std::variant<T, std::exception_ptr> v){operation(v);});
+on_variant([](std::variant<T, std::exception_ptr> v){operation(v);});
 ```
 
 Diagrammatically:
@@ -414,12 +431,12 @@ This is a very common pattern in Facebook's code where `folly::Try<T>`, which
 carries a value and exception, is the preferred means of parameterising future
 continuations.
 
-then_value_with_exception_log {#helper_thenexceptionfilter}
+on_value_with_exception_log {#helper_thenexceptionfilter}
 --------------------
 Here we merely log the existence of an error, and pass it through.
 We might write this as:
 ```
-then_value_with_exception_log(
+on_value_with_exception_log(
   [](T value){operation(v);},
   [](std::exception_ptr e){std::cerr << "Have an exception\n"; return e;});
 ```
@@ -519,14 +536,14 @@ OutputFuture process_continuation(FutureContinuation&& continuation) {
 ```
 
 
-then_value {#thenvalue_example}
+on_value {#thenvalue_example}
 --------------------
-`then_value` takes a function from a value to a value and, as discussed above,
+`on_value` takes a function from a value to a value and, as discussed above,
 returns a function that can be passed a Promise, and which constructs a Promise:
 ```
 // F = function(int(int))
 template <typename F>
-auto then_value(F&& continuationFunction) {
+auto on_value(F&& continuationFunction) {
     return [continuationFunction = std::forward<F>(continuationFunction)](
           auto&& outputPromise) mutable {
         using OutputPromiseRef = decltype(outputPromise);
@@ -565,7 +582,7 @@ auto then_value(F&& continuationFunction) {
 
 and constructs the continuation as:
 ```
-auto continuation = then_value([](int x) {return x*2;});
+auto continuation = on_value([](int x) {return x*2;});
 ```
 
 As an example of using these constructs as if as a simple callback, for an
@@ -574,7 +591,7 @@ this code optimises to nothing
 ([https://godbolt.org/g/m3qvoj](https://godbolt.org/g/m3qvoj)).
 
 
-then_error {#thenerror_example}
+on_error {#thenerror_example}
 --------------------
 Here we construct a continuation from a function from exception_ptr to
 exception_ptr as a means of only processing our error stream.
@@ -582,7 +599,7 @@ exception_ptr as a means of only processing our error stream.
 ```
 // F = function(exception_ptr(exception_ptr))
 template <typename F>
-auto then_error(F&& continuationFunction) {
+auto on_error(F&& continuationFunction) {
     return [continuationFunction = std::forward<F>(continuationFunction)](
           auto&& outputPromise) mutable {
         using OutputPromiseRef = decltype(outputPromise);
@@ -623,7 +640,7 @@ auto then_error(F&& continuationFunction) {
 
 We can construct a simple exception processing continuation as:
 ```
-auto continuation = then_error([](std::exception_ptr e) {
+auto continuation = on_error([](std::exception_ptr e) {
   std::cerr << "Log!\n"; return e;});
 ```
 
@@ -631,13 +648,13 @@ Note that even here, if we do not end up using the exception path, all of this
 optimises away ([https://godbolt.org/g/xRm2oH](https://godbolt.org/g/xRm2oH))
 
 
-then_variant {#thenvariant_example}
+on_variant {#thenvariant_example}
 --------------------
 We can implement a version that passes variants through as:
 ```
 // F = function(variant<int, exception_ptr>(variant<int, exception_ptr>))
 template <typename F>
-auto then_variant(F&& continuationFunction) {
+auto on_variant(F&& continuationFunction) {
     return [continuationFunction = std::forward<F>(continuationFunction)](
           auto&& outputPromise) mutable {
         using OutputPromiseRef = decltype(outputPromise);
@@ -700,7 +717,7 @@ struct visitor {
       return ex;
     }
 };
-auto continuation = then_variant(
+auto continuation = on_variant(
     [](std::variant<int, std::exception_ptr> v) -> std::variant<int, std::exception_ptr> {
         return std::visit(visitor{}, std::move(v));
     });
@@ -710,7 +727,7 @@ Again, with use of variants, if we do not actually use the `exception_ptr` route
 this optimises away
 ([https://godbolt.org/g/AZRAeK](https://godbolt.org/g/AZRAeK)).
 
-then_value_logging_error {#thenvalueloggingerror_example}
+on_value_logging_error {#thenvalueloggingerror_example}
 --------------------
 Finally, we can build an operation that takes two functions, where the error
 handler simply passes through the exception with logging:
@@ -718,7 +735,7 @@ handler simply passes through the exception with logging:
 
 // F = function(int(int))
 template <typename F, typename FE>
-auto then_value_log_exception(F&& valueContinuation, FE&& errorContinuation) {
+auto on_value_log_exception(F&& valueContinuation, FE&& errorContinuation) {
     return [valueContinuation = std::forward<F>(valueContinuation),
             errorContinuation = std::forward<FE>(errorContinuation)](
           auto&& outputPromise) mutable {
@@ -760,7 +777,7 @@ auto then_value_log_exception(F&& valueContinuation, FE&& errorContinuation) {
 
 and where we might construct this as:
 ```
-auto continuation = then_value_log_exception(
+auto continuation = on_value_log_exception(
     [](int x) {return x*2;},
     [](std::exception_ptr e){std::cerr << "Have exception\n"; return e;});
 ```
@@ -789,20 +806,25 @@ We should encode bulk operations as extended continuations.
 Bulk execution is a property of a task, not an executor. While we realise that
 the executor has influence on how the task runs and where, which may include
 how it is compiled to do bulk dispatch, the actual properties of the task
-are orthogonal to the API exposed by executors.
+are orthogonal to the API exposed by executors. To put it another way, the flow
+of data through the graph is orthogonal to whether a given node in that graph
+offers fork-join or other forms of execution.
 
 Encoding the bulk functionality as part of the continuation, rather than the
 executor API, would allow us to halve the number of executor entry points.
 Further, bulk continuations need not be part of the fundamental concepts and
 instead we can encode the interface simply as an extended set of task
-construction functions as in [p1054](https://wg21.link/P1054).
+construction functions as in [p1054](https://wg21.link/P1054). It also means
+we do not have to complicated the definition of Futures to add bulk APIs; the
+task passed to a future can be transparently passed to the underlying executor
+and the future does not care whether it is a bulk task or not.
 
 Bulk as in P0443 {#p0443bulk}
 --------------------
 
 Abstracted as a task and used in the executor or future API, a bulk operation would look like the following:
 ```
-auto continuation = bulk_then_value(
+auto continuation = bulk_on_value(
     [](
         const int& input,
         int /*idx*/,
@@ -843,11 +865,11 @@ Bulk is similar, but a little more complicated to allow an arbitrary executor to
 
 That is that we add a stage to the setup algorithm that allows the executor to configure the execution.
 
-`bulk_then_value` becomes a function that returns a nested type:
+`bulk_on_value` becomes a function that returns a nested type:
 ```
 
 template<class F, class Shape, class RF>
-auto bulk_then_value(
+auto bulk_on_value(
     F&& continuationFunction,
     Shape s,
     RF&& resultFactory) {
@@ -959,12 +981,12 @@ We therefore propose extending the definition of the continuation:
  * The shared state factory be extended to take the shape and input value.
  * The output factory be replaced by an output selector, parameterised by the shared state and output promise, such that the output is transferred from the shared state to the output promise.
 
-Most importantly, this proposal is merely for the bulk_then_value continuation construction function we might consider putting into the standard library.
+Most importantly, this proposal is merely for the bulk_on_value continuation construction function we might consider putting into the standard library.
 It does not require a change to the BulkDriver design - the design is multi stage which allows the continuation to interact however it needs to.
 
-Instead we might modify `bulk_then_value` to be constructed as follows:
+Instead we might modify `bulk_on_value` to be constructed as follows:
 ```
-auto continuation = bulk_then_value(
+auto continuation = bulk_on_value(
     [](const InputT& input, ShapeElementT /*idx*/, SharedStateT &shared){*shared+=input;}, // Operation
     [](const InputT& /*input value*/){return int{20};}, // Shape factory.
     [](const ShapeT& /*shape*/, const InputT& /*input value*/) -> SharedStateT {return {0};}, // Shared factory
