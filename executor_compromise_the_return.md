@@ -191,3 +191,107 @@ A wide range of further customization points should be expected. The above descr
 * Potentially a wider range of parallel algorithm customizations.
 
 By defining these as above in terms of a customization point that calls a method on the executor if that method call is well-formed we can relatively easily extend the API piecemeal with these operations as necessary.
+
+# Q&A
+
+## Q: What do lazy execution and eager execution mean?
+
+- *Lazy execution* is when a node in a graph of operations is constructed by storing state and does not start any work.
+- *Eager execution* is when a node in a graph of operations starts working as soon as it is constructed.
+
+These can be demonstrated without adding concurrency using normal functions.
+
+Lazy execution:
+
+```cpp
+auto f0 = []{ return 40; };
+auto f1 = [f0]{ return 2 + f0(); }
+// f0 has not been called.
+
+// execute the graph
+auto v1 = f1();
+// f0 and f1 are complete
+```
+
+Eager execution:
+
+```cpp
+auto f0 = []{ return 40; };
+auto f1 = [auto v0 = f0()]{ return 2 + v0; }
+// f0 has been called.
+
+// execute the graph
+auto v1 = f1();
+// f0 and f1 are complete
+```
+
+Without concurrency the only difference is the order of execution. This changes when concurrency is introduced.
+
+## Q: How is eager execution more expensive than lazy execution when concurrency is introduced?
+
+**shared_state and synchronization**
+
+When concurrency is introduced, the result of an operation is sent as a notification. With coroutines that notification is hidden from users, but is still there in the coroutine machinery.
+
+Often the notification is a callback function. As before, the effect of adding callbacks for eager and lazy execution can be demonstrated without adding concurrency using normal functions.
+
+Lazy execution:
+
+```cpp
+auto f0 = [](auto cb0){ cb0(40); };
+auto f1 = [f0](auto cb1){ f0([cb1](auto v){ cb1(2 + v); }); }
+// f0 has not been called.
+
+// execute the graph
+f1([](auto v1){});
+// f0 and f1 are complete
+```
+
+Eager execution:
+
+```cpp
+auto f0 = [](auto cb0){ cb0(40); };
+auto sv0 = make_shared<int>(0);
+auto f1 = [auto sv0 = (f0([sv0](int v0){ sv0 = v0; }), sv0)](auto cb1){
+  cb1(2 + *sv0);
+}
+// f0 has been called.
+
+// execute the graph
+f1([](auto v1){});
+// f0 and f1 are complete
+```
+
+The shared state is required in the eager case because `cb1` is not known at the time that `f0` is called. In the lazy case `cb1` is known at the time that `f0` is called and no shared state is needed.
+
+The shared state in the eager case is already more expensive, but when concurrency is added to the eager case there is also a need to synchronize the `f0` setting `sv0` and the `f1` accessing `sv0`. This increases the complexity and expense dramatically.
+
+When composing concurrent operations, sometimes eager execution is required. Any design for execution must support eager execution. Lazy execution is almost always the better choice and since lazy execution is also more efficient lazy execution is the right default.
+
+## Q: What makes `std::promise`/`std::future` expensive?
+
+**eager execution**
+
+When it is possible to call `promise::set_value(. . .)` before `future::get()` then state must be shared by the future and promise. When concurrent calls are allowed to the promise and future, then the access to the shared state must be synchronized.
+
+`std::promise`/`std::future` are expensive because the interface forces an implementation of eager execution.
+
+## Q: How is `void sender::submit(receiver)` different from `future<U> future<T>::then(callable)`?
+
+**termination**
+
+`then()` returns another future. `then()` is not terminal, it always returns another future with another `then()` to call. To implement lazy execution `then()` would have to store the callable and not start the work until `then()` on the returned future was called. Since `then()` on the returned future is also not terminal, it either must implement expensive eager execution or must not start the work, which leaves no way to start the work without using an expensive eager execution implementation of `then()`
+
+`submit()` returns void. returning void makes `submit()` terminal. When `submit()` is an implementation of lazy execution the work starts when `submit()` is called and was given the continuation function to use when delivering the result of the work. When `submit()` is an implementation of expensive eager execution the work was started before `submit()` is called and synchronization is used to deliver the result of the work to the continuation function.
+
+## Q: How is `void sender::submit(receiver)` different from `void executor::execute(callable)`?
+
+**signals**
+
+`execute()` takes a callable that takes void and returns void. The callable will be invoked in an execution context specified by the executor. any failure to invoke the callable or any exception thrown by the callable after `execute()` has returned must be handled by the executor. there is no signal to the function on failure or cancellation or rejection. When the callable is a functor the destructor will be run on copy, move, success, failure and rejection with no parameters to distinguish them.
+
+`submit()` takes a receiver that has three methods.
+
+- `value()` will be invoked in an execution context specified by the executor. `value()` does any work needed.
+- `error()` will be invoked in an execution context specified by the executor. any failure to invoke `value()` or any exception thrown by `value()` after `execute()` has returned is reported to the receiver by invoking `error()` and passing the error as a parameter
+- `done()` will be invoked in an execution context specified by the executor. `done()` handles cases where the work was cancelled (cancellation is not an error).
