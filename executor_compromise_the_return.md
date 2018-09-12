@@ -1,22 +1,22 @@
-# A lazy simplification of P0443
+# A lazy simplification of [P0443]
 
 ## Summary
 
-This paper seeks to add support for lazy task creation and deferred execution to P0443, while also simplifying the fundamental concepts involved in asynchronous execution. It seeks to do this as a minimal set of diffs to P0443. It achieves this by replacing P0443's six `Executor::*execute()` member functions with two lazy task constructors that each return a lazy Future-like type known as a "Sender". Work is actually enqueued by calling `submit()` on a Sender.
+This paper seeks to add support for lazy task creation and deferred execution to [P0443], while also simplifying the fundamental concepts involved in asynchronous execution. It seeks to do this as a minimal set of diffs to [P0443]. It achieves this by replacing [P0443]'s six `Executor::*execute` member functions with two lazy task constructors that each return a lazy Future-like type known as a "Sender". Work is actually enqueued by calling `submit` on a Sender.
 
 ## Background
 
-P0443 presents a unified abstraction for agents of asynchronous execution. It is the result of a long collaboration between experts from many subdomains of concurrent and parallel execution, and achieved consensus within SG1 and, to some degree, LEWG. Although there were known gaps in the abstraction, there were papers in flight to address them, and for all intents and purposes P0443 seemed on-target for a TS or, possibly even C++20.
+[P0443] presents a unified abstraction for agents of asynchronous execution. It is the result of a long collaboration between experts from many subdomains of concurrent and parallel execution, and achieved consensus within SG1 and, to some degree, LEWG. Although there were known gaps in the abstraction, there were papers in flight to address them, and for all intents and purposes [P0443] seemed on-target for a TS or possibly even C++20.
 
-At the Spring 2018 meeting in Rapperswil, a significant design problem was identified: poor support for lazy execution, whereby executors participate in the efficient construction and optimal composition of tasks _prior_ to those tasks being enqueued for execution. A solution was put forward by P1055: "senders" (called "deferred" in that paper) and "receivers". Senders and receivers could be freely composed into richer senders and receivers, and only when a receiver was "submitted" to a sender would that task be scheduled for execution.
+At the Spring 2018 meeting in Rapperswil, a significant design problem was identified: poor support for lazy execution, whereby executors participate in the efficient construction and optimal composition of tasks _prior_ to those tasks being enqueued for execution. A solution was put forward by [P1055]: "senders" (called "deferred" in that paper) and "receivers". Senders and receivers could be freely composed into richer senders and receivers, and only when a receiver was "submitted" to a sender would that task be scheduled for execution.
 
-P1055 represented a radical departure from -- and a conceptual simplification of -- the P0443 design. LEWG in particular found the promise of a simplified conceptualization in this space too good to pass up, and deferred the decision to merge P0443 until the alternative had been explored. There are, however, good reasons to be circumspect: a significant redesign now would almost certainly push Executors, and possibly the Networking TS which depends on it, out past C++20. Also, the authors of P1055 had not yet proved to the satisfaction of the experts in SG1 that senders and receivers could efficiently address all the use cases that shaped the design of P0443.
+[P1055] represented a radical departure from -- and a conceptual simplification of -- the [P0443] design. LEWG in particular found the promise of a simplified conceptualization in this space too good to pass up, and deferred the decision to merge [P0443] until the alternative had been explored. There are, however, good reasons to be circumspect: a significant redesign now would almost certainly push Executors, and possibly the Networking TS which depends on it, out past C++20. Also, the authors of [P1055] had not yet proved to the satisfaction of the experts in SG1 that senders and receivers could efficiently address all the use cases that shaped the design of [P0443].
 
-This paper seeks a middle way: a _minimal_ set of changes to P0443 that add proper support for lazy execution and brings a reduction in overall complexity from the point of view of both implementors of executors and their generic consumers. The changes are limited to such a degree that it should be obvious from inspection that no functionality has been lost.
+This paper seeks a middle way: a _minimal_ set of changes to [P0443] that add proper support for lazy execution and brings a reduction in overall complexity from the point of view of both implementers of executors and their generic consumers. The changes are limited to such a degree that it should be obvious from inspection that no functionality has been lost.
 
 ## High-level changes
 
-The root of the problem with P0443 and lazy asynchronous execution is that the Executor concepts' six execute member functions (oneway, twoway, and then_execute, and bulk variants) combined two things: task construction and work submission. Twoway and then_execute return futures, which are necessarily handles to already-running tasks.
+The root of the problem with [P0443] and lazy asynchronous execution is that the Executor concepts' six execute member functions (oneway, twoway, and then_execute, and bulk variants) combined two things: task construction and work submission. Twoway and then_execute return futures, which are necessarily handles to already-running tasks.
 
 * Replace the six Executor `execute` member functions with two (potentially lazy) task creation functions and one `submit` function.
 * The task creation functions accept "senders" and callables, and return new senders.
@@ -35,19 +35,19 @@ Additionally, define a new
 
 ## Why is this not the radical change it appears to be?
 
-Although senders and receivers seem like a new and unproven abstraction, they are really just a minor reformulation of concepts that already appear in P0443 and related papers.
+Although senders and receivers seem like a new and unproven abstraction, they are really just a minor reformulation of concepts that already appear in [P0443] and related papers.
 
 ### Senders are Futures
 
-Four of the the six `execute` functions from P0443 return a type that satisfies the as-yet-unspecified `Future` concept. A `Future`, presumably, is a handle to an already-queued work item to which additional work can be chained by passing it back to an executor's `(bulk_)?then_execue` function, along wih a continuation that will execute when the queued work completes.
+Four of the the six `execute` functions from [P0443] return a type that satisfies the as-yet-unspecified `Future` concept. A `Future`, presumably, is a handle to an already-queued work item to which additional work can be chained by passing it back to an executor's `(bulk_)?then_execue` function, along wih a continuation that will execute when the queued work completes.
 
 A sender is a generalization of a future. It _may_ be a handle to already queued work, or it may represent work that will be queued when a continuation has been attached, which is accomplished by passing a "continuation" to the sender's `submit()` member function.
 
 ### Receivers are Continuations
 
-In P0443, a continuation was a simple callable, but that didn't give a convenient place for errors to go if the preceding computation failed. This shortcoming had already been recognized, and was the subject of P1054, which recommended _promises_ -- which have both a value and an error channel -- as a useful abstraction for continuations. A receiver is little more than a promise, with the addition of a cancellation channel.
+In [P0443], a continuation was a simple callable, but that didn't give a convenient place for errors to go if the preceding computation failed. This shortcoming had already been recognized, and was the subject of P1054, which recommended _promises_ -- which have both a value and an error channel -- as a useful abstraction for continuations. A receiver is little more than a promise, with the addition of a cancellation channel.
 
-In short, if you squint at P0443 and P1054, the sender and receiver concepts are already there. They just weren't fully spelled out.
+In short, if you squint at [P0443] and P1054, the sender and receiver concepts are already there. They just weren't fully spelled out.
 
 ### Task construction/submission is a decomposition of execution
 
@@ -73,7 +73,7 @@ There is one way in which the decomposition of `execute` into `make_value_task`/
 
 # Fundamental differences between the compromise proposal and P0443
 
-* P0443 `execute` functions return a future. The type of the future is under the executor's control. By splitting `execute` into lazy task costruction and a (`void`-returning) work submission API, we enable lazy futures because the code returning the future can rely on the fact that submit will be called by the caller. With that knowledge, the lazy future is safe to return because we can rely on it being run.
+* [P0443] `execute` functions return a future. The type of the future is under the executor's control. By splitting `execute` into lazy task construction and a (`void`-returning) work submission API, we enable lazy futures because the code returning the future can rely on the fact that submit will be called by the caller. With that knowledge, the lazy future is safe to return because we can rely on it being run.
 * We optionally lose the ability to block on completion of the task at task construction time. As submit is to be called anyway (except for the pure oneway executor case where submit is implicit) it is cleaner to apply the blocking semantic at this point if we are to have it at all. In particular, this approach allows us to build executors that return senders that block on completion but are still lazy.
 
 # A lazy simplification of P0443
@@ -83,7 +83,7 @@ The discussed compromise is that we should replace the enqueue  functions (`ex.*
 
 | Aside: The Story |
 |--------|
-| The story here is that the `execute` functions from [P0443](http://wg21.link/P0443) were conflating two things: task creation and work queuing. The conflation interfered with lazy task submission, which was the thrust of [P1055](http://wg21.link/P1055). By teasing these two responsibilities apart and allowing an executor to customize them separately, we lose nothing and gain first-class support for lazy execution models. |
+| The story here is that the `execute` functions from [P0443]) were conflating two things: task creation and work queuing. The conflation interfered with lazy task submission, which was the thrust of [P1055]). By teasing these two responsibilities apart and allowing an executor to customize them separately, we lose nothing and gain first-class support for lazy execution models. |
 | |
 
 By passing a full set of parameters to task construction functions, any task we place in a task graph may be type erased with no loss of efficiency. There may still be some loss of efficiency if the executor is type erased before task construction because the compiler may no longer be able to see from the actual executor into the passed functions. The earlier we perform this operation, however, the more chance there is of making this work effectively.
@@ -116,7 +116,7 @@ The passed function may or may not be `noexcept`. The behavior on an exception e
 | `void execute(void(void))` | At some future point calls the passed callable. |
 
 ## Sender and Receiver concepts
-Required additional concepts from P1055:
+Required additional concepts from [P1055]:
 * `Receiver<To>`: A type that declares itself to be a receiver by responding to the `receiver_t` property query.
 * `ReceiverOf<To, E, T...>`: A receiver that accepts an error of type `E` and the (possibly empty) tuple of values `T...`. (This concept is useful for constraining a `Sender`'s `submit()` member function.)
 * `Sender<From>`: A type that declares itself to be a sender by responding to the `sender_t` property query.
@@ -181,7 +181,7 @@ If a constructed task is type erased, then it may benefit from custom overloads 
 We do not expect any performance difference between the two forms of the one way execute definition. The task factory-based design gives the opportunity for the application to provide a well-defined output channel for exceptions. For example, the provided output receiver could be an interface to a lock-free exception list if per-request exceptions are not required.
 
 # Extensions
-A wide range of further customization points should be expected. The above description is the fundamental set that matches the capabilities in P0443. To build a full futures library on top of this we will need, in addition:
+A wide range of further customization points should be expected. The above description is the fundamental set that matches the capabilities in [P0443]. To build a full futures library on top of this we will need, in addition:
 * A blocking operation for use from concurrent execution contexts. For consistency we suggest defining this as an overload of the `sync_wait` proposal from Lewis Baker, D1171. That paper proposes `std::this_thread::sync_wait(Awaitable)`. We should define a customization point that allows `sync_wait(Sender)` to be implemented optimally.
 * A share operation that takes a `Sender` and splits it such that when the input to the `Sender` is complete, multiple `Receivers` may be triggered.
 * A join operation that takes multiple `Senders` and constructs a single `Sender` out of them that joins the values in some fashion.
@@ -272,7 +272,7 @@ When composing concurrent operations, sometimes eager execution is required. Any
 
 **eager execution**
 
-When it is possible to call `promise::set_value(. . .)` before `future::get()` then state must be shared by the future and promise. When concurrent calls are allowed to the promise and future, then the access to the shared state must be synchronized.
+When it is possible to call `promise::set_value(. . .)` before `future::get` then state must be shared by the future and promise. When concurrent calls are allowed to the promise and future, then the access to the shared state must be synchronized.
 
 `std::promise`/`std::future` are expensive because the interface forces an implementation of eager execution.
 
@@ -280,18 +280,21 @@ When it is possible to call `promise::set_value(. . .)` before `future::get()` t
 
 **termination**
 
-`then()` returns another future. `then()` is not terminal, it always returns another future with another `then()` to call. To implement lazy execution `then()` would have to store the callable and not start the work until `then()` on the returned future was called. Since `then()` on the returned future is also not terminal, it either must implement expensive eager execution or must not start the work, which leaves no way to start the work without using an expensive eager execution implementation of `then()`
+`then` returns another future. `then` is not terminal, it always returns another future with another `then` to call. To implement lazy execution `then` would have to store the callable and not start the work until `then` on the returned future was called. Since `then` on the returned future is also not terminal, it either must implement expensive eager execution or must not start the work, which leaves no way to start the work without using an expensive eager execution implementation of `then`
 
-`submit()` returns void. returning void makes `submit()` terminal. When `submit()` is an implementation of lazy execution the work starts when `submit()` is called and was given the continuation function to use when delivering the result of the work. When `submit()` is an implementation of expensive eager execution the work was started before `submit()` is called and synchronization is used to deliver the result of the work to the continuation function.
+`submit` returns void. Returning void makes `submit` terminal. When `submit` is an implementation of lazy execution the work starts when `submit` is called and was given the continuation function to use when delivering the result of the work. When `submit` is an implementation of expensive eager execution the work was started before `submit` is called and synchronization is used to deliver the result of the work to the continuation function.
 
 ## Q: How is `void sender::submit(receiver)` different from `void executor::execute(callable)`?
 
 **signals**
 
-`execute()` takes a callable that takes void and returns void. The callable will be invoked in an execution context specified by the executor. any failure to invoke the callable or any exception thrown by the callable after `execute()` has returned must be handled by the executor. there is no signal to the function on failure or cancellation or rejection. When the callable is a functor the destructor will be run on copy, move, success, failure and rejection with no parameters to distinguish them.
+`execute()` takes a callable that takes void and returns void. The callable will be invoked in an execution context specified by the executor. Any failure to invoke the callable or any exception thrown by the callable after `execute()` has returned must be handled by the executor. There is no signal to the function on failure or cancellation or rejection. When the callable is a functor the destructor will be run on copy, move, success, failure and rejection with no parameters to distinguish them.
 
-`submit()` takes a receiver that has three methods.
+`submit` takes a receiver that has three methods.
 
-- `value()` will be invoked in an execution context specified by the executor. `value()` does any work needed.
-- `error()` will be invoked in an execution context specified by the executor. any failure to invoke `value()` or any exception thrown by `value()` after `execute()` has returned is reported to the receiver by invoking `error()` and passing the error as a parameter
-- `done()` will be invoked in an execution context specified by the executor. `done()` handles cases where the work was cancelled (cancellation is not an error).
+- `value` will be invoked in an execution context specified by the executor. `value` does any work needed.
+- `error` will be invoked in an execution context specified by the executor. Any failure to invoke `value` or any exception thrown by `value` after `execute` has returned is reported to the receiver by invoking `error` and passing the error as a parameter
+- `done` will be invoked in an execution context specified by the executor. `done` handles cases where the work was cancelled (cancellation is not an error).
+
+[P0443]: https://wg21.link/P0443
+[P1055]: https://wg21.link/P1055
