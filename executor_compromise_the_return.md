@@ -143,35 +143,8 @@ We optionally lose the ability to block on completion of the task at task constr
 > 
 > By passing a full set of parameters to task construction functions, any task we place in a task graph may be type erased with no loss of efficiency. There may still be some loss of efficiency if the executor is type erased before task construction because the compiler may no longer be able to see from the actual executor into the passed functions. The earlier we perform this operation, however, the more chance there is of making this work effectively. _&mdash; end note]_
 
-## The fundamental executor concepts
-An executor should either be a sender of a sub executor, or a one way fire and forget entity.
-These can be implemented in terms of each other, and so can be adapted if necessary, potentially with some loss of information.
-
-These executor concepts support [P0443] style properties (e.g. `require` or `prefer`).
-
-### SenderExecutor
-A `SenderExecutor` is a `Sender` and meets the requirements of Sender. The interface of the passed receiver should be noexcept.
-
-| Function | Semantics |
-|----------|-----------|
-| `void submit(ReceiverOf<` _`E`_, _`SubExecutorType`_ `> r) noexcept;` | At some future point invokes either:<br/>&nbsp;&nbsp;* `set_value(r, executor())` on success, or<br/>&nbsp;&nbsp;* `set_error(r, err)` on failure, where `err` is object of unspecified type representing an error, or<br/>&nbsp;&nbsp;* `set_done(r)` otherwise.<br/>*Requires:* `noexcept(set_value(r, executor())) && noexcept(set_error(r, err) && noexcept(set_done(r)` is true. |
-| `SenderExecutor executor() noexcept` | Returns the sub-executor. [ *Note*: Implementations may return `*this` ] |
-
-`submit` and `executor` are required on an executor that has task constructors. `submit` is a fundamental sender operation that may be called by a task at any point.
-
-Invocation of the `Receiver` customization points caused by `submit` will execute in an execution agent created by the executor (the creation of an execution agent does not imply the creation of a new thread of execution). The executor should send a sub-executor to `set_value` to provide information about that context. The sub-executor may be itself. No sub-executor will be passed to `set_error`, and a call to `set_error` represents a failed enqueue. A call to `set_done` indicates that the submission was not accepted (e.g. cancellation).
-
-To avoid deep recursion, a task may post itself directly onto the underlying executor, giving the executor a chance to pass a new sub executor. For example, if a prior task completes on one thread of a thread pool, the next task may re-enqueue rather than running inline, and the thread pool may decide to post that task to a new thread. Hence, at any point in the chain the sub-executor passed out of the executor may be utilized.
-
-### OneWayExecutor
-The passed function may or may not be `noexcept`. The behavior on an exception escaping the passed task is executor-defined.
-
-| Signature | Semantics |
-|-----------|-----------|
-| `void execute(Function fn)` | At some future point evaluates `fn()`<br/>*Requires:* `is_invocable_r<void, Function>` is `true`. |
-
 ## Sender and Receiver concepts
-Required additional concepts from [P1055]:
+Introduce the following [P1055]/[P1054]-inspired concepts to [P0443]:
 * `Receiver<To>`: A type that declares itself to be a receiver by responding to the `receiver_t` property query.
 * `ReceiverOf<To, E, T...>`: A receiver that accepts an error of type `E` and the (possibly empty) tuple of values `T...`. (This concept is useful for constraining a `Sender`'s `submit` member function.)
 * `Sender<From>`: A type that declares itself to be a sender by responding to the `sender_t` property query.
@@ -198,10 +171,37 @@ These customization-points are defined in terms of an exposition-only *`_SenderL
 
 | Signature | Semantics |
 |-----------|-----------|
-| `template < _SenderLike From > ` <br/> `_Executor&& get_executor(From& from);` | **Executor access:**<br/>asks a sender for its associated executor. Dispatches to `from.get_executor` if that expression is well-formed and returns a *`_SenderLike`*; otherwise, dispatches to (unqualified) `get_executor(from)` in a context that doesn't include the `std::get_executor` customization point object and that does include the following function:<br/><br/> &nbsp;&nbsp;`template<_Executor Exec>`<br/>&nbsp;&nbsp;` Exec get_executor(Exec exec) {`<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;` return (Exec&&) exec;`<br/>&nbsp;&nbsp;` }`<br/><br/>**Semantics:**<br/>Receivers passed to this sender's `submit` function (see below) will be executed in a context "owned" by the executor returned by the `get_executor` accessor. |
+| `template < _SenderLike From > ` <br/> `_Executor&& get_executor(From& from);` | **Executor access:**<br/>asks a sender for its associated executor. Dispatches to `from.get_executor()` if that expression is well-formed and returns a *`_SenderLike`*; otherwise, dispatches to (unqualified) `get_executor(from)` in a context that doesn't include the `std::get_executor` customization point object and that does include the following function:<br/><br/> &nbsp;&nbsp;`template<_Executor Exec>`<br/>&nbsp;&nbsp;` Exec get_executor(Exec exec) {`<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;` return (Exec&&) exec;`<br/>&nbsp;&nbsp;` }`<br/><br/>**Semantics:**<br/>Receivers passed to this sender's `submit` function (see below) will be executed in a context "owned" by the executor returned by the `get_executor` accessor. |
 | `template < _Executor Exec, Sender Fut, class Fun >`<br/>`SenderOf<T'> make_value_task(` `Exec& exec, SenderOf<T...> fut, T'(T...) fun);` | **Task construction (w/optional eager submission):**<br/>Dispatches to `exec.make_value_task((Fut&&)fut, (Fun&&)fun)` if that expression is well-formed and returns a `Sender`; otherwise, dispatches to (unqualified) `make_value_task(exec, (Fut&&)fut, (Fun&&)fun)` in a context that doesn't include the `std::make_value_task` customization point object.<br/><br/>Logically, `make_value_task` constructs a new sender `S` that, when submitted with a particular receiver `R`, effects a transition to the execution context represented by `Exec`. In particular:<br/>&nbsp;&nbsp;* `submit(S,R)` constructs a new receiver `R'` that wraps `R` and `Exec`, and calls `submit(fut, R')`.<br/>&nbsp;&nbsp;* If `fut` completes with a cancellation signal by calling `set_done(R')`, then `R'`'s `set_done` method effects a transition to `exec`'s execution context and propagates the signal by calling `set_done(R)`.<br/>&nbsp;&nbsp;* Otherwise, if `fut` completes with an error signal by calling `set_error(R', E)`, then `R'`'s `set_error` method _attempts_ a transition to `exec`'s execution context and propagates the signal by calling `set_error(R, E)`. (The attempt to transition execution contexts in the error channel may or may not succeed. A particular executor may make stronger guarantees about the execution context used for the error signal.)<br/> &nbsp;&nbsp;* Otherwise, if `fut` completes with a value signal by calling `set_value(R', Vs...)`, then `R'`'s `set_value` method effects a transition to `exec`'s execution context and propagates the signal by calling `set_value(R, fun(Vs...))` -- or, if the type of `fun(Vs...)` is `void`, by calling `fun(Vs...)` followed by `set_value(R)`.<br/><br/>**Eager submission:**<br/> `make_value_task` may return a lazy sender, or it may eagerly queue work for submission. In the latter case, the task is executed by passing to `submit` an eager receiver such as a `promise` of a continuable `future` so that the returned sender may still have work chained to it.<br/><br/>**Guarantees:** <br/>The actual queuing of work happens-after entry to `make_value_task` and happens-before `submit`, when called on the resulting sender (see below), returns. |
 | `template < _Executor Exec, Sender Fut, class Fun >`<br/>`SenderOf<T'> make_bulk_value_task(` `Exec& exec, SenderOf<T...> fut, F fun, ShapeFactory shf, SharedFactory sf, ResultFactory rf);` | **Task construction (w/optional eager submission):**<br/>Dispatches to `exec.make_bulk_value_task((Fut&&)fut, (Fun&&)fun, shf, sf, rf)` if that expression is well-formed and returns a `Sender`; otherwise, dispatches to (unqualified) `make_bulk_value_task(exec, (Fut&&)fut, (Fun&&)fun, shf, sf, rf)` in a context that doesn't include the `std::make_bulk_value_task` customization point object.<br/><br/>Logically, `make_bulk_value_task` constructs a new sender `S` that, when submitted with a particular receiver `R`, effects a transition to the execution context represented by `Exec`. In particular:<br/>&nbsp;&nbsp;* `submit(S,R)` constructs a new receiver `R'` that wraps `R` and `Exec`, and calls `submit(fut, R')`.<br/>&nbsp;&nbsp;* If `fut` completes with a cancellation signal by calling `set_done(R')`, then `R'`'s `set_done` method effects a transition to `exec`'s execution context and propagates the signal by calling `set_done(R)`.<br/>&nbsp;&nbsp;* Otherwise, if `fut` completes with an error signal by calling `set_error(R', E)`, then `R'`'s `set_error` method _attempts_ a transition to `exec`'s execution context and propagates the signal by calling `set_error(R, E)`. (The attempt to transition execution contexts in the error channel may or may not succeed. A particular executor may make stronger guarantees about the execution context used for the error signal.)<br/> &nbsp;&nbsp;* Otherwise, if `fut` completes with a value signal by calling `set_value(R', Vs...)`, then `R'`'s `set_value` method effects a transition to `exec`'s execution context and propagates the signal as if by executing the algorithm:<br/>`auto shr = sf();`<br/>`auto res = rf();`<br/>`for(idx : shf()) {`<br/>`fun(idx, t..., sf, rf);`<br/>`}`<br/>`set_value(R, std::move(res));`<br/> -- or, if the type of `RF()` is `void` or no `RF` is provided, as if by executing:<br/>`auto shr = sf();`<br/>`for(idx : shf()) {`<br/>`  fun(idx, t..., sf);`<br/>`}`<br/>`set_value(R);`.<br/><br/>**Eager submission:**<br/> `make_bulk_value_task` may return a lazy sender, or it may eagerly queue work for submission. In the latter case, the task is executed by passing to `submit` an eager receiver such as a `promise` of a continuable `future` so that the returned sender may still have work chained to it.<br/><br/>**Guarantees:** <br/>The actual queuing of work happens-after entry to `make_bulk_value_task` and happens-before `submit`, when called on the resulting sender (see below), returns. |
 | `template < _SenderLike From, Receiver To >`<br/>`void submit(From& from, To to);` | **Work submission.**<br/>Dispatches to `from.submit((To&&) to)` if that expression is well-formed; otherwise, dispatches to (unqualified) `submit(from, (To&&)to)` in a context that doesn't include the `std::submit` customization point object.<br/><br/>**Guarantees:** <br/>The actual queuing of any asynchronous work that this sender represents happens-before `submit` returns. |
+
+## The fundamental executor concepts
+An executor should either be a sender of a sub executor, or a one way fire and forget entity.
+These can be implemented in terms of each other, and so can be adapted if necessary, potentially with some loss of information.
+
+These executor concepts support [P0443] style properties (e.g. `require` or `prefer`).
+
+### SenderExecutor
+A `SenderExecutor` is a `Sender` and meets the requirements of Sender. The interface of the passed receiver should be noexcept.
+
+| Function | Semantics |
+|----------|-----------|
+| `void submit(ReceiverOf<` _`E`_, _`SubExecutorType`_ `> r) noexcept;` | At some future point invokes either:<br/>&nbsp;&nbsp;* `set_value(r, get_executor())` on success, or<br/>&nbsp;&nbsp;* `set_error(r, err)` on failure, where `err` is object of unspecified type representing an error, or<br/>&nbsp;&nbsp;* `set_done(r)` otherwise.<br/>*Requires:* `noexcept(set_value(r, get_executor())) && noexcept(set_error(r, err) && noexcept(set_done(r)` is true. |
+| `SenderExecutor get_executor() noexcept` | Returns the sub-executor. [ *Note*: Implementations may return `*this` ] |
+
+`submit` and `get_executor` are required on an executor that has task constructors. `submit` is a fundamental sender operation that may be called by a task at any point.
+
+Invocation of the `Receiver` customization points caused by `submit` will execute in an execution agent created by the executor (the creation of an execution agent does not imply the creation of a new thread of execution). The executor should send a sub-executor to `set_value` to provide information about that context. The sub-executor may be itself. No sub-executor will be passed to `set_error`, and a call to `set_error` represents a failed enqueue. A call to `set_done` indicates that the submission was not accepted (e.g. cancellation).
+
+To avoid deep recursion, a task may post itself directly onto the underlying executor, giving the executor a chance to pass a new sub executor. For example, if a prior task completes on one thread of a thread pool, the next task may re-enqueue rather than running inline, and the thread pool may decide to post that task to a new thread. Hence, at any point in the chain the sub-executor passed out of the executor may be utilized.
+
+### OneWayExecutor
+The passed function may or may not be `noexcept`. The behavior on an exception escaping the passed task is executor-defined.
+
+| Signature | Semantics |
+|-----------|-----------|
+| `void execute(Function fn)` | At some future point evaluates `fn()`<br/>*Requires:* `is_invocable_r<void, Function>` is `true`. |
 
 ## Ordering guarantees
 There are two strong guarantees made here, to allow eager execution:
