@@ -54,7 +54,7 @@ Additionally, this paper adds support for **task cancellation**, reflecting the 
 
 In a great many interesting scenarios, a launched task needs to know something about the execution context on which it is executing. Perhaps the task needs to submit nested work to the same context, for instance. Exactly _which_ context an executor decides to schedule the work on can be entirely runtime dependent. For instance, a thread pool executor doesn't know _a priori_ on which thread it will schedule a task.
 
-In order to keep this information in-band, an `Executor is a Sender whose `.submit(...)` member passes itself or some sub-executor through the value channel. In practice, a `Sender` returned from `.make_value_task(...)` will typically work like this:
+In order to keep this information in-band, an `Executor` is a `Sender` whose `.submit(...)` member passes itself or some sub-executor through the value channel. In practice, a `Sender` returned from `.make_value_task(...)` will typically work like this:
 
 1) `ex.make_value_task(s1, fn)` returns `s2` that has a copy of `ex`, `s1`, and `fn`.
 2) `s2.submit(r1)` creates a new receiver `r2` that stores `ex`, `fn`, and `r1` and passes that to `s1.submit(r2)`.
@@ -135,7 +135,7 @@ sender2.submit(p2);
 
 [P0443] `execute` functions return a future. The type of the future is under the executor's control. By splitting `execute` into lazy task construction and a (`void`-returning) work submission API, we enable lazy futures because the code returning the future can rely on the fact that submit will be called by the caller. With that knowledge, the lazy future is safe to return because we can rely on it being run.
 
-We optionally lose the ability to block on completion of the task at task construction time. As `submit` is to be called anyway (except for the pure oneway executor case where submit is implicit) it is cleaner to apply the blocking semantic to `submit` point. In particular, this approach allows us to build executors that return senders that block on completion but are still lazy.
+We optionally lose the ability to block on completion of the task at task construction time. As `submit` is to be called anyway (except for the pure oneway executor case where submit is implicit) it is cleaner to apply the blocking semantic to the invocation of `submit`. In particular, this approach allows us to build executors that return senders that block on completion but are still lazy.
 
 # Suggested Design
 
