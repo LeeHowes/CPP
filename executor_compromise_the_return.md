@@ -147,10 +147,10 @@ We optionally lose the ability to block on completion of the task at task constr
 An executor should either be a sender of a sub executor, or a one way fire and forget entity.
 These can be implemented in terms of each other, and so can be adapted if necessary, potentially with some loss of information.
 
-We may `require` or `prefer` to switch between these.
+These executor concepts support [P0443] style properties (e.g. `require` or `prefer`).
 
 ### SenderExecutor
-A SenderExecutor is a Sender and meets the requirements of Sender. The interface of the passed receiver should be noexcept.
+A `SenderExecutor` is a `Sender` and meets the requirements of Sender. The interface of the passed receiver should be noexcept.
 
 | Function | Semantics |
 |----------|-----------|
@@ -159,7 +159,7 @@ A SenderExecutor is a Sender and meets the requirements of Sender. The interface
 
 `submit` and `executor` are required on an executor that has task constructors. `submit` is a fundamental sender operation that may be called by a task at any point.
 
-Methods on the `Receiver` passed to `submit` will execute in some execution context owned by the executor. The executor should send a sub-executor to `set_value` to provide information about that context. The sub-executor may be itself. No sub-executor will be passed to `set_error`, and a call to `set_error` represents a failed enqueue.
+Invocation of the `Receiver` customization points caused by `submit` will execute in an execution agent created by the executor (the creation of an execution agent does not imply the creation of a new thread of execution). The executor should send a sub-executor to `set_value` to provide information about that context. The sub-executor may be itself. No sub-executor will be passed to `set_error`, and a call to `set_error` represents a failed enqueue. A call to `set_done` indicates that the submission was not accepted (e.g. cancellation).
 
 To avoid deep recursion, a task may post itself directly onto the underlying executor, giving the executor a chance to pass a new sub executor. For example, if a prior task completes on one thread of a thread pool, the next task may re-enqueue rather than running inline, and the thread pool may decide to post that task to a new thread. Hence, at any point in the chain the sub-executor passed out of the executor may be utilized.
 
