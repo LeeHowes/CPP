@@ -55,7 +55,7 @@ Additionally, this paper adds support for **task cancellation**, reflecting the 
 
 ### Executors as Senders of Sub-executors
 
-In a great many interesting scenarios, a launched task needs to know something about the execution context on which it is executing. Perhaps the task needs to submit nested work to the same context, for instance. Exactly _which_ context an executor decides to schedule the work on can be entirely runtime dependent. For instance, a thread pool executor doesn't know _a priori_ on which thread it will schedule a task.
+In a great many interesting scenarios, a launched task needs to know something about the execution agent on which it is executing. Perhaps the task needs to submit nested work to be run on a similar agent, for instance. The exact characteristics of the agent an executor decides to schedule the work on (beyond those explicitly guaranteed by the executor) can be entirely runtime dependent. For instance, a thread pool executor doesn't know _a priori_ on which thread it will schedule a task, and that information could be critical for efficient scheduling of nested tasks or correct use of thread-specific state.
 
 In order to keep this information in-band, an Executor is a Sender whose `.submit(...)` member passes itself or some sub-executor through the value channel. In practice, a `Sender` returned from `.make_value_task(...)` will typically work like this:
 
