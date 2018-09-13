@@ -61,10 +61,10 @@ In order to keep this information in-band, an `Executor` is a `Sender` whose `.s
 
 1. `ex.make_value_task(s1, fn)` returns `s2` that knows about `ex`, `s1`, and `fn`.
 2. `s2.submit(r1)` creates a new receiver `r2` that knows about `ex`, `fn`, and `r1` and passes that to `s1.submit(r2)`.
-3. If `s1` completes with a value, it calls `r2.on_value(v1)`.
-4. `r2.on_value(v1)` builds a new receiver `r3` that captures `fn`, `v1`, and `r1` and passes that to `ex.submit(r3)`.
-5. `ex.submit(r3)` makes a decision about where and how to execute `r3` and calls `r3.on_value(subex)`, where `subex` is an executor that encapsulates that decision. (`subex` is possibly a copy of `ex` itself.)
-6. `r3.on_value(subex)` now has (a) the value `v1` produced by `s1`, (b) the function `fn` passed to `make_value_task`, and (c) a handle to the execution context on which it is currently running. In the simple case, it simply calls `r1.on_value(fn(v1))`, but it may do anything it pleases including submitting more work to the execution context to which `subex` is a handle.
+3. If `s1` completes with a value, it calls `r2.set_value(v1)`.
+4. `r2.set_value(v1)` builds a new receiver `r3` that captures `fn`, `v1`, and `r1` and passes that to `ex.submit(r3)`.
+5. `ex.submit(r3)` makes a decision about where and how to execute `r3` and calls `r3.set_value(subex)`, where `subex` is an executor that encapsulates that decision. (`subex` is possibly a copy of `ex` itself.)
+6. `r3.set_value(subex)` now has (a) the value `v1` produced by `s1`, (b) the function `fn` passed to `make_value_task`, and (c) a handle to the execution context on which it is currently running. In the simple case, it simply calls `r1.set_value(fn(v1))`, but it may do anything it pleases including submitting more work to the execution context to which `subex` is a handle.
 
 With this structure, eager executors have the flexibility to create `r2` eagerly but defer the creation of `r3` until the decision about where and how to run the task is made. This is a natural fit for how, for instance, many modern work-stealing schedulers interact with eager dependency expression.
 
