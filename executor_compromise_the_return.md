@@ -10,7 +10,7 @@
 
 ## Summary
 
-This paper seeks to add support for lazy task creation and deferred execution to [P0443], while also simplifying the fundamental concepts involved in asynchronous execution. It seeks to do this as a minimal set of diffs to [P0443]. It achieves this by replacing [P0443]'s six `Executor::*execute` member functions with two lazy task constructors that each return a (potentially) lazy Future-like type known as a "Sender". Work may then be submitted to the underlying execution context lazily when `submit` is called on a Sender or eagerly at task creation time.
+This paper seeks to add support for lazy task creation and deferred execution to [P0443], while also simplifying the fundamental concepts involved in asynchronous execution. It seeks to do this as a minimal set of diffs to [P0443]. It achieves this by replacing [P0443]'s six `Executor::*execute` member functions with two lazy task constructors that each return a (potentially) lazy Future-like type known as a "Sender". Work may then be submitted to the underlying execution context lazily when `submit` is called on a Sender or eagerly at task creation time, as long as the semantic constraints of the task are satisfied.
 
 ## Background
 
@@ -43,7 +43,7 @@ Here is how we get from [P0443] to this paper's suggested design in 10 easy step
 5) The term “future” is **strongly** suggestive of “eager,” so rename the concept to “Sender” to avoid confusion.<sup>[*]</sup>
 6) The name “`.then`” doesn’t suggest the possibility that it may in fact enqueue the task for execution. Rename it to “`.submit`”.
 7) Since we changed the name “`Future`” to “`Sender`”, change “`Promise`” to “`Receiver`”.
-8) Assuming strongly typed, lazy `Sender`s, task chaining is free or nearly so. (It isn’t enqueued yet, so continuations can be attached without allocation or synchronization.) Oneway and twoway can be built on top of `.then_execute`, so just define `.then_execute`.
+8) Assuming strongly typed, lazy `Sender`s, task chaining can be free or nearly so. (It isn't required to be submitted to the underlying execution context yet, so continuations can be attached without allocation or synchronization.) Oneway and twoway can be built on top of `.then_execute`, so just define `.then_execute`.
 9) Since “`.then_execute`” really just builds a link in a task chain without enqueueing it for execution, rename it to something like “`.make_value_task`”.
 10) Done. You now have the compromise proposal.
 
