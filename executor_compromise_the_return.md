@@ -72,7 +72,7 @@ With this structure, eager executors have the flexibility to create `r2` eagerly
 
 ### All Senders have associated executors
 
-TODO
+In the executor worldview (even in P0443), all work is carried out on one or more execution agents.  While the association of execution agents with work need not happen when that work is created, the association with an entity responsible for the creation of those agents always happens as the work is created.  This has not changed from P0443.  In this proposal, we represent this association by saying that all Senders have executors.  Since Senders are a representation of (potentially deferred) work, their association with an entity responsible for creation of agents to execute that work happens when the Sender is constructed; this is semantically evident from the fact that `make_value_task`, which returns a Sender, is a part of the interface of the executor type.
 
 ## Terminology
 
