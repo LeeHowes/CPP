@@ -1,3 +1,11 @@
+| | |
+| --------|-------|
+| Document: | Dxxxx |
+| Date: | Sept 12, 2018 |
+| Audience: | SG1 |
+| Authors: | Lee Howes &lt;lwh@fb.com&gt; |
+
+
 # A firm specification of bulk execution
 
 ## Summary
