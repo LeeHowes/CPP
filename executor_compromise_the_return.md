@@ -96,7 +96,7 @@ Since a Sender often represents a suspended asynchronous operation, there must b
 
 It is the `submit` operation that allows Senders and Receivers to efficiently support lazy composition. By contrast, the futures from [P0443] and the Concurrency TS had no explicit "submit" operation, only a blocking "`get`" operation and a non-blocking "`then`" operation for chaining a continuation.
 
-If we imagine that a future's `then` operation submitted the task to an execution context after the continuation is attached, then we have a lazy `Sender`. Nothing is preventing the `Future` concept from being defined this way, and that is precisely what this paper suggests.
+If we imagine that a future's `then` operation which potentially submitted the task to an execution context after the continuation is attached, then we have a lazy `Sender`. Nothing is preventing the `Future` concept from being defined this way, and that is precisely what this paper suggests.
 
 ## Why is this not the radical change it appears to be?
 
