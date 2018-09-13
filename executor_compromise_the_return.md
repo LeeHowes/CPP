@@ -76,7 +76,7 @@ This paper describes "task construction" and "task submission". By the former, w
 
 A particular executor may decide to perform both task creation _and_ task submission in its `make_value_task`. This would be _eager_. Another may decide to only do task creation in its `make_value_task` and do task submission in the `submit` method of the returned `Sender`. That would be _lazy_.
 
-Generic code that uses executors must assume the lazy case and call `submit` on the sender, even though it may do nothing more than attach a (possibly empty) continuation.
+Generic code that uses executors must assume the lazy case and call `submit` on the sender, even though it may do nothing more than attach a (possibly empty) continuation.  It must also assume that the work associated with a task may start as eagerly as the call to `make_value_task` itself.
 
 ## Why is lazy execution important?
 
