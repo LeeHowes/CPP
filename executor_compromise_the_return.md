@@ -57,14 +57,16 @@ Additionally, this paper adds support for **task cancellation**, reflecting the 
 
 In a great many interesting scenarios, a launched task needs to know something about the execution agent on which it is executing. Perhaps the task needs to submit nested work to be run on a similar agent, for instance. The exact characteristics of the agent an executor decides to schedule the work on (beyond those explicitly guaranteed by the executor) can be entirely runtime dependent. For instance, a thread pool executor doesn't know _a priori_ on which thread it will schedule a task, and that information could be critical for efficient scheduling of nested tasks or correct use of thread-specific state.
 
-In order to keep this information in-band, an Executor is a Sender whose `.submit(...)` member passes itself or some sub-executor through the value channel. In practice, a `Sender` returned from `.make_value_task(...)` will typically work like this:
+In order to keep this information in-band, an Executor is a Sender whose `.submit(...)` member passes itself or some sub-executor through the value channel. In practice, a `Sender` returned from `.make_value_task(...)` could work like this:
 
-1) `ex.make_value_task(s1, fn)` returns `s2` that has a copy of `ex`, `s1`, and `fn`.
+1) `ex.make_value_task(s1, fn)` returns `s2` that knows about `ex`, `s1`, and `fn`.
 2) `s2.submit(r1)` creates a new receiver `r2` that stores `ex`, `fn`, and `r1` and passes that to `s1.submit(r2)`.
 3) If `s1` completes with a value, it calls `r2.on_value(v1)`.
 4) `r2.on_value(v1)` builds a new receiver `r3` that captures `fn`, `v1`, and `r1` and passes that to `ex.submit(r3)`.
-5) `ex.submit(r3)` makes a decision about where to execute `r3` and calls `r3.on_value(Ex)`, where `Ex` is an executor that encapsulates that decision. (`Ex` is possibly a copy of `ex` itself.)
+5) `ex.submit(r3)` makes a decision about where and how to execute `r3` and calls `r3.on_value(Ex)`, where `Ex` is an executor that encapsulates that decision. (`Ex` is possibly a copy of `ex` itself.)
 5) `r3.on_value(Ex)` now has (a) the value `v1` produced by `s1`, (b) the function `fn` passed to `make_value_task`, and (c) a handle to the execution context on which it is currently running. In the simple case, it simply calls `r1.on_value(fn(v1))`, but it may do anything it pleases including submitting more work to the execution context to which `Ex` is a handle.
+
+
 
 ### All Senders have associated executors
 
