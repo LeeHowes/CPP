@@ -3,7 +3,7 @@
 | Document: | Dxxxx |
 | Date: | Sept 12, 2018 |
 | Audience: | SG1 |
-| Authors: | Lee Howes &lt;lwh@fb.com&gt;<br/>Eric Niebler &lt;eniebler@fb.com&gt;<br/>Kirk Shoop &lt;kirkshoop@fb.com&gt;<br/>Bryce Lelbach &lt;brycelelback@gmail.com&gt; |
+| Authors: | Lee Howes &lt;lwh@fb.com&gt;<br/>Eric Niebler &lt;eniebler@fb.com&gt;<br/>Kirk Shoop &lt;kirkshoop@fb.com&gt;<br/>Bryce Lelbach &lt;brycelelback@gmail.com&gt; <br/>David S. Hollman &lt;dshollm@sandia.gov&gt; |
 
 
 # A lazy simplification of [P0443]
