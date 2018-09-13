@@ -154,21 +154,21 @@ A SenderExecutor is a Sender and meets the requirements of Sender. The interface
 
 | Function | Semantics |
 |----------|-----------|
-| `void submit(ReceiverOf<` _`E`_, _`SubExecutorType>`_ `) noexcept` |  At some future point calls `on_value(subExecutor)` on the receiver on success, where `subExecutor` is `*this` or some subset of `*this` as useful. At some future point calls `on_error(ErrorType)` on failure. |
-| `ExecutorType executor() noexcept` | Returns an executor. By default, `*this`. |
+| `void submit(ReceiverOf<` _`E`_, _`SubExecutorType`_ `> r) noexcept;` | At some future point invokes either:<br/>&nbsp;&nbsp;* `set_value(r, executor())` on success, or<br/>&nbsp;&nbsp;* `set_error(r, err)` on failure, where `err` is object of unspecified type representing an error, or<br/>&nbsp;&nbsp;* `set_done(r)` otherwise.<br/>*Requires:* `noexcept(set_value(r, executor())) && noexcept(set_error(r, err) && noexcept(set_done(r)` is true. |
+| `SenderExecutor executor() noexcept` | Returns the sub-executor. [ *Note*: Implementations may return `*this` ] |
 
 `submit` and `executor` are required on an executor that has task constructors. `submit` is a fundamental sender operation that may be called by a task at any point.
 
-Methods on the `Receiver` passed to `submit` will execute in some execution context owned by the executor. The executor should send a sub-executor to `on_value` to provide information about that context. The sub-executor may be itself. No sub-executor will be passed to `on_error`, and a call to `on_error` represents a failed enqueue.
+Methods on the `Receiver` passed to `submit` will execute in some execution context owned by the executor. The executor should send a sub-executor to `set_value` to provide information about that context. The sub-executor may be itself. No sub-executor will be passed to `set_error`, and a call to `set_error` represents a failed enqueue.
 
 To avoid deep recursion, a task may post itself directly onto the underlying executor, giving the executor a chance to pass a new sub executor. For example, if a prior task completes on one thread of a thread pool, the next task may re-enqueue rather than running inline, and the thread pool may decide to post that task to a new thread. Hence, at any point in the chain the sub-executor passed out of the executor may be utilized.
 
 ### OneWayExecutor
 The passed function may or may not be `noexcept`. The behavior on an exception escaping the passed task is executor-defined.
 
-| Function | Semantics |
-|----------|-----------|
-| `void execute(fn)` | At some future point calls the passed callable. Here, `fn` is a function of no arguments that returns `void`. |
+| Signature | Semantics |
+|-----------|-----------|
+| `void execute(Function fn)` | At some future point evaluates `fn()`<br/>*Requires:* `is_invocable_r<void, Function>` is `true`. |
 
 ## Sender and Receiver concepts
 Required additional concepts from [P1055]:
