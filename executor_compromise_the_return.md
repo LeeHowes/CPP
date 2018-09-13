@@ -354,6 +354,22 @@ When it is possible to call `promise::set_value(. . .)` before `future::get` the
 - `error` will be invoked in an execution context specified by the executor. any failure to invoke `value` or any exception thrown by `value` after `execute` has returned is reported to the receiver by invoking `error` and passing the error as a parameter
 - `done` will be invoked in an execution context specified by the executor. `done` handles cases where the work was cancelled (cancellation is not an error).
 
+## Q: What is the difference between `std::future<T>` and *Sender*?
+
+The most prominent difference is that `std::future<T>` is a type with a specified implementation and *Sender* is a concept with many implementations. *Sender* is like *Iterator* and `std::future<T>` is like `std::pair<F, S>`.
+
+> Another way in which `std:future<T>` is like `std:pair<F, S>` is that there are many reasons to make a struct that has two members instead of using `std::pair<F, S>`. There are also reasons to implement `Sender` in many different ways.
+
+A crucial difference is in how Sender and Receiver are composed. 
+ - `std::promise<T>` has a `future<T>` that is returned from `std::promise<T>::get_future()`
+ - A *Sender* has a submit method that takes a *Receiver* and returns void
+
+When the promise is the producer and owns the consumer there are two implementation options. 
+ 1. Create shared state and synchronize access to the shared state. This option is the common case as it allows the producer to safely set a value before the consumer asks for the value.
+ 2. Define `std::promise<T>::set_value()` and `std::promise<T>::set_exception()` to have undefined-behaviour when called before the consumer has asked for the value. I have not seen an implementation of this.
+
+ When the *Sender* is the producer and the *Receiver* is the consumer then they are both created independently and are bound together by the call to `submit()` on the *Sender*. This form of composition does not prevent a *Sender* from creating a shared state with access to the state synchronized so that binding the *Receiver* later results in the same complexity and behaviour as `std::promise<T>` does, and it also allows a *Sender* to allocate nothing and wait for the *Receiver* to be bound then call the consumer directly with no synchronization.
+
 # Acknowledgements
 
 This document arose out of offline discussion largely between Lee, Bryce and David, as promised during the 2018-08-10 executors call.
