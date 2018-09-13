@@ -222,13 +222,13 @@ In the table below, where a future is returned this is represented by the promis
 
 | Before | After |
 |--------|-------|
-| `executor.execute(f)` | `executor.execute(f)` |
-| `executor.execute(f)` | `executor.make_value_task(sender{}, f).submit(receiver{})` |
-| `fut = executor.twoway_execute(f)` | `executor.make_value_task(sender{}, f).submit(futPromise)` |
-| `fut' = executor.then_execute(f, fut)` | `executor.make_value_task(fut, f).submit(fut'Promise)` |
-| `executor.bulk_execute(f, n, sf)` | `executor.make_bulk_value_task(sender{}, f, n, sf, []{}).submit(receiver{})` |
-| `fut = executor.bulk_twoway_execute(f, n, sf, rf)` | `executor.make_bulk_value_task(sender{}, f, n, sf, rf).submit(futPromise{})` |
-| `fut' = executor.bulk_then_execute(f, n, sf, rf, fut')` | `executor.make_bulk_value_task(fut, f, n, sf, rf).submit(fut'Promise{})` |
+| `e.execute(c);` | `e.execute(c);` |
+| `e.execute(c);` | `e.make_value_task(trivial_sender{}, c).submit(trivial_receiver{});` |
+| `auto f0 = e.twoway_execute(c);`<br/>`g(f0.get());` | `e.make_value_task(sender{}, c).submit(value_receiver(g));` |
+| `auto f1 = e.then_execute(c, f0);`<br/>`g(f1.get());` | `e.make_value_task(f0, c).submit(value_receiver(g));` |
+| `e.bulk_execute(c, n, sf);` | `e.make_bulk_value_task(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`trivial_sender{}, c, n, sf, []{}).submit(trivial_receiver{});` |
+| `auto f0 = e.bulk_twoway_execute(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`c, n, sf, rf);`<br/>`g(f0.get());` | `e.make_bulk_value_task(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`sender{}, c, n, sf, rf).submit(value_receiver(g));` |
+| `auto f1 = e.bulk_then_execute(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`c, n, f0, sf, rf);`<br/>`g(f1.get());` | `e.make_bulk_value_task(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`f0, c, n, sf, rf).submit(value_receiver(g));` |
 
 If a constructed task is type erased, then it may benefit from custom overloads for known trivial receiver types to optimize. If a constructed task is not type erased then the outgoing receiver will trivially inline.
 
