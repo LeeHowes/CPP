@@ -110,7 +110,7 @@ A sender is a generalization of a future. It _may_ be a handle to already queued
 
 ### Receivers are Continuations
 
-In [P0443], a continuation was a simple callable, but that didn't give a convenient place for errors to go if the preceding computation failed. This shortcoming had already been recognized, and was the subject of [P1054], which recommended _promises_ -- which have both a value and an error channel -- as a useful abstraction for continuations. A `Receiver` is little more than a promise, with the addition of a cancellation channel.
+In [P0443], a continuation was a simple callable, but that didn't give a convenient place for errors to go if the preceding computation failed. This shortcoming had already been recognized, and was a subject of [P1054], which recommended _promises_ -- which have both a value and an error channel -- as a useful abstraction for continuations. A `Receiver` is little more than a promise, with the addition of a cancellation channel.
 
 In short, if you squint at [P0443] and [P1054], the sender and receiver concepts are already there. They just weren't fully spelled out.
 
@@ -136,7 +136,7 @@ sender2.submit(p2);
 
 ... where `p2` is possibly a promise corresponding to `fut2` from above, though it need not be.
 
-[P0443] `execute` functions return a future. The type of the future is under the executor's control. By splitting `execute` into lazy task construction and a (`void`-returning) work submission API, we enable lazy futures because the code returning the future can rely on the fact that submit will be called by the caller. With that knowledge, the lazy future is safe to return because we can rely on it being run.
+Four of the [P0443] `execute` functions return a future. The type of the future is under the executor's control. By splitting `execute` into lazy task construction and a (`void`-returning) work submission API, we enable lazy futures because the code returning the future can rely on the fact that submit will be called later by the caller. With that knowledge, the lazy future is safe to return because we can rely on it being submitted separately.
 
 We optionally lose the ability to block on completion of the task at task construction time. As `submit` is to be called anyway (except for the pure oneway executor case where submit is implicit) it is cleaner to apply the blocking semantic to the invocation of `submit`. In particular, this approach allows us to build executors that return senders that block on completion but are still lazy.
 
