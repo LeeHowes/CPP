@@ -82,11 +82,11 @@ Generic code that uses executors must assume the lazy case and call `submit` on 
 
 There is a logical "race" in attaching a continuation to an already-running asynchronous operation: without synchronization or some out-of-band way of orchestrating control flow, the asynchronous operation may try to read the continuation while the consumer is trying to set it. So building chains of asynchronous operations using "eager" futures like `std::experimental::future` often requires synchronization and an allocation of shared state.
 
-Attaching a continuation to an asynchronous operation _before_ it has been submitted for execution is essentially free. Often, large chunks of an algorithm's asynchronous data and control flow can be built in this way, greatly reducing the synchronization and allocation overhead.
+Attaching a continuation to an asynchronous operation _before_ it has been submitted for execution does not require synchronization or allocation of shared state. Often, large chunks of an algorithm's asynchronous data and control flow can be built in this way, greatly reducing the synchronization and allocation overhead.
 
 ## In what specific ways was [P0443] failing to address the lazy execution scenario?
 
-The Future concept of [P0443] was undefined, but by inference it is a handle to a task that has already been submitted for execution. By returning handles to already-running tasks, the twoway and then_execute functions were making it impossible to build task chains in an executor-specific way without incuring a synchronization and allocation penalty. [P0443] offered no other way for an executor to participate in the construction and submission of task chains.
+The Future concept of [P0443] was undefined, but the structure of the `then_execute` customization point, which lacked a separate expression of task submission, impeded lazy construction of task chains. Without a separate expression of task submission, the twoway and then_execute functions were making it awkward to build task chains in an executor-specific way without incurring a synchronization and allocation penalty, and impossible with the specific definition of `Future` as `std::experimental::future` in the latest draft. [P0443] offered no reasonable way for an executor to participate in the construction and submission of task chains (without, say, resorting to unreasonable measures lake taking advantage of the unspecified behavior of the `Future` destructor to perform task submission).
 
 ## What are Senders and Receivers, and how do they help?
 
