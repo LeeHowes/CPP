@@ -104,7 +104,7 @@ Although senders and receivers seem like a new and unproven abstraction, they ar
 
 ### Senders are Futures
 
-Four of the the six `execute` functions from [P0443] return a type that satisfies the as-yet-unspecified `Future` concept. A `Future` in [P0443], as in the Concurrency TS, is a handle to an already-queued work item to which additional work can be chained by passing it back to an executor's `(bulk_)?then_execue` function, along wih a continuation that will execute when the queued work completes.
+Four of the the six `execute` functions from [P0443] return a type that satisfies the as-yet-unspecified `Future` concept. A `Future` in the latest draft of [P0443], which references the Concurrency TS, is a handle to an already-queued work item to which additional work can be chained by passing it back to an executor's `(bulk_)?then_execute` function, along wih a continuation that will execute when the queued work completes.
 
 A sender is a generalization of a future. It _may_ be a handle to already queued work, or it may represent work that will be queued when a continuation has been attached, which is accomplished by passing a "continuation" to the sender's `submit` member function.
 
