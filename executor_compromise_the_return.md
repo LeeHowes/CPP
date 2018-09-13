@@ -34,20 +34,17 @@ The fundamental change suggested by this paper, the one that precipitates all th
 
 ### Parity with [P0443]:
 
-Here is how we get from [P0443] to this paper's suggested design in 10 easy steps:
+Here is how we get from [P0443] to this paper's suggested design in 9 easy steps:
 
 1) If `Future` is eager, it’s basically `std::experimental::future` (or a non-type-erased equivalent) and everything is as in [P0443].
 2) Otherwise, it is lazy, and the task is enqueued only when `fut.then` is called with a continuation.
 3) Follow the advice of [P1054] and define a continuation to be essentially a promise.
 4) To stay “pure lazy”, `fut.then` shouldn’t return an eager future; return `void` instead. Leave task chaining to `exec.then_execute`.
-5) The term “future” is **strongly** suggestive of “eager,” so rename the concept to “Sender” to avoid confusion.<sup>[*]</sup>
+5) The term “future” and “promise” have a lot of baggage and mean different things to different people, so rename the concepts to “`Sender`” and “``Receiver`” respectively.
 6) The name “`.then`” doesn’t suggest the possibility that it may in fact enqueue the task for execution. Rename it to “`.submit`”.
-7) Since we changed the name “`Future`” to “`Sender`”, change “`Promise`” to “`Receiver`”.
-8) Assuming strongly typed, lazy `Sender`s, task chaining is free or nearly so. (It isn’t enqueued yet, so continuations can be attached without allocation or synchronization.) Oneway and twoway can be built on top of `.then_execute`, so just define `.then_execute`.
-9) Since “`.then_execute`” really just builds a link in a task chain without enqueueing it for execution, rename it to something like “`.make_value_task`”.
-10) Done. You now have the compromise proposal.
-
-<sup><sub>[*] Yes, a `std::future` returned from `std::async` called with the `deferred` launch policy is lazy in that it isn't started until a blocking call to `.get` is made. That isn't a useful form of laziness; and besides, we're guessing those semantics are not the first thing that comes to mind when C++ programmers hear the term "future".</sub></sup>
+7) Assuming strongly typed, lazy `Sender`s, task chaining is free or nearly so. (It isn’t enqueued yet, so continuations can be attached without allocation or synchronization.) Oneway and twoway can be built on top of `.then_execute`, so just define `.then_execute`.
+8) Since “`.then_execute`” really just builds a link in a task chain without enqueueing it for execution, rename it to “`.make_value_task`”.
+9) Done. You now have the compromise proposal.
 
 ### Task Cancellation
 
