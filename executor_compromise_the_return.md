@@ -3,14 +3,14 @@
 | Document: | Dxxxx |
 | Date: | Sept 12, 2018 |
 | Audience: | SG1 |
-| Authors: | Lee Howes &lt;lwh@fb.com&gt;<br/>Eric Niebler &lt;eniebler@fb.com&gt;<br/>Kirk Shoop &lt;kirkshoop@fb.com&gt;<br/>Bryce Lelbach &lt;brycelelback@gmail.com&gt; |
+| Authors: | Lee Howes &lt;lwh@fb.com&gt;<br/>Eric Niebler &lt;eniebler@fb.com&gt;<br/>Kirk Shoop &lt;kirkshoop@fb.com&gt;<br/>Bryce Lelbach &lt;brycelelback@gmail.com&gt;<br/>David S. Hollman &lt;dshollm@sandia.gov&gt; |
 
 
 # A lazy simplification of [P0443]
 
 ## Summary
 
-This paper seeks to add support for lazy task creation and deferred execution to [P0443], while also simplifying the fundamental concepts involved in asynchronous execution. It seeks to do this as a minimal set of diffs to [P0443]. It achieves this by replacing [P0443]'s six `Executor::*execute` member functions with two lazy task constructors that each return a (potentially) lazy Future-like type known as a "Sender". Work is actually enqueued by calling `submit` on a Sender.
+This paper seeks to add support for lazy task creation and deferred execution to [P0443], while also simplifying the fundamental concepts involved in asynchronous execution. It seeks to do this as a minimal set of diffs to [P0443]. It achieves this by replacing [P0443]'s six `Executor::*execute` member functions with two lazy task constructors that each return a (potentially) lazy Future-like type known as a "Sender". Work may then be submitted to the underlying execution context lazily when `submit` is called on a Sender or eagerly at task creation time, as long as the semantic constraints of the task are satisfied.
 
 ## Background
 
@@ -34,17 +34,18 @@ The fundamental change suggested by this paper, the one that precipitates all th
 
 ### Parity with [P0443]:
 
-Here is how we get from [P0443] to this paper's suggested design in 9 easy steps:
+Here is how we get from [P0443] to this paper's suggested design in 10 easy steps:
 
 1) If `Future` is eager, it’s basically `std::experimental::future` (or a non-type-erased equivalent) and everything is as in [P0443].
 2) Otherwise, it is lazy, and the task is enqueued only when `fut.then` is called with a continuation.
 3) Follow the advice of [P1054] and define a continuation to be essentially a promise.
-4) To stay “pure lazy”, `fut.then` shouldn’t return an eager future; return `void` instead. Leave task chaining to `exec.then_execute`.
-5) The term “future” and “promise” have a lot of baggage and mean different things to different people, so rename the concepts to “`Sender`” and “``Receiver`” respectively.
-6) The name “`.then`” doesn’t suggest the possibility that it may in fact enqueue the task for execution. Rename it to “`.submit`”.
-7) Assuming strongly typed, lazy `Sender`s, task chaining is free or nearly so. (It isn’t enqueued yet, so continuations can be attached without allocation or synchronization.) Oneway and twoway can be built on top of `.then_execute`, so just define `.then_execute`.
-8) Since “`.then_execute`” really just builds a link in a task chain without enqueueing it for execution, rename it to “`.make_value_task`”.
-9) Done. You now have the compromise proposal.
+4) To stay "eager/lazy agnostic", `fut.then` shouldn’t be required to return an eager future; return `void`  instead, and leave task chaining to `exec.then_execute`.
+5) The terms “future” and “promise” have a lot of baggage and mean different things to different people, so rename the concepts to “`Sender`” and “`Receiver`” respectively.
+6) The name “`.then`” doesn’t suggest the possibility that it may in fact submit the task for execution. Rename it to “`.submit`”.
+7) Since `.then_execute` is no longer required to return an expensive handle to a continuable, eager task, oneway execution can be efficiently built on top of `.then_execute`/`.submit` by passing a null sender to `.then_execute` and a sink receiver to `.submit`. We can drop oneway `.execute` as a required part of the `Executor` concept and instead provide standard null sender and sink receiver types against which implementations are free to optimize. (The same logic lets us drop `.bulk_execute` from the concept.)
+8) Similarly, `.twoway_execute` can be efficiently built on top of `.then_execute`/`.submit` by passing a null sender to `.then_execute` and the promise of an eager future to `.submit`, so we can drop `.twoway_execute` as a required part of the `Executor` concept (and by extension, `.bulk_twoway_execute`).
+9) Since “`.then_execute`” really just builds a link in a task chain without enqueueing it for execution, rename it to “`.make_value_task`”.
+10) Done. You now have the compromise proposal.
 
 ### Task Cancellation
 
@@ -52,20 +53,22 @@ Additionally, this paper adds support for **task cancellation**, reflecting the 
 
 ### Executors as Senders of Sub-executors
 
-In a great many interesting scenarios, a launched task needs to know something about the execution context on which it is executing. Perhaps the task needs to submit nested work to the same context, for instance. Exactly _which_ context an executor decides to schedule the work on can be entirely runtime dependent. For instance, a thread pool executor doesn't know _a priori_ on which thread it will schedule a task.
+In a great many interesting scenarios, a launched task needs to know something about the execution agent on which it is executing. Perhaps the task needs to submit nested work to be run on a similar agent, for instance. The exact characteristics of the agent an executor decides to schedule the work on (beyond those explicitly guaranteed by the executor) can be entirely runtime dependent. For instance, a thread pool executor doesn't know _a priori_ on which thread it will schedule a task, and that information could be critical for efficient scheduling of nested tasks or correct use of thread-specific state.
 
-In order to keep this information in-band, an `Executor is a Sender whose `.submit(...)` member passes itself or some sub-executor through the value channel. In practice, a `Sender` returned from `.make_value_task(...)` will typically work like this:
+In order to keep this information in-band, an `Executor` is a `Sender` whose `.submit(...)` member passes itself or some sub-executor through the value channel. In practice, a `Sender` returned from `.make_value_task(...)` could work like this:
 
-1) `ex.make_value_task(s1, fn)` returns `s2` that has a copy of `ex`, `s1`, and `fn`.
-2) `s2.submit(r1)` creates a new receiver `r2` that stores `ex`, `fn`, and `r1` and passes that to `s1.submit(r2)`.
+1) `ex.make_value_task(s1, fn)` returns `s2` that knows about `ex`, `s1`, and `fn`.
+2) `s2.submit(r1)` creates a new receiver `r2` that knows about `ex`, `fn`, and `r1` and passes that to `s1.submit(r2)`.
 3) If `s1` completes with a value, it calls `r2.on_value(v1)`.
 4) `r2.on_value(v1)` builds a new receiver `r3` that captures `fn`, `v1`, and `r1` and passes that to `ex.submit(r3)`.
-5) `ex.submit(r3)` makes a decision about where to execute `r3` and calls `r3.on_value(Ex)`, where `Ex` is an executor that encapsulates that decision. (`Ex` is possibly a copy of `ex` itself.)
-6) `r3.on_value(Ex)` now has (a) the value `v1` produced by `s1`, (b) the function `fn` passed to `make_value_task`, and (c) a handle to the execution context on which it is currently running. In the simple case, it simply calls `r1.on_value(fn(v1))`, but it may do anything it pleases including submitting more work to the execution context to which `Ex` is a handle.
+5) `ex.submit(r3)` makes a decision about where and how to execute `r3` and calls `r3.on_value(subex)`, where `subex` is an executor that encapsulates that decision. (`subex` is possibly a copy of `ex` itself.)
+6) `r3.on_value(subex)` now has (a) the value `v1` produced by `s1`, (b) the function `fn` passed to `make_value_task`, and (c) a handle to the execution context on which it is currently running. In the simple case, it simply calls `r1.on_value(fn(v1))`, but it may do anything it pleases including submitting more work to the execution context to which `subex` is a handle.
+
+With this structure, eager executors have the flexibility to create `r2` eagerly but defer the creation of `r3` until the decision about where and how to run the task is made. This is a natural fit for how, for instance, many modern work-stealing schedulers interact with eager dependency expression.
 
 ### All Senders have associated executors
 
-TODO
+In the executor worldview (even in P0443), all work is carried out on one or more execution agents.  While the association of execution agents with work need not happen when that work is created, the association with an entity responsible for the creation of those agents always happens as the work is created. This has not changed from P0443. In this proposal, we represent this association by saying that all Senders have executors. Since Senders are a representation of (potentially deferred) work, their association with an entity responsible for creation of agents to execute that work happens when the Sender is constructed; this is semantically evident from the fact that `make_value_task`, which returns a Sender, is a part of the interface of the executor type.
 
 ## Terminology
 
@@ -73,7 +76,7 @@ This paper describes "task construction" and "task submission". By the former, w
 
 A particular executor may decide to perform both task creation _and_ task submission in its `make_value_task`. This would be _eager_. Another may decide to only do task creation in its `make_value_task` and do task submission in the `submit` method of the returned `Sender`. That would be _lazy_.
 
-Generic code that uses executors must assume the lazy case and call `submit` on the sender, even though it may do nothing more than attach a continuation.
+Generic code that uses executors must assume the lazy case and call `submit` on the sender, even though it may do nothing more than attach a (possibly empty) continuation.
 
 ## Why is lazy execution important?
 
@@ -93,7 +96,7 @@ Since a Sender often represents a suspended asynchronous operation, there must b
 
 It is the `submit` operation that allows Senders and Receivers to efficiently support lazy composition. By contrast, the futures from [P0443] and the Concurrency TS had no explicit "submit" operation, only a blocking "`get`" operation and a non-blocking "`then`" operation for chaining a continuation.
 
-If we imagine that a future's `then` operation submitted the task to an execution context after the continuation is attached, then we have a lazy Sender. Nothing is prefenting the Future concept from being defined this way, and that is precisely what this paper suggests.
+If we imagine that a future's `then` operation submitted the task to an execution context after the continuation is attached, then we have a lazy `Sender`. Nothing is preventing the `Future` concept from being defined this way, and that is precisely what this paper suggests.
 
 ## Why is this not the radical change it appears to be?
 
@@ -135,7 +138,7 @@ sender2.submit(p2);
 
 [P0443] `execute` functions return a future. The type of the future is under the executor's control. By splitting `execute` into lazy task construction and a (`void`-returning) work submission API, we enable lazy futures because the code returning the future can rely on the fact that submit will be called by the caller. With that knowledge, the lazy future is safe to return because we can rely on it being run.
 
-We optionally lose the ability to block on completion of the task at task construction time. As `submit` is to be called anyway (except for the pure oneway executor case where submit is implicit) it is cleaner to apply the blocking semantic to `submit` point. In particular, this approach allows us to build executors that return senders that block on completion but are still lazy.
+We optionally lose the ability to block on completion of the task at task construction time. As `submit` is to be called anyway (except for the pure oneway executor case where submit is implicit) it is cleaner to apply the blocking semantic to the invocation of `submit`. In particular, this approach allows us to build executors that return senders that block on completion but are still lazy.
 
 # Suggested Design
 
