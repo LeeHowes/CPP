@@ -80,6 +80,23 @@ A particular executor may decide to perform both task creation _and_ task submis
 
 Generic code that uses executors must assume the lazy case and call `submit` on the sender, even though it may do nothing more than attach a (possibly empty) continuation.
 
+# Before and after <sup><sub><sub>(aka, Tony table)</sub></sub></sup>
+In the table below, where a future is returned this is represented by the promise end of a future/promise pair in the compromise version. Any necessary synchronization or storage is under the control of that promise/future pair, rather than the executor, which will often allow an entirely synchronization-free structure.
+
+| Before | After |
+|--------|-------|
+| `e.execute(c);` | `e.execute(c);` |
+| `e.execute(c);` | `e.make_value_task(trivial_sender{}, c).submit(trivial_receiver{});` |
+| `auto f0 = e.twoway_execute(c);`<br/>`g(f0.get());` | `e.make_value_task(sender{}, c).submit(value_receiver(g));` |
+| `auto f1 = e.then_execute(c, f0);`<br/>`g(f1.get());` | `e.make_value_task(f0, c).submit(value_receiver(g));` |
+| `e.bulk_execute(c, n, sf);` | `e.make_bulk_value_task(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`trivial_sender{}, c, n, sf, []{}).submit(trivial_receiver{});` |
+| `auto f0 = e.bulk_twoway_execute(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`c, n, sf, rf);`<br/>`g(f0.get());` | `e.make_bulk_value_task(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`sender{}, c, n, sf, rf).submit(value_receiver(g));` |
+| `auto f1 = e.bulk_then_execute(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`c, n, f0, sf, rf);`<br/>`g(f1.get());` | `e.make_bulk_value_task(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`f0, c, n, sf, rf).submit(value_receiver(g));` |
+
+If a constructed task is type erased, then it may benefit from custom overloads for known trivial receiver types to optimize. If a constructed task is not type erased then the outgoing receiver will trivially inline.
+
+We do not expect any performance difference between the two forms of the one way execute definition. The task factory-based design gives the opportunity for the application to provide a well-defined output channel for exceptions. For example, the provided output receiver could be an interface to a lock-free exception list if per-request exceptions are not required.
+
 # Design rationale
 
 ## Why is lazy execution important?
@@ -220,23 +237,6 @@ A task may therefore run at any point between constructing it, and being able to
 The definition of the API does, however, allow laziness and as such no sender is guaranteed to run its contained work until a receiver is passed to its `submit` method (or it is passed to a task constructor that calls `submit` implicitly).
 
 As an optional extension, we may define properties that define whether tasks are guaranteed, or allowed, to run eagerly on construction, assuming that their inputs are ready.
-
-## Before and after
-In the table below, where a future is returned this is represented by the promise end of a future/promise pair in the compromise version. Any necessary synchronization or storage is under the control of that promise/future pair, rather than the executor, which will often allow an entirely synchronization-free structure.
-
-| Before | After |
-|--------|-------|
-| `e.execute(c);` | `e.execute(c);` |
-| `e.execute(c);` | `e.make_value_task(trivial_sender{}, c).submit(trivial_receiver{});` |
-| `auto f0 = e.twoway_execute(c);`<br/>`g(f0.get());` | `e.make_value_task(sender{}, c).submit(value_receiver(g));` |
-| `auto f1 = e.then_execute(c, f0);`<br/>`g(f1.get());` | `e.make_value_task(f0, c).submit(value_receiver(g));` |
-| `e.bulk_execute(c, n, sf);` | `e.make_bulk_value_task(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`trivial_sender{}, c, n, sf, []{}).submit(trivial_receiver{});` |
-| `auto f0 = e.bulk_twoway_execute(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`c, n, sf, rf);`<br/>`g(f0.get());` | `e.make_bulk_value_task(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`sender{}, c, n, sf, rf).submit(value_receiver(g));` |
-| `auto f1 = e.bulk_then_execute(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`c, n, f0, sf, rf);`<br/>`g(f1.get());` | `e.make_bulk_value_task(`<br/>&nbsp;&nbsp;&nbsp;&nbsp;`f0, c, n, sf, rf).submit(value_receiver(g));` |
-
-If a constructed task is type erased, then it may benefit from custom overloads for known trivial receiver types to optimize. If a constructed task is not type erased then the outgoing receiver will trivially inline.
-
-We do not expect any performance difference between the two forms of the one way execute definition. The task factory-based design gives the opportunity for the application to provide a well-defined output channel for exceptions. For example, the provided output receiver could be an interface to a lock-free exception list if per-request exceptions are not required.
 
 # Extensions
 A wide range of further customization points should be expected. The above description is the fundamental set that matches the capabilities in [P0443]. To build a full futures library on top of this we will need, in addition:
