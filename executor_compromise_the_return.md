@@ -10,7 +10,7 @@
 
 ## Summary
 
-This paper seeks to add support for lazy task creation and deferred execution to [P0443], while also simplifying the fundamental concepts involved in asynchronous execution. It seeks to do this as a minimal set of diffs to [P0443]. It achieves this by replacing [P0443]'s six `Executor::*execute` member functions with two lazy task constructors that each return a (potentially) lazy Future-like type known as a "Sender". Work is actually enqueued by calling `submit` on a Sender.
+This paper seeks to add support for lazy task creation and deferred execution to [P0443], while also simplifying the fundamental concepts involved in asynchronous execution. It seeks to do this as a minimal set of diffs to [P0443]. It achieves this by replacing [P0443]'s six `Executor::*execute` member functions with two lazy task constructors that each return a (potentially) lazy Future-like type known as a "Sender". Work may then be submitted to the underlying execution context lazily when `submit` is called on a Sender or eagerly at task creation time.
 
 ## Background
 
