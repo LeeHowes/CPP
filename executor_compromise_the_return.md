@@ -18,11 +18,11 @@ This paper seeks to add support for lazy task creation and deferred execution to
 
 At the Spring 2018 meeting in Rapperswil, a significant design problem was identified: poor support for _lazy_ execution, whereby executors participate in the efficient construction and optimal composition of tasks _prior_ to those tasks being enqueued for execution. A solution was put forward by [P1055]: "senders" (called "deferred" in that paper) and "receivers". Senders and receivers could be freely composed into richer senders and receivers, and only when a receiver was "submitted" to a sender would that task be passed to an execution context for actual execution.
 
-[P1055] represented a radical departure from the [P0443] design. LEWG deferred the decision to merge [P0443] until the alternative had been explored. There are, however, good reasons to be circumspect: a significant redesign now would almost certainly push Executors, and possibly the Networking TS which depends on it, out past C++20. Also, the authors of [P1055] had not yet proved to the satisfaction of the experts in SG1 that senders and receivers could efficiently address all the use cases that shaped the design of [P0443].
+[P1055] represented a radical departure from the [P0443] design. LEWG deferred the decision to merge [P0443] until the alternative had been explored. There are, however, good reasons to be circumspect: a significant redesign now would almost certainly push Executors, and the Networking TS which depends on it, out past C++20. Also, the authors of [P1055] had not yet proved to the satisfaction of the experts in SG1 that senders and receivers could efficiently address all the use cases that shaped the design of [P0443].
 
-This paper seeks a middle way: a small set of changes to [P0443] that improve its support for lazy execution. The changes are limited to such a degree that it should be obvious from inspection that no functionality has been lost.
+This paper seeks a middle way: a small set of changes to [P0443] that improve its support for lazy execution. The changes are limited to such a degree that no functionality has been lost.
 
-_Note: This paper only seeks to add support for lazy task composition and execution to [P0443] while maintaining feature parity with [P0443] and eliminating some now-superfluous complexity. Companion papers will fill in additional gaps in [P0443]._
+_Note: This paper only seeks to add support for lazy task composition and execution to [P0443] while maintaining feature parity with [P0443]. Companion papers will fill in additional gaps in [P0443]._
 
 <!--
 Bryce notes that P0443 has no story for data dependencies and dependent execution, and that is another thing we would like to address, but that is left for another paper.
@@ -57,14 +57,14 @@ Additionally, this paper adds support for **task cancellation**, reflecting the 
 
 In a great many interesting scenarios, a launched task needs to know something about the execution context on which it is executing. Perhaps the task needs to submit nested work to the same context, for instance. Exactly _which_ context an executor decides to schedule the work on can be entirely runtime dependent. For instance, a thread pool executor doesn't know _a priori_ on which thread it will schedule a task.
 
-In order to keep this information in-band, an Executor is a Sender whose `.submit(...)` member passes itself or some sub-executor through the value channel. In practice, a `Sender` returned from `.make_value_task(...)` will typically work like this:
+In order to keep this information in-band, an `Executor is a Sender whose `.submit(...)` member passes itself or some sub-executor through the value channel. In practice, a `Sender` returned from `.make_value_task(...)` will typically work like this:
 
 1) `ex.make_value_task(s1, fn)` returns `s2` that has a copy of `ex`, `s1`, and `fn`.
 2) `s2.submit(r1)` creates a new receiver `r2` that stores `ex`, `fn`, and `r1` and passes that to `s1.submit(r2)`.
 3) If `s1` completes with a value, it calls `r2.on_value(v1)`.
 4) `r2.on_value(v1)` builds a new receiver `r3` that captures `fn`, `v1`, and `r1` and passes that to `ex.submit(r3)`.
 5) `ex.submit(r3)` makes a decision about where to execute `r3` and calls `r3.on_value(Ex)`, where `Ex` is an executor that encapsulates that decision. (`Ex` is possibly a copy of `ex` itself.)
-5) `r3.on_value(Ex)` now has (a) the value `v1` produced by `s1`, (b) the function `fn` passed to `make_value_task`, and (c) a handle to the execution context on which it is currently running. In the simple case, it simply calls `r1.on_value(fn(v1))`, but it may do anything it pleases including submitting more work to the execution context to which `Ex` is a handle.
+6) `r3.on_value(Ex)` now has (a) the value `v1` produced by `s1`, (b) the function `fn` passed to `make_value_task`, and (c) a handle to the execution context on which it is currently running. In the simple case, it simply calls `r1.on_value(fn(v1))`, but it may do anything it pleases including submitting more work to the execution context to which `Ex` is a handle.
 
 ### All Senders have associated executors
 
@@ -84,7 +84,7 @@ There is a logical "race" in attaching a continuation to an already-running asyn
 
 Attaching a continuation to an asynchronous operation _before_ it has been submitted for execution is essentially free. Often, large chunks of an algorithm's asynchronous data and control flow can be built in this way, greatly reducing the synchronization and allocation overhead.
 
-## In what specific was was [P0443] failing to address the lazy execution scenario?
+## In what specific ways was [P0443] failing to address the lazy execution scenario?
 
 The Future concept of [P0443] was undefined, but by inference it is a handle to a task that has already been submitted for execution. By returning handles to already-running tasks, the twoway and then_execute functions were making it impossible to build task chains in an executor-specific way without incuring a synchronization and allocation penalty. [P0443] offered no other way for an executor to participate in the construction and submission of task chains.
 
@@ -110,13 +110,18 @@ A sender is a generalization of a future. It _may_ be a handle to already queued
 
 ### Receivers are Continuations
 
-In [P0443], a continuation was a simple callable, but that didn't give a convenient place for errors to go if the preceding computation failed. This shortcoming had already been recognized, and was the subject of [P1054], which recommended _promises_ -- which have both a value and an error channel -- as a useful abstraction for continuations. A Receiver is little more than a promise, with the addition of a cancellation channel.
+In [P0443], a continuation was a simple callable, but that didn't give a convenient place for errors to go if the preceding computation failed. This shortcoming had already been recognized, and was the subject of [P1054], which recommended _promises_ -- which have both a value and an error channel -- as a useful abstraction for continuations. A `Receiver` is little more than a promise, with the addition of a cancellation channel.
 
 In short, if you squint at [P0443] and [P1054], the sender and receiver concepts are already there. They just weren't fully spelled out.
 
 ### Task construction is separate from submission
 
-The _real_ change in this proposal is to break the `execute` functions up into two steps: task creation (`s = ex.make_(bulk_)?value_task(...)`) and work submission (`s.submit(...)`). It is not hard to see how the reformulation is isometric with the original:
+The _real_ change in this proposal is to break the `execute` functions up into two steps:
+
+- Task creation (`s = ex.make_(bulk_)?value_task(...)`), and
+- Work submission (`s.submit(...)`).
+
+It is not hard to see how the reformulation is isometric with the original:
 
 ```c++
 auto fut2 = ex.then_execute(fut1, fn);
@@ -129,11 +134,11 @@ auto sender2 = ex.make_value_task(sender1, fn);
 sender2.submit(p2);
 ```
 
-...where `p2` is possibly a promise corresponding to `fut2` from above, though it need not be.
+... where `p2` is possibly a promise corresponding to `fut2` from above, though it need not be.
 
 [P0443] `execute` functions return a future. The type of the future is under the executor's control. By splitting `execute` into lazy task construction and a (`void`-returning) work submission API, we enable lazy futures because the code returning the future can rely on the fact that submit will be called by the caller. With that knowledge, the lazy future is safe to return because we can rely on it being run.
 
-We optionally lose the ability to block on completion of the task at task construction time. As submit is to be called anyway (except for the pure oneway executor case where submit is implicit) it is cleaner to apply the blocking semantic at this point if we are to have it at all. In particular, this approach allows us to build executors that return senders that block on completion but are still lazy.
+We optionally lose the ability to block on completion of the task at task construction time. As `submit` is to be called anyway (except for the pure oneway executor case where submit is implicit) it is cleaner to apply the blocking semantic to `submit` point. In particular, this approach allows us to build executors that return senders that block on completion but are still lazy.
 
 # Suggested Design
 
