@@ -1,11 +1,11 @@
 ---
-pagetitle: "The Compromise Executors Proposal: A lazy simplification of [P0443]"
-title: "The Compromise Executors Proposal: A lazy simplification of [P0443]"
+pagetitle: "P1194: The Compromise Executors Proposal: A lazy simplification of [P0443]"
+title: "P1194: The Compromise Executors Proposal: A lazy simplification of [P0443]"
 ...
 
 | | |
 | --------|-------|
-| Document: | Dxxxx |
+| Document: | P1194 |
 | Date: | Sept 12, 2018 |
 | Audience: | SG1 |
 | Authors: | Lee Howes &lt;lwh@fb.com&gt;<br/>Eric Niebler &lt;eniebler@fb.com&gt;<br/>Kirk Shoop &lt;kirkshoop@fb.com&gt;<br/>Bryce Lelbach &lt;brycelelback@gmail.com&gt;<br/>David S. Hollman &lt;dshollm@sandia.gov&gt; |
@@ -164,7 +164,7 @@ We optionally lose the ability to block on completion of the task at task constr
 # Suggested Design
 
 > _[Editorial note:_ The discussed compromise is that we should replace the enqueue functions (`ex.*execute`) with a limited set of (potentially lazy) task factories. Any syntactic cost of providing a trivial output receiver (i.e., a sink) to these operations can be hidden in wrapper functions. We do not expect a runtime cost assuming we also provide a trivial parameter-dropping receiver in the standard library against which an implementation can optimize.
-> 
+>
 > By passing a full set of parameters to task construction functions, any task we place in a task graph may be type erased with no loss of efficiency. There may still be some loss of efficiency if the executor is type erased before task construction because the compiler may no longer be able to see from the actual executor into the passed functions. The earlier we perform this operation, however, the more chance there is of making this work effectively. _&mdash; end note]_
 
 ## Sender and Receiver concepts
@@ -360,11 +360,11 @@ The most prominent difference is that `std::future<T>` is a type with a specifie
 
 > Another way in which `std:future<T>` is like `std:pair<F, S>` is that there are many reasons to make a struct that has two members instead of using `std::pair<F, S>`. There are also reasons to implement `Sender` in many different ways.
 
-A crucial difference is in how Sender and Receiver are composed. 
+A crucial difference is in how Sender and Receiver are composed.
  - `std::promise<T>` has a `future<T>` that is returned from `std::promise<T>::get_future()`
  - A *Sender* has a submit method that takes a *Receiver* and returns void
 
-When the promise is the producer and owns the consumer there are two implementation options. 
+When the promise is the producer and owns the consumer there are two implementation options.
  1. Create shared state and synchronize access to the shared state. This option is the common case as it allows the producer to safely set a value before the consumer asks for the value.
  2. Define `std::promise<T>::set_value()` and `std::promise<T>::set_exception()` to have undefined-behaviour when called before the consumer has asked for the value. I have not seen an implementation of this.
 
