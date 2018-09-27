@@ -5,14 +5,16 @@
 | Audience: | SG1 |
 | Authors: | Lee Howes &lt;lwh@fb.com&gt;<br/> |
 
-# Summary
+# Integrating executors with the standard library through customization.
+
+## Summary
 To fully benefit from executors we need to integrate them into the standard library.
 As a potential user of the parallel and concurrent algorithms in the standard Facebook is excited to see the standard library be able to serve the purpose that custom algorithms currrently solve.
 Unfortunately, we do not believe that the bulk execution as defined in [P0443] alone is adequate.
 We will need to expand the set of algorithms and queries available on executors over time to be able to expect that the standard algorithms can provide a high level of performance using these facilities.
 To avoid this, and because we already have a set of algorithms defined in the standard, we propose taking a more direct approach and customising the standard library directly.
 
-# Background
+## Background
 [P0443] defines bulk execution on executors. During the Bellevue ad-hoc meeting we agreed that the long-term direction proposed in [P1194] to move to a Sender/Receiver model will be beneficial, but that in the short term we should focus on one way execution only, with a goal to support the standard library and upcoming networking API as defined in the networking TS.
 Unfortunately, bulk execution on executors as defined relies on the standard algorithms implementating a significant amount of customisation work on executors to hope to achieve competitive performance.
 The definition of and amount of shared state, the shape of the parallel execution, and the chunk size computed by each worker are up to the algorithm.
@@ -25,7 +27,7 @@ We would, however, drop the `bulk_execution_requirement` proposed, because this 
 
 It is also unnecessary to require that only bulk executors participate in parallel policies. This is an implementation detail and no use of `can_require_v` is necessary in the interaction. It is entirely reasonable for a thread pool executor to run an algorithm against the parallel policy, and doing so makes available implementation options for how the dispatches threads behave.
 
-# The proposal
+## The proposal
 To avoid n x m problem, and to allow future scaling of algorithm performance as new executor vendors arise, without the need for us to reimplement the standard algorithms or, worse, to ask the standard library vendor to reimplement them for us, we should allow the algorithms to be directly customised on the executor.
 
 By customising the algorithms directly new executor implementors can improve the performance of algorithms by providing their own customisations, independent of updates to the standard library. We should apply the same approach to range-based parallel algorithms in future, consistent with the current work on ranges as in [P0896].
@@ -36,7 +38,7 @@ While there is scope for an m x n expansion here, in practice a standard library
 
 `std::async` could be defined in terms of directly enqueuing to the executor, but this would require that we enqueue a task that satisfies a `std::promise`. It is conceivable that an implementation might be implemented such that it returns something convertible to `std::future` or via other means, so the means of producing the `std::future` is implementation defined under customization. Similarly the parallel algorithms are synchronous, but we do not rely on a blocking enqueue property because we would prefer to be able to disallow executors that block on enqueue entirely from our codebase. To that end we would prefer to customize the algorithms to use their own blocking mechanism internally with the aim of being able to customize our code without the risk of introducing dangerous blocking executors.
 
-## Changes to future.syn
+### Changes to future.syn
 Add to `<future>` header synopsis:
 ```
 template <class Executor, class F, class... Args>
@@ -44,7 +46,7 @@ template <class Executor, class F, class... Args>
       async(Executor ex, F&& f, Args&&... args);
 ```
 
-## Changes to futures.async
+### Changes to futures.async
 Add:
 ```
 template <class Executor, class F, class... Args>
@@ -55,7 +57,7 @@ template <class Executor, class F, class... Args>
 To *effects* add:
 The third function calls `std::execution::async_e(std::move(ex), std::forward<F>(f), std::forward<Args>(args)...)`
 
-## Add a new section *Customization Points*.
+### Add a new section *Customization Points*.
 
 The name `async` denotes a *customization point object*. The expression `execution::async_e(E, F, Args...)` for some expressions `E`, `F` and the list `Args...` is expression-equivalent to the following:
  * `static_cast<decltype(async_e(E, F, Args...))>(async_e(E, F, Args...))` if that expression is well-formed when evaluated in a context that does not include `execution::async_e` but does include the lookup set produced by argument-dependent lookup (6.4.2).
@@ -63,7 +65,7 @@ The name `async` denotes a *customization point object*. The expression `executi
  * Otherwise `execution::async_e(E, F, Args...)` is ill-formed.
 
 
-## Changes to 23.19.2 Header <execution> synopsis
+### Changes to 23.19.2 Header <execution> synopsis
 
 Execution policies should be typed on the executor.
 
@@ -97,7 +99,7 @@ template<class Executor>
 class parallel_unsequenced_policy;
 ```
 
-## Changes to execpol.seq
+### Changes to execpol.seq
 
 We add the `executor()` amd `on(Executor)` operations.
 
@@ -136,7 +138,7 @@ Introduce a member function `sequenced_policy::on()`:
 Returns: An execution policy object policy identical to `*this` with the exception that the returned execution policy's associated executor is a copy of `ex`. execution::is_execution_policy<decltype(policy)>::value is true.
 
 
-## Changes to execpol.par
+### Changes to execpol.par
 
 We add the `executor()` amd `on(Executor)` operations.
 
@@ -175,7 +177,7 @@ Introduce a member function `parallel_policy::on()`:
 Returns: An execution policy object policy identical to `*this` with the exception that the returned execution policy's associated executor is a copy of `ex`. execution::is_execution_policy<decltype(policy)>::value is true.
 
 
-## Changes to execpol.parunseq
+### Changes to execpol.parunseq
 
 We add the `executor()` amd `on(Executor)` operations.
 
@@ -213,7 +215,7 @@ Introduce a member function `parallel_unsequenced_policy::on()`:
 ```
 Returns: An execution policy object policy identical to `*this` with the exception that the returned execution policy's associated executor is a copy of `ex`. execution::is_execution_policy<decltype(policy)>::value is true.
 
-## Changes to execpol.objects
+### Changes to execpol.objects
 
 
 Replace:
@@ -230,17 +232,17 @@ inline constexpr execution::parallel_policy<unspecified> par{ unspecified };
 inline constexpr execution::parallel_unsequenced_policy<unspecified> par_unseq{ unspecified };
 ```
 
-## Changes to algorithms.parallel.overloads
+### Changes to algorithms.parallel.overloads
 Add:
 Parallel algorithms overloads taking an `ExecutionPolicy` not defined by the implementation will dispatch to a customization point object in the `std::execution` namespace.
 
 Using `all_of` as an example, this modification should be propagated to all other algorithms with `ExecutionPolicy` overloads.
 
-## Changes to alg.all_of
+### Changes to alg.all_of
 Add:
 The execution policy overload will dispatch to `execution::all_of_e(exec.executor(), std::forward<ExecutionPolicy>(exec), first, last)` for any execution policy not defined by the implementation.
 
-## Add a new section *Customization Points*.
+### Add a new section *Customization Points*.
 
 The name `all_of_e` denotes a *customization point object*. The expression `execution::all_of_e(E, EP, F, L)` for some expressions `E`, `EP`, `F` and `F` is expression-equivalent to the following:
  * `static_cast<decltype(all_of_e(E, EP, F, L))>(all_of_e(E, EP, F, L))`, if that expression is well-formed when evaluated in a context that does not include `execution::all_of_e` but does include the lookup set produced by argument-dependent lookup (6.4.2).
@@ -250,7 +252,7 @@ The name `all_of_e` denotes a *customization point object*. The expression `exec
 
 Repeat the above definition of `all_of` for the other `ExecutionPolicy`-taking algorithms.
 
-# Open questions
+## Open questions
 
  * The wording for customization points will need clarifying to decide precisely the right strategy for having an overload of a pre-existing `std::` function call a customization point object without risk of conflicts. I have added `_e` to the names in the `execution` namespace as a handover from a pre-existing `std` namespace function into an `execution` customization point.
  * Do we have to have separate names for the templated execution policies for ABI reasons? If so this is a minor change and we have left it out of the proposal above.
