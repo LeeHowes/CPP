@@ -32,6 +32,37 @@ By customising the algorithms directly new executor implementors can improve the
 
 While there is scope for an m x n expansion here, in practice a standard library vendor can specify in documentation what dependence graph they are using to implement their algorithms. In the worst case, this amounts to implementing all independently, but it might, for example, mean implementing them all in terms of `for_each` which would allow an executor vendor to target `for_each` first and all algorithms can benefit. This one-way information flow from standard library implementor to executor implementor will be much easier to scale than expecting standard library implementors to also optimise for the range of available executors.
 
+`std::async` should also have executor support. As a concrete future concept is not likely to arrive in C++20, we propose that even with executors `std::async` should be an eager, `std::future`-returning operation and should not customise its future type. Any equivalent of `async` in a world of new futures with support for laziness should be a new algorithm.
+
+`std::async` could be defined in terms of directly enqueuing to the executor, but this would require that we enqueue a task that satisfies a `std::promise`. It is conceivable that an implementation might be implemented such that it returns something convertible to `std::future` or via other means, so the means of producing the `std::future` is implementation defined under customization. Similarly the parallel algorithms are synchronous, but we do not rely on a blocking enqueue property because we would prefer to be able to disallow executors that block on enqueue entirely from our codebase. To that end we would prefer to customize the algorithms to use their own blocking mechanism internally with the aim of being able to customize our code without the risk of introducing dangerous blocking executors.
+
+## Changes to future.syn
+Add to `<future>` header synopsis:
+```
+template <class Executor, class F, class... Args>
+      future<invoke_result_t<decay_t<F>, decay_t<Args>...>>
+      async(Executor ex, F&& f, Args&&... args);
+```
+
+## Changes to futures.async
+Add:
+```
+template <class Executor, class F, class... Args>
+      future<invoke_result_t<decay_t<F>, decay_t<Args>...>>
+      async(Executor ex, F&& f, Args&&... args);
+```
+
+To *effects* add:
+The third function calls `std::execution::async_e(std::move(ex), std::forward<F>(f), std::forward<Args>(args)...)`
+
+## Add a new section *Customization Points*.
+
+The name `async` denotes a *customization point object*. The expression `execution::async_e(E, F, Args...)` for some expressions `E`, `F` and the list `Args...` is expression-equivalent to the following:
+ * `static_cast<decltype(async_e(E, F, Args...))>(async_e(E, F, Args...))` if that expression is well-formed when evaluated in a context that does not include `execution::async_e` but does include the lookup set produced by argument-dependent lookup (6.4.2).
+ * Otherwise if `is_executor_v<E>` is true then: `execution::async_e(E, F, Args...)`.
+ * Otherwise `execution::async_e(E, F, Args...)` is ill-formed.
+
+
 ## Changes to 23.19.2 Header <execution> synopsis
 
 Execution policies should be typed on the executor.
@@ -207,24 +238,23 @@ Using `all_of` as an example, this modification should be propagated to all othe
 
 ## Changes to alg.all_of
 Add:
-The execution policy overload will dispatch to `execution::all_of(exec.executor(), std::forward<ExecutionPolicy>(exec), first, last)` for any execution policy not defined by the implementation.
+The execution policy overload will dispatch to `execution::all_of_e(exec.executor(), std::forward<ExecutionPolicy>(exec), first, last)` for any execution policy not defined by the implementation.
 
 ## Add a new section *Customization Points*.
 
-The name `all_of` denotes a *customization point object*. The expression `execution::all_of(E, EP, F, L)` for some expressions `E`, `EP`, `F` and `F` is expression-equivalent to the following:
-some subexpression E is expression-equivalent to the following:
- * `static_cast<decltype(all_of(E, EP, F, L))>(all_of(E, EP, F, L))`, if that expression is well-formed when evaluated in a context that does not include `execution::all_of` but does include the lookup set produced by argument-dependent lookup (6.4.2).
- * Otherwise if `is_execution_policy_v<decay_- t<EP>>` is true then `execution::all_of(EP, F, L)`
- * Otherwise `execution::all_of(E, EP, F, L)` is ill-formed.
+The name `all_of_e` denotes a *customization point object*. The expression `execution::all_of_e(E, EP, F, L)` for some expressions `E`, `EP`, `F` and `F` is expression-equivalent to the following:
+ * `static_cast<decltype(all_of_e(E, EP, F, L))>(all_of_e(E, EP, F, L))`, if that expression is well-formed when evaluated in a context that does not include `execution::all_of_e` but does include the lookup set produced by argument-dependent lookup (6.4.2).
+ * Otherwise if `is_execution_policy_v<decay_- t<EP>>` is true then `execution::all_of_e(EP, F, L)`
+ * Otherwise `execution::all_of_e(E, EP, F, L)` is ill-formed.
 
 
 Repeat the above definition of `all_of` for the other `ExecutionPolicy`-taking algorithms.
 
 # Open questions
 
+ * The wording for customization points will need clarifying to decide precisely the right strategy for having an overload of a pre-existing `std::` function call a customization point object without risk of conflicts. I have added `_e` to the names in the `execution` namespace as a handover from a pre-existing `std` namespace function into an `execution` customization point.
  * Do we have to have separate names for the templated execution policies for ABI reasons? If so this is a minor change and we have left it out of the proposal above.
  * Should we return to the unspecified policy types in [P1019], which has the advantage allowing us to remove the `E` parameter from the customisation points, at the cost of weaking the definition of the execution policy object API.
- * Should we define std::async the same way. This is certainly achievable, with policies and/or executors, but the cost is still returning std::future which means it can never be made optimally efficient. Allowing the customisation point to define the return type is risky because without a concept for the returned value it would be hard to use portably.
 
 
 
