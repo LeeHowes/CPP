@@ -6,7 +6,8 @@
 | Authors: | Lee Howes &lt;lwh@fb.com&gt;<br/>Eric Niebler &lt;eniebler@fb.com&gt;<br/>Lewis Baker &lt;lbaker@fb.com&gt; |
 
 # Summary
-We believe that we should move forward with merging the Coroutines TS into the IS for C++20. While there is some possibility that the Core Coroutines [P1063] work may show some advantages in some areas it is far from clear, and has a long timeline to realise that clarify given the implementation experience we have with the TS already.
+We believe that we should move forward with merging the Coroutines TS into the IS for C++20.
+While there is some possibility that the Core Coroutines [P1063] work may show some advantages in some areas it is far from clear, and has a long timeline to realise that clarity given the implementation experience we have with the TS already.
 
 # Facebook's experience
 Coroutines are increasingly important to Facebook's long term planning, and likely to the standard as a whole.
@@ -21,7 +22,13 @@ Compared to library-based fibers code we see a different set of advantages aroun
 
 While there are known gaps in the standard, we see a path to filling these gaps that we are comfortable with and that need not affect our implementation strategy.
 
-# A call to progress
+# The concerns expressed by Core Coroutines
+The concerns expressed are valid, but we believe fixable in the TS and at the same time not necessarily addressing the issues we see.
+ * `co_await` **keyword and non-asynchronous code**: We do not hold a strong opinion either way on this.
+ * **Guaranteed heap elision**: Core coroutines makes heap elision explicit, which is important for the error handling use case. We believe that heap elision for such a self-contained synchronous operation works well in the TS as it is. Further, the bigger concern we see is not that a given coroutine needs control over how it is allocated, but that the caller needs to be able to guarantee that a coroutine it awaits on has its allocation elided, and that this must happen across ABI boundaries. This is important because a given coroutine might have to allocate in case the caller wishes to detach the `Awaitable` from the `co_await`, but when detaching is not done the caller should be able to rely on heap allocation not happening. This call-site-dependent control is, in our understanding, not addressed, but is important to efficiently support fiber->coroutine rewrites.
+ * **Lack of reference parameter safety**: Capturing reference parameters in a coroutine is a risk. In practice, though, we don't believe that the Core Coroutines proposal actually makes a meaningful safety improvement, and we would have to rely on correctness checking and code review to make this safe anyway. A function that takes parameters by reference in both approaches has to be treated safely by the caller. What we gain with core coroutines is the fairly limited additional safety that the author of a coroutine has to think about how the parameters end up in the coroutine lambda capture list. We will need to look at best practices for this writing coroutines in practice, but believe we would have to check for reference capture with tooling anyway and that tooling could equally see the hidden capture.
+
+# A call to move forward
 It has been said frequently that the best is the enemy of the good. At the present time, the flaws the core coroutines proposal tries to fix are not entirely clear, and worse not clearly fixed. We could go down the path of waiting, and hoping that that proposal is fleshed out enough to be convincing, is used to implement everything that has been implemented using the TS functionality and shown to be on parity in all other areas, as well as fixing the flaws. This is a long road, and one that may still not take us anywhere.
 
 The community needs to be able to run and not walk in the direction of coroutines, with the huge usability and performance improvements they bring.
