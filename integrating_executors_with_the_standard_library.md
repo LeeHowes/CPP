@@ -240,14 +240,14 @@ Using `all_of` as an example, this modification should be propagated to all othe
 
 ### Changes to alg.all_of
 Add:
-The execution policy overload will dispatch to `execution::all_of_e(exec.executor(), std::forward<ExecutionPolicy>(exec), first, last)` for any execution policy not defined by the implementation.
+The execution policy overload will dispatch to `execution::all_of_e(std::forward<ExecutionPolicy>(exec), first, last)` for any execution policy not defined by the implementation.
 
 ### Add a new section *Customization Points*.
 
-The name `all_of_e` denotes a *customization point object*. The expression `execution::all_of_e(E, EP, F, L)` for some expressions `E`, `EP`, `F` and `F` is expression-equivalent to the following:
- * `static_cast<decltype(all_of_e(E, EP, F, L))>(all_of_e(E, EP, F, L))`, if that expression is well-formed when evaluated in a context that does not include `execution::all_of_e` but does include the lookup set produced by argument-dependent lookup (6.4.2).
- * Otherwise if `is_execution_policy_v<decay_- t<EP>>` is true then `execution::all_of_e(EP, F, L)`
- * Otherwise `execution::all_of_e(E, EP, F, L)` is ill-formed.
+The name `all_of_e` denotes a *customization point object*. The expression `execution::all_of_e(EP, F, L)` for some expressions `EP`, `F` and `F` is expression-equivalent to the following:
+ * `static_cast<decltype(all_of_e(EP, F, L))>(all_of_e(EP, F, L))`, if that expression is well-formed when evaluated in a context that does not include `execution::all_of_e` but does include the lookup set produced by argument-dependent lookup (6.4.2).
+ * Otherwise if `is_execution_policy_v<decay_t<EP>>` is true then `execution::all_of_e(EP, F, L)`
+ * Otherwise `execution::all_of_e(EP, F, L)` is ill-formed.
 
 
 Repeat the above definition of `all_of` for the other `ExecutionPolicy`-taking algorithms.
