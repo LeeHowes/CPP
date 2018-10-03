@@ -10,7 +10,7 @@
 ## Summary
 To fully benefit from executors we need to integrate them into the standard library.
 As a potential user of the parallel and concurrent algorithms in the standard Facebook is excited to see the standard library be able to serve the purpose that custom algorithms currrently solve.
-Unfortunately, we do not believe that the bulk execution as defined in [P0443] alone is adequate.
+Unfortunately, we do not believe that the bulk execution as defined in [P0443] alone is adequate to provide performance optimal to each runtime or platform backing the executor passed to the algorithm.
 We will need to expand the set of algorithms and queries available on executors over time to be able to expect that the standard algorithms can provide a high level of performance using these facilities.
 To avoid this, and because we already have a set of algorithms defined in the standard, we propose taking a more direct approach and customising the standard library directly.
 
@@ -19,13 +19,11 @@ To avoid this, and because we already have a set of algorithms defined in the st
 Unfortunately, bulk execution on executors as defined relies on the standard algorithms implementating a significant amount of customisation work on executors to hope to achieve competitive performance.
 The definition of and amount of shared state, the shape of the parallel execution, and the chunk size computed by each worker are up to the algorithm.
 
-It is therefore hard to see how a standard library can create a portable implementation of the parallel algorithms.
-Furthermore, optimally we would like to see passing an executor provided by some accelerator hardware or optimised library vendor to allow that library to take the role of implementing the optimised algorithm, because the authors of that library are in a position to fully understand the tradeoffs of implementing such an algorithm far better than a universal library author can hope to. Yet the current definition expects both parties to be involved in that optimisation, leading to a potentially unscalable need for a standard library vendor to understand all possible executors that are passed in to provide a suitable implementation of the algorithm.
+It is therefore hard to see how a standard library can create a portable implementation of the parallel algorithms across the range of possible executors.
+Furthermore, optimally we would like to see passing an executor provided by some accelerator hardware or optimised library vendor to allow that library to take the role of implementing the optimised algorithm, because the authors of that library are in a position to fully understand the tradeoffs of implementing such an algorithm far better than a universal library author can hope to. Yet the current definition expects both parties to be involved in that optimisation, leading to a potentially unscalable need for a standard library vendor to understand all possible executors that are passed in to provide a suitable implementation of the algorithm. In particular, without extending the standard library code directly it is not possible to optimise the structure of the entire standard algorithm for a given executor. The opportunity to optimise should be offered to the author of an executor, such that importing a new executor really provides the application author with the opportunity to benefit from any knowledge that executor author has that would improve the behaviour of the standard algorithms.
 
 [P1019] proposes the addition of `.on(Executor)` to the execution policies, to add a `.executor()` operation to the policies to return the default and a few other minor changes. These all appear entirely reasonable.
 We would, however, drop the `bulk_execution_requirement` proposed, because this is an unnecessary complication when generalising the algorithms. The policy covers the assumptions the user has made of the parameters to the algorithm, should be obeyed by the executor, and is available to the customisation, but beyond that adds little.
-
-It is also unnecessary to require that only bulk executors participate in parallel policies. This is an implementation detail and no use of `can_require_v` is necessary in the interaction. It is entirely reasonable for a thread pool executor to run an algorithm against the parallel policy, and doing so makes available implementation options for how the dispatches threads behave.
 
 ## The proposal
 To avoid n x m problem, and to allow future scaling of algorithm performance as new executor vendors arise, without the need for us to reimplement the standard algorithms or, worse, to ask the standard library vendor to reimplement them for us, we should allow the algorithms to be directly customised on the executor.
@@ -255,21 +253,7 @@ Repeat the above definition of `all_of` for the other `ExecutionPolicy`-taking a
 ## Open questions
 
  * The wording for customization points will need clarifying to decide precisely the right strategy for having an overload of a pre-existing `std::` function call a customization point object without risk of conflicts. I have added `_e` to the names in the `execution` namespace as a handover from a pre-existing `std` namespace function into an `execution` customization point.
- * Do we have to have separate names for the templated execution policies for ABI reasons? If so this is a minor change and we have left it out of the proposal above.
- * Should we return to the unspecified policy types in [P1019], which has the advantage allowing us to remove the `E` parameter from the customisation points, at the cost of weaking the definition of the execution policy object API.
-
-
-
-
-
-
-
-
-
-
-
-
-
+ * Do we have to have separate names for the templated execution policies for ABI reasons? That is that the current policies are non-templated, and this would be adding templated ones. If so this is a minor change and we have left it out of the proposal above. Quite how we package the result of `policy.on(executor)` is fairly flexible.
 
 
 [P0443]: https://wg21.link/P0443
