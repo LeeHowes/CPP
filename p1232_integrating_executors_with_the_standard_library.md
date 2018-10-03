@@ -1,6 +1,6 @@
 | | |
 | --------|-------|
-| Document: | P1232 |
+| Document: | P |
 | Date: | October 8, 2018 |
 | Audience: | SG1 |
 | Authors: | Lee Howes &lt;lwh@fb.com&gt;<br/>Eric Niebler &lt;eniebler@fb.com&gt;<br/>Kirk Shoop &lt;kirkshoop@fb.com&gt;<br/>Lewis Baker &lt;lbaker@fb.com&gt;<br/>Robert Geva &lt;ryg@fb.com&gt; |
@@ -12,23 +12,23 @@ To fully benefit from executors we need to integrate them into the standard libr
 As a potential user of the parallel and concurrent algorithms in the standard Facebook is excited to see the standard library be able to serve the purpose that custom algorithms currrently solve.
 Unfortunately, we do not believe that the bulk execution as defined in [P0443] alone is adequate to provide performance optimal to each runtime or platform backing the executor passed to the algorithm.
 We will need to expand the set of algorithms and queries available on executors over time to be able to expect that the standard algorithms can provide a high level of performance using these facilities.
-To avoid this, and because we already have a set of algorithms defined in the standard, we propose taking a more direct approach and customising the standard library directly.
+To avoid this, and because we already have a set of algorithms defined in the standard, we propose taking a more direct approach and customizing the standard library directly.
 
 ## Background
 [P0443] defines bulk execution on executors. During the Bellevue ad-hoc meeting we agreed that the long-term direction proposed in [P1194] to move to a Sender/Receiver model will be beneficial, but that in the short term we should focus on one way execution only, with a goal to support the standard library and upcoming networking API as defined in the networking TS.
-Unfortunately, bulk execution on executors as defined relies on the standard algorithms implementating a significant amount of customisation work on executors to hope to achieve competitive performance.
+Unfortunately, bulk execution on executors as defined relies on the standard algorithms implementating a significant amount of customization work on executors to hope to achieve competitive performance.
 The definition of and amount of shared state, the shape of the parallel execution, and the chunk size computed by each worker are up to the algorithm.
 
 It is therefore hard to see how a standard library can create a portable implementation of the parallel algorithms across the range of possible executors.
 Furthermore, optimally we would like to see passing an executor provided by some accelerator hardware or optimised library vendor to allow that library to take the role of implementing the optimised algorithm, because the authors of that library are in a position to fully understand the tradeoffs of implementing such an algorithm far better than a universal library author can hope to. Yet the current definition expects both parties to be involved in that optimisation, leading to a potentially unscalable need for a standard library vendor to understand all possible executors that are passed in to provide a suitable implementation of the algorithm. In particular, without extending the standard library code directly it is not possible to optimise the structure of the entire standard algorithm for a given executor. The opportunity to optimise should be offered to the author of an executor, such that importing a new executor really provides the application author with the opportunity to benefit from any knowledge that executor author has that would improve the behaviour of the standard algorithms.
 
 [P1019] proposes the addition of `.on(Executor)` to the execution policies, to add a `.executor()` operation to the policies to return the default and a few other minor changes. These all appear entirely reasonable.
-We would, however, drop the `bulk_execution_requirement` proposed, because this is an unnecessary complication when generalising the algorithms. The policy covers the assumptions the user has made of the parameters to the algorithm, should be obeyed by the executor, and is available to the customisation, but beyond that adds little.
+We would, however, drop the `bulk_execution_requirement` proposed, because this is an unnecessary complication when generalising the algorithms. The policy covers the assumptions the user has made of the parameters to the algorithm, should be obeyed by the executor, and is available to the customization, but beyond that adds little.
 
 ## The proposal
 To avoid n x m problem, and to allow future scaling of algorithm performance as new executor vendors arise, without the need for us to reimplement the standard algorithms or, worse, to ask the standard library vendor to reimplement them for us, we should allow the algorithms to be directly customised on the executor.
 
-By customising the algorithms directly new executor implementors can improve the performance of algorithms by providing their own customisations, independent of updates to the standard library. We should apply the same approach to range-based parallel algorithms in future, consistent with the current work on ranges as in [P0896].
+By customizing the algorithms directly new executor implementors can improve the performance of algorithms by providing their own customizations, independent of updates to the standard library. We should apply the same approach to range-based parallel algorithms in future, consistent with the current work on ranges as in [P0896].
 
 While there is scope for an m x n expansion here, in practice a standard library vendor can specify in documentation what dependence graph they are using to implement their algorithms. In the worst case, this amounts to implementing all independently, but it might, for example, mean implementing them all in terms of `for_each` which would allow an executor vendor to target `for_each` first and all algorithms can benefit. This one-way information flow from standard library implementor to executor implementor will be much easier to scale than expecting standard library implementors to also optimise for the range of available executors.
 
