@@ -25,7 +25,6 @@ Starting with [@P1660] as a baseline we have the following algorithms or variant
  * `submit(Executor, Callback) -> void`
  * `submit(Sender, Callback) -> void`
  * `schedule(Scheduler) -> Sender`
- * `sync_wait(Scheduler) -> T`
 
 and the following Concepts:
 
@@ -51,7 +50,7 @@ The sender algorithms are defined as per range-adapters such that:
 
 are equivalent ^[24.7.1 Precise wording for this can come later.].
 
-Sender algorithms are defined as customization point objects as follows:
+Sender algorithms are defined as customization point objects as follows.
 
  * `auto std::tbd::scalar_execute(S&& s, F&& f)`
    * denotes a customization point object that calls `return std::tbd2::scalar_execute(std::forward<S>(s), std::forward<F>(f))` if no customization exists.
@@ -69,8 +68,8 @@ Sender algorithms are defined as customization point objects as follows:
       * On successful completion of `s` the execution of `f(t)` if `f(t)` completes successfully.
       * On `error` or `done` signals arising from `s` these signals will propagate.
 
- * `auto std::tbd::bulk_execute(S&& s, Range<Idx> r, SharedFactory sf, F&& f)`
-   * denotes a customization point object that calls `return std::tbd2::bulk_execute(std::forward<S>(s), r, sf, std::forward<F>(f))` if no customization exists.
+ * `auto std::tbd::bulk_execute(S&& s, Range<Idx> r, F&& f, SharedFactory sf)`
+   * denotes a customization point object that calls `return std::tbd2::bulk_execute(std::forward<S>(s), r, std::forward<F>(f), sf)` if no customization exists.
    * *Remarks*: `F` is an invocable of the form `void(Idx, invoke_result_t<SF>())`.
    * *Remarks*: `S` is a `Sender<void>`
    * *Returns*: A `Sender<void>` representing:
@@ -85,12 +84,18 @@ Sender algorithms are defined as customization point objects as follows:
      * On successful completion of `s`, for some `sh = sf()` a range resulting from the execution of `f(i, t, sh)` for each `t` in the input range if all `f(t)`s complete successfully.
      * On `error` or `done` signals arising from `s` these signals will propagate.
 
+
+For all of these algorithms we may want to consider provision of allocators to generate intermediate data.
+We may also want to consider adding forward progress guarantees to the parallel forms. For example if we want to use `bulk_execute` to launch a set of thread-like tasks then we may want to use `par` while for GPU acceleration we may use `unseq`.
+Alternatively we may simply rely on the executor to guarantee this.
+We leave this unspecified here.
+
 For complete description we also describe the following set of error handling options similarly.
 We might decide to only include one initially, or to instead offer a single form that combines these.
 
  * `std::tbd::handle_error_and_succeed(S&& s, F&& f)`
    * denotes a customization point object that calls `return std::tbd2::handle_error_and_succeed(std::forward<S>(s), std::forward<F>(f))` if no customization exists.
-   * *Remarks*: `F` is an invocable of the form `T2(E)`.
+   * *Remarks*: `F` is an invocable of the form `T(E)`. `F` must be marked `noexcept`.
    * *Remarks*: `S` is a `Sender<T>`.
    * *Returns*: A `Sender<T>` representing:
       * On completion of `s` with a call to `error(e)` the result of the execution of `f(e)` if `f()` completes successfully, propagated as success.
@@ -98,7 +103,7 @@ We might decide to only include one initially, or to instead offer a single form
 
  * `std::tbd::handle_error_and_cancel(S&& s, F&& f)`
    * denotes a customization point object that calls `return std::tbd2::handle_error_and_cancel(std::forward<S>(s), std::forward<F>(f))` if no customization exists.
-   * *Remarks*: `F` is an invocable of the form `void(E)`.
+   * *Remarks*: `F` is an invocable of the form `void(E)`.  `F` must be marked `noexcept`.
    * *Remarks*: `S` is a `Sender<T>`.
    * *Returns*: A `Sender<T>` representing:
       * On completion of `s` with a call to `error(e)` will execute `f(e)` and propagate a signal to `done()`.
@@ -145,7 +150,7 @@ Their interfaces match those of the customization point objects, but the behavio
    * Returns a `Sender<T2>` that is signaled on completion with the result of `f(value)` in its success channel, and on propagation of `error` or `done` otherwise.
    * If `f` is not marked `noexcept` and throws, the exception must be caught and propagated on the `error` channel of the returned `Sender`.
 
- * `std::tbd2::bulk_execute(S&& s, Range<Idx> r, SharedFactory sf, F&& f)`
+ * `std::tbd2::bulk_execute(S&& s, Range<Idx> r, F&& f, SharedFactory sf)`
    * Constructs a `Callback` `c` that wraps:
      * in its success channel a call to `sf()` producing some result `sfh`, followed by an unsequenced equivalent of the loop: `for(idx : r){f(idx, shf);}`.
      * `error` and `done` channels the unit function.
@@ -164,12 +169,10 @@ Their interfaces match those of the customization point objects, but the behavio
  * `std::tbd2::handle_error_and_succeed(S&& s, F&& f)`
    * Constructs a `Callback` `c` that wraps `f` in its `error` channel, and unit functions in the success and `done` channels. Calls `submit(std::forward<S>(s), c)`.
    * Returns a `Sender` that signals the success channel of the returned `Sender<T>` with the result of `f(err)`, and on propagation of success or `done` otherwise. The value type of the returned `Sender` is the same as the value type of the incoming `Sender` such that the success signal can propagate trivially.
-   * If `f` is not marked `noexcept` and throws, the exception must be caught and propagated on the `error` channel of the returned `Sender`.
 
  * `std::tbd2::handle_error_and_cancel(S&& s, F&& f)`
    * Constructs a `Callback` `c` that wraps `f` in its `error` channel, and unit functions in the success and `done` channels. Calls `submit(std::forward<S>(s), c)`.
    * Returns a `Sender` that calls `f(err)` in its error channel and subsequently signals `done()` from the returned `Sender`, and on propagation of success or `done` otherwise.
-   * If `f` is not marked `noexcept` and throws, the exception must be caught and propagated on the `error` channel of the returned `Sender`.
 
  * `std::tbd::transform_error(S&& s, F&& f)`
    * Constructs a `Callback` `c` that wraps `f` in its `error` channel, and unit functions in the success and `done` channels. Calls `submit(std::forward<S>(s), c)`.
@@ -233,7 +236,7 @@ Its customization performs a normal submit to `s1`, because it knows nothing abo
 
 `scalar_execute(f2)` is interesting.
 This is a call to `scalar_execute(namespace2::on_sender, f2)` and we assume it is customised on `namespace2::on_sender`.
-Let's say that this sender exposes a queue in an underlying runtime via an executor that also acts like a serialization token.
+Let's say that this sender exposes a queue in an underlying runtime via an executor that also acts like a serialization token (as described in [@PJAREDPROPOSAL] for example).
 This call can be viewed as something like `return make_sender(s2.get_executor().enqueue_invocable(f2));`.
 That is it bypasses the `submit` operation entirely, uses internal functionality to chain work directly onto the executor, and stores the return value in a new sender.
 
@@ -292,6 +295,12 @@ references:
     issued:
       year: 2019
     URL:
+  - id: PJAREDPROPOSAL
+    citation-label: PJAREDPROPOSAL
+    title: "bulk_execute as an Eager Substrate for Lazy Bulk Execution"
+    issued:
+      year: 2019
+    URL:    
 
 
 
