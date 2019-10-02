@@ -1,8 +1,8 @@
 ---
 title: "Towards C++23 executors: A proposal for an initial set of algorithms"
-document: PXXXR0
+document: D1897R0
 date: 2019-09-14
-audience: SG1, Library Evolution
+audience: SG1
 author:
   - name: Lee Howes
     email: <lwh@fb.com>

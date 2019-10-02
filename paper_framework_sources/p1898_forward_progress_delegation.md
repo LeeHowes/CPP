@@ -1,6 +1,6 @@
 ---
 title: "Forward progress delegation for executors"
-document: PXXXR0
+document: D1898R0
 date: 2019-09-14
 audience: SG1
 author:
@@ -381,6 +381,12 @@ references:
     URL:
   - id: P1660
     citation-label: P1660
+    title: ""
+    issued:
+      year: 2019
+    URL:
+  - id: P1897R0
+    citation-label: P1897
     title: ""
     issued:
       year: 2019
