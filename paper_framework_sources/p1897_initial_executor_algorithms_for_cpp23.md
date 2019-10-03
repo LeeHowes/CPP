@@ -170,6 +170,8 @@ The expression `execution::on(S1, S2)` for some subexpressions `S1`, `S2` is exp
  * The returned sender_to's value types match those of `sender1`.
  * The returned sender_to's execution context is that of `sender2`.
 
+If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execution::is_noexcept_sender(S2)` returns true at compile-time and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(on(S1, S2))` should return `true` at compile time^[Should, shall, may?].
+
 ## execution::transform
 ### Summary
 Applies a function `f` to the value channel of a sender such that some type list `T...` is consumed and some type `T2` returned, resulting in a sender that transmits `T2` in its value channel.
@@ -199,6 +201,7 @@ The expression `execution::transform(S, F)` for some subexpressions `S` and `F` 
    * If `error(c, e)` is called, passes `e` to `execution::error(output_callback, e)`.
    * If `done(c)` is called, calls `execution::done(output_callback)`.
 
+If `execution::is_noexcept_sender(S)` returns true at compile-time, and `F(S1::value_types)` is marked `noexcept` and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(transform(S1, F))` should return `true` at compile time.
 
 ## execution::bulk_transform
 ### Summary
@@ -223,7 +226,6 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
    * If `value` is called on `c` with some parameter `input` applies the equivalent of `out = std::ranges::transform_view(input, F)` and passes the result `output` to `execution::value(output_callback, v)`.
    * If `error(c, e)` is called, passes `e` to `execution::error(output_callback, e)`.
    * If `done(c)` is called, calls `execution::done(output_callback)`.
-
 
 ## execution::handle_error
 ### Summary
