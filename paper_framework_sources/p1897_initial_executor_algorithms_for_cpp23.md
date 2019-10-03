@@ -53,6 +53,7 @@ We propose immediately discussing the addition of the following algorithms:
 
  * `is_noexcept_sender(sender_to) -> bool`
  * `just(T) -> sender_to`
+ * `just_error(E) -> sender_to`
  * `on(sender_to, scheduler) -> sender_to`
  * `sync_wait(sender_to) -> T`
  * `transform(sender_to, invocable) -> sender_to`
@@ -61,7 +62,7 @@ We propose immediately discussing the addition of the following algorithms:
 
 Details below are in loosely approximated wording and should be made consistent with [@P0443R11] and the standard itself when finalized.
 
-## is_noexcept_sender
+## execution::is_noexcept_sender
 ### Summary
 Queries whether the passed sender will ever propagate an error when treated as an r-value to `submit`.
 
@@ -83,7 +84,7 @@ If possible, `is_noexcept_sender` should be `noexcept`.
 
 If `execution::is_noexcept_sender(s)` returns true for a `sender_to` `s` then it is guaranteed that `s` will not call `error` on any `callback` `c` passed to `submit(s, c)`.
 
-## just
+## execution::just
 ### Summary
 Returns a sender that propagates the passed value inline when `submit` is called.
 This is useful for starting a chain of work.
@@ -97,7 +98,21 @@ The expression `execution::just(t)` returns a sender_to, `s` wrapping the value 
  * If moving of `t` throws, then will catch the exception and call `execution::error(c, e)` with the caught `exception_ptr`.
 
 
-## sync_wait
+## execution::just_error
+### Summary
+Returns a sender that propagates the passed error inline when `submit` is called.
+This is useful for starting a chain of work.
+
+### Wording
+The expression `execution::just_error(e)` returns a sender_to, `s` wrapping the error `e`.
+
+ * If `t` is nothrow movable then `execution::is_noexcept_sender(s)` shall be constexpr and return true.
+ * When `execution::submit(s, c)` is called for some `c`, and r-value `s` will call `execution::error(c, std::move(t))`, inline with the caller.
+ * When `execution::submit(s, c)` is called for some `c`, and l-value `s` will call `execution::error(c, t)`, inline with the caller.
+ * If moving of `e` throws, then will catch the exception and call `execution::error(c, e)` with the caught `exception_ptr`.
+
+
+## execution::sync_wait
 
 ### Summary
 Blocks the calling thread to wait for the resulting sender to complete.
@@ -126,7 +141,7 @@ The expression `execution::sync_wait(S)` for some subexpression `S` is expressio
 If `execution::is_noexcept_sender(S)` returns true at compile-time, and the return type `T` is nothrow movable, then `sync_wait` is noexcept.
 Note that `sync_wait` requires `S` to propagate a single value type.
 
-## on
+## execution::on
 ### Summary
 Transitions execution from one executor to the context of a scheduler.
 That is that:
@@ -155,7 +170,7 @@ The expression `execution::on(S1, S2)` for some subexpressions `S1`, `S2` is exp
  * The returned sender_to's value types match those of `sender1`.
  * The returned sender_to's execution context is that of `sender2`.
 
-## transform
+## execution::transform
 ### Summary
 Applies a function `f` to the value channel of a sender such that some type list `T...` is consumed and some type `T2` returned, resulting in a sender that transmits `T2` in its value channel.
 This is equivalent to common `Future::then` operations, for example:
@@ -185,7 +200,7 @@ The expression `execution::transform(S, F)` for some subexpressions `S` and `F` 
    * If `done(c)` is called, calls `execution::done(output_callback)`.
 
 
-## bulk_transform
+## execution::bulk_transform
 ### Summary
 `bulk_execute` is a side-effecting operation across an iteration space.
 `bulk_transform` is a very similar operation that operates elementwise over an input range and returns the result as an output range.
@@ -210,7 +225,7 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
    * If `done(c)` is called, calls `execution::done(output_callback)`.
 
 
-## handle_error
+## execution::handle_error
 ### Summary
 This is the only algorithm that deals with an incoming signal on the error channel of the `sender_to`.
 Others only deal with the `value` channel directly.
@@ -235,12 +250,40 @@ The expression `execution::handle_error(S, F)` for some subexpressions S and F i
    * If `error(c, e)` is called, passes `e` to `f`, resulting in a `sender_to` `s2` and passes `output_callback` to `submit(s2, output_callback)`.
    * If `done(c)` is called, calls `execution::done(output_callback)`.
 
-# Customization
+# Customization and example
+Each of these algorithms, apart from `just`, is customizable on one or more `sender_to` implementations.
+This allows full optimisation.
+For example, in the following simple work chain:
 
-# Chaining example with customization
-TODO: Simple chain through just, on, transform, bulk_transform to sync_wait.
-Point out that customization means that there is no submit() call in the middle.
+```
+auto s = just(3) |                                        // s1
+         on(executor1) |                                  // s2
+         transform([](int a){return a+1;}) |              // s3
+         transform([](int a){return a*2;}) |              // s4
+         on(executor2) |                                  // s5
+         handle_error([](auto e){return just_error(e);}); // s6
+int r = sync_wait(s);
+```
 
+The result of `s1` might be a `just_sender_to<int>` implemented by the standard library vendor.
+
+`on(just_sender_to<int>, executor1)` has no customization defined, and this expression returns an `executor1_on_sender_to<int>` that is a custom type from the author of `executor1`, it will call `submit` on the result of `s1`.
+
+`s3` calls `transform(executor1_on_sender_to<int>, [](int a){return a+1;})` for which the author of `executor1` may have written a customization.
+The `executor1_on_sender_to` has stashed the value somewhere and build some work queue in the background.
+We do not see `submit` called at this point, it uses a behind-the-scenes implementation to schedule the work on the work queue.
+An `executor1_transform_sender_to<int>` is returned.
+
+`s4` implements a very similar customization, and again does not call `submit`.
+There need be no synchronization in this chain.
+
+At `s5`, however, the implementor of `executor2` does not know about the implementation of `executor1`.
+At this point it will call `submit` on the incoming `executor1_transform_sender_to`, forcing `executor1`'s sender to implement the necessary synchronization to map back from the behind-the-scenes optimal queue to something interoperable with another vendor's implementation.
+
+`handle_error` at `s6` will be generic in terms of `submit` and not do anything special, this uses the default implementation in terms of `submit`.
+`sync_wait` similarly constructs a `condition_variable` and a temporary `int`, submits a `Callback` to `s` and waits on the `condition_variable`, blocking the calling thread.
+
+`r` is of course the value 8 at this point.
 
 
 ---
