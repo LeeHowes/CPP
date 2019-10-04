@@ -13,7 +13,7 @@ toc: false
 
 This is an early proposal to sound out one approach to forward progress delegation for executors, based in part on a discussion of folly’s `DeferredExecutor`.
 
-Building on the definitions in [@P0443] and [@P1660], we start with the definition of a `Callback` we propose adding a concept `WithExecutor` that allows a `Sender` to require that a `Callback` passed to it is able to provide an executor.
+Building on the definitions in [@P0443R11] and [@P1660R0], we start with the definition of a `Callback` we propose adding a concept `WithExecutor` that allows a `Sender` to require that a `Callback` passed to it is able to provide an executor.
 This concept offers a `get_executor` method that allows and executor to be propagated from downstream to upstream asynchronous tasks.
 A given `Executor`, and therefore any `Sender` created off that executor may require the availability of such a method on `Callback`s passed to the `submit()` method.
 
@@ -373,23 +373,22 @@ I don't have a concrete design in mind, but I would like us as a group to be thi
 
 ---
 references:
-  - id: P0443
-    citation-label: P0443
-    title: ""
+  - id: P0443R11
+    citation-label: P0443R11
+    title: "A Unified Executors Proposal for C++"
     issued:
       year: 2019
-    URL:
-  - id: P1660
-    citation-label: P1660
-    title: ""
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0443r11.html
+  - id: P1660R0
+    citation-label: P1660R0
+    title: "A Compromise Executor Design Sketch"
     issued:
       year: 2019
-    URL:
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1660r0.pdf
   - id: P1897R0
     citation-label: P1897
-    title: ""
+    title: "Towards C++23 executors: A proposal for an initial set of algorithms"
     issued:
       year: 2019
-    URL:
-
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1897r0.pdf
 ---
