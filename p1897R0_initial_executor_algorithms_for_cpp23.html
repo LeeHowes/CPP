@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="mpark/wg21" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <meta name="dcterms.date" content="2019-09-14" />
+  <meta name="dcterms.date" content="2019-10-06" />
   <title>Towards C++23 executors: A proposal for an initial set of algorithms</title>
   <style>
       code{white-space: pre-wrap;}
@@ -420,11 +420,11 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <table style="border:none;float:right">
   <tr>
     <td>Document #: </td>
-    <td>R1897R0</td>
+    <td>P1897R0</td>
   </tr>
   <tr>
     <td>Date: </td>
-    <td>2019-09-14</td>
+    <td>2019-10-06</td>
   </tr>
   <tr>
     <td style="vertical-align:top">Project: </td>
@@ -443,15 +443,15 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 </header>
 <div style="clear:both">
 <h1 id="introduction"><span class="header-section-number">1</span> Introduction<a href="#introduction" class="self-link"></a></h1>
-<p>In <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> we have included the fundamental principles described in <span class="citation" data-cites="P1660R0">[<a href="#ref-P1660R0" role="doc-biblioref">P1660R0</a>]</span>, and the fundamental requirement to customize algorithms. In recent discussions we have converged to an understanding of the <code>submit</code> operation on a <code>sender_to</code> acting as a fundamental interoperation primitive, and algorithm customization giving us full flexibility to optimize, to offload and to avoid synchronization in chains of mutually compatible algorithm customizations.</p>
+<p>In <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> we have included the fundamental principles described in <span class="citation" data-cites="P1660R0">[<a href="#ref-P1660R0" role="doc-biblioref">P1660R0</a>]</span>, and the fundamental requirement to customize algorithms. In recent discussions we have converged to an understanding of the <code>submit</code> operation on a <code>sender</code> acting as a fundamental interoperation primitive, and algorithm customization giving us full flexibility to optimize, to offload and to avoid synchronization in chains of mutually compatible algorithm customizations.</p>
 <p>As a starting point, in <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> we only include a <code>bulk_execute</code> algorithm, that satisfies the core requirement we planned with P0443 to provide scalar and bulk execution. To make the C++23 solution completely practical, we should extend the set of algorithms, however. This paper suggests an expanded initial set that enables early useful work chains. This set is intended to act as a discussion focus for us to discuss one by one, and to analyze the finer constraints of the wording to make sure we do not over-constrain the design.</p>
 <p>In the long run we expect to have a much wider set of algorithms, potentially covering the full set in the current C++20 parallel algorithms. The precise customization of these algorithms is open to discussion: they may be individually customized and individually defaulted, or they may be optionally individually customized but defaulted in a tree such that customizing one is known to accelerate dependencies. It is open to discussion how we achieve this and that is an independent topic, beyond the scope of this paper.</p>
 <h1 id="impact-on-the-standard"><span class="header-section-number">2</span> Impact on the Standard<a href="#impact-on-the-standard" class="self-link"></a></h1>
 <p>Starting with <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> as a baseline we have the following customization points:</p>
 <ul>
 <li><code>execute(executor, invocable) -&gt; void</code></li>
-<li><code>submit(sender_to, receiver) -&gt; void</code></li>
-<li><code>schedule(scheduler) -&gt; Sender</code></li>
+<li><code>submit(sender, receiver) -&gt; void</code></li>
+<li><code>schedule(scheduler) -&gt; sender</code></li>
 <li><code>set_done</code></li>
 <li><code>set_error</code></li>
 <li><code>set_value</code></li>
@@ -462,7 +462,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <li><code>scheduler</code></li>
 <li><code>callback_signal</code></li>
 <li><code>callback</code></li>
-<li><code>sender_to</code></li>
+<li><code>sender</code></li>
 </ul>
 <p>First, we should add wording such that the sender algorithms are defined as per range-adapters such that:</p>
 <ul>
@@ -473,16 +473,16 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <p>are equivalent. In this way we can use <code>operator|</code> in code to make the code more readable.</p>
 <p>We propose immediately discussing the addition of the following algorithms:</p>
 <ul>
-<li><code>is_noexcept_sender(sender_to) -&gt; bool</code></li>
-<li><code>just(T) -&gt; sender_to</code></li>
-<li><code>just_error(E) -&gt; sender_to</code></li>
-<li><code>via(sender_to, scheduler) -&gt; sender_to</code></li>
-<li><code>sync_wait(sender_to) -&gt; T</code></li>
-<li><code>transform(sender_to, invocable) -&gt; sender_to</code></li>
-<li><code>bulk_transform(sender_to, invocable) -&gt; sender_to</code></li>
-<li><code>handle_error(sender_to, invocable) -&gt; sender_to</code></li>
+<li><code>is_noexcept_sender(sender) -&gt; bool</code></li>
+<li><code>just(T) -&gt; sender</code></li>
+<li><code>just_error(E) -&gt; sender</code></li>
+<li><code>via(sender, scheduler) -&gt; sender</code></li>
+<li><code>sync_wait(sender) -&gt; T</code></li>
+<li><code>transform(sender, invocable) -&gt; sender</code></li>
+<li><code>bulk_transform(sender, invocable) -&gt; sender</code></li>
+<li><code>handle_error(sender, invocable) -&gt; sender</code></li>
 </ul>
-<p>Details below are in loosely approximated wording and should be made consistent with <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> and the standard itself when finalized.</p>
+<p>Details below are in loosely approximated wording and should be made consistent with <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> and the standard itself when finalized. We choose this set of algorithms as a basic set to allow a range of realistic, though still limited, compositions to be written against executors.</p>
 <h2 id="executionis_noexcept_sender"><span class="header-section-number">2.1</span> execution::is_noexcept_sender<a href="#executionis_noexcept_sender" class="self-link"></a></h2>
 <h3 id="summary"><span class="header-section-number">2.1.1</span> Summary<a href="#summary" class="self-link"></a></h3>
 <p>Queries whether the passed sender will ever propagate an error when treated as an r-value to <code>submit</code>.</p>
@@ -499,12 +499,12 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <li>Otherwise, <code>false</code>.</li>
 </ul>
 <p>If possible, <code>is_noexcept_sender</code> should be <code>noexcept</code>.</p>
-<p>If <code>execution::is_noexcept_sender(s)</code> returns true for a <code>sender_to</code> <code>s</code> then it is guaranteed that <code>s</code> will not call <code>error</code> on any <code>callback</code> <code>c</code> passed to <code>submit(s, c)</code>.</p>
+<p>If <code>execution::is_noexcept_sender(s)</code> returns true for a <code>sender</code> <code>s</code> then it is guaranteed that <code>s</code> will not call <code>error</code> on any <code>callback</code> <code>c</code> passed to <code>submit(s, c)</code>.</p>
 <h2 id="executionjust"><span class="header-section-number">2.2</span> execution::just<a href="#executionjust" class="self-link"></a></h2>
 <h3 id="summary-1"><span class="header-section-number">2.2.1</span> Summary<a href="#summary-1" class="self-link"></a></h3>
 <p>Returns a sender that propagates the passed value inline when <code>submit</code> is called. This is useful for starting a chain of work.</p>
 <h3 id="wording-1"><span class="header-section-number">2.2.2</span> Wording<a href="#wording-1" class="self-link"></a></h3>
-<p>The expression <code>execution::just(t)</code> returns a sender_to, <code>s</code> wrapping the value <code>t</code>.</p>
+<p>The expression <code>execution::just(t)</code> returns a sender, <code>s</code> wrapping the value <code>t</code>.</p>
 <ul>
 <li>If <code>t</code> is nothrow movable then <code>execution::is_noexcept_sender(s)</code> shall be constexpr and return true.</li>
 <li>When <code>execution::submit(s, r)</code> is called for some <code>r</code>, and r-value <code>s</code> will call <code>execution::set_value(r, std::move(t))</code>, inline with the caller.</li>
@@ -515,7 +515,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <h3 id="summary-2"><span class="header-section-number">2.3.1</span> Summary<a href="#summary-2" class="self-link"></a></h3>
 <p>Returns a sender that propagates the passed error inline when <code>submit</code> is called. This is useful for starting a chain of work.</p>
 <h3 id="wording-2"><span class="header-section-number">2.3.2</span> Wording<a href="#wording-2" class="self-link"></a></h3>
-<p>The expression <code>execution::just_error(e)</code> returns a sender_to, <code>s</code> wrapping the error <code>e</code>.</p>
+<p>The expression <code>execution::just_error(e)</code> returns a sender, <code>s</code> wrapping the error <code>e</code>.</p>
 <ul>
 <li>If <code>t</code> is nothrow movable then <code>execution::is_noexcept_sender(s)</code> shall be constexpr and return true.</li>
 <li>When <code>execution::submit(s, r)</code> is called for some <code>r</code>, and r-value <code>s</code> will call <code>execution::set_error(r, std::move(t))</code>, inline with the caller.</li>
@@ -559,8 +559,8 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <span id="cb5-2"><a href="#cb5-2"></a>          void via(S1, S2) = delete;</span></code></pre></div>
 <ul>
 <li>Otherwise constructs a receiver <code>r</code> such that when <code>set_value</code>, <code>set_error</code> or <code>set_done</code> is called on <code>r</code> the value(s) or error(s) are packaged, and a receiver <code>r2</code> constructed such that when <code>execution::set_value(r2)</code> is called, the stored value or error is transmitted and <code>r2</code> is submitted to <code>S2</code>.</li>
-<li>The returned sender_to’s value types match those of <code>sender1</code>.</li>
-<li>The returned sender_to’s execution context is that of <code>scheduler1</code>.</li>
+<li>The returned sender’s value types match those of <code>sender1</code>.</li>
+<li>The returned sender’s execution context is that of <code>scheduler1</code>.</li>
 </ul>
 <p>If <code>execution::is_noexcept_sender(S1)</code> returns true at compile-time, and <code>execution::is_noexcept_sender(S2)</code> returns true at compile-time and all entries in <code>S1::value_types</code> are nothrow movable, <code>execution::is_noexcept_sender(on(S1, S2))</code> should return <code>true</code> at compile time<a href="#fn2" class="footnote-ref" id="fnref2" role="doc-noteref"><sup>2</sup></a>.</p>
 <h2 id="executiontransform"><span class="header-section-number">2.6</span> execution::transform<a href="#executiontransform" class="self-link"></a></h2>
@@ -578,7 +578,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <span id="cb7-2"><a href="#cb7-2"></a>          void transform(S, F) = delete;</span></code></pre></div>
 <p>and that does not include a declaration of <code>execution::transform</code>.</p>
 <ul>
-<li><p>Otherwise constructs a receiver, <code>r</code> over an implementation-defined synchronization primitive and passes that receiver to <code>execution::submit(S, r)</code>. When some <code>output_receiver</code> has been passed to <code>submit</code> on the returned <code>sender_to</code>.</p>
+<li><p>Otherwise constructs a receiver, <code>r</code> over an implementation-defined synchronization primitive and passes that receiver to <code>execution::submit(S, r)</code>. When some <code>output_receiver</code> has been passed to <code>submit</code> on the returned <code>sender</code>.</p>
 <ul>
 <li>If <code>set_value(r, Ts... ts)</code> is called, calls <code>std::invoke(F, ts...)</code> and passes the result <code>v</code> to <code>execution::set_value(output_receiver, v)</code>.</li>
 <li>If <code>F</code> throws, catches the exception and passes it to <code>execution::set_error(output_receiver, e)</code>.</li>
@@ -589,7 +589,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <p>If <code>execution::is_noexcept_sender(S)</code> returns true at compile-time, and <code>F(S1::value_types)</code> is marked <code>noexcept</code> and all entries in <code>S1::value_types</code> are nothrow movable, <code>execution::is_noexcept_sender(transform(S1, F))</code> should return <code>true</code> at compile time.</p>
 <h2 id="executionbulk_transform"><span class="header-section-number">2.7</span> execution::bulk_transform<a href="#executionbulk_transform" class="self-link"></a></h2>
 <h3 id="summary-6"><span class="header-section-number">2.7.1</span> Summary<a href="#summary-6" class="self-link"></a></h3>
-<p><code>bulk_execute</code> is a side-effecting operation across an iteration space. <code>bulk_transform</code> is a very similar operation that operates element-wise over an input range and returns the result as an output range.</p>
+<p><code>bulk_execute</code> is a side-effecting operation across an iteration space. <code>bulk_transform</code> is a very similar operation that operates element-wise over an input range and returns the result as an output range of the same size.</p>
 <h3 id="wording-6"><span class="header-section-number">2.7.2</span> Wording<a href="#wording-6" class="self-link"></a></h3>
 <p>The name <code>execution::bulk_transform</code> denotes a customization point object. The expression <code>execution::bulk_transform(S, F)</code> for some subexpressions S and F is expression-equivalent to:</p>
 <ul>
@@ -611,7 +611,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 </ul>
 <h2 id="executionhandle_error"><span class="header-section-number">2.8</span> execution::handle_error<a href="#executionhandle_error" class="self-link"></a></h2>
 <h3 id="summary-7"><span class="header-section-number">2.8.1</span> Summary<a href="#summary-7" class="self-link"></a></h3>
-<p>This is the only algorithm that deals with an incoming signal on the error channel of the <code>sender_to</code>. Others only deal with the value channel directly. For full generality, the formulation we suggest here applies a function <code>f(e)</code> to the error <code>e</code>, and returns a <code>sender_to</code> that may output on any of its channels. In that way we can solve and replace an error, cancel on error, or log and propagate the error, all within the same algorithm.</p>
+<p>This is the only algorithm that deals with an incoming signal on the error channel of the <code>sender</code>. Others only deal with the value channel directly. For full generality, the formulation we suggest here applies a function <code>f(e)</code> to the error <code>e</code>, and returns a <code>sender</code> that may output on any of its channels. In that way we can solve and replace an error, cancel on error, or log and propagate the error, all within the same algorithm.</p>
 <h3 id="wording-7"><span class="header-section-number">2.8.2</span> Wording<a href="#wording-7" class="self-link"></a></h3>
 <p>The name <code>execution::handle_error</code> denotes a customization point object. The expression <code>execution::handle_error(S, F)</code> for some subexpressions S and F is expression-equivalent to:</p>
 <ul>
@@ -625,12 +625,12 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <li><p>Otherwise constructs a receiver, <code>r</code> over an implementation-defined synchronization primitive and passes that receiver to <code>execution::submit(S, r)</code>.</p>
 <ul>
 <li>If <code>set_value(r, v)</code> is called, passes <code>v</code> to <code>execution::set_value(output_receiver, v)</code>.</li>
-<li>If <code>set_error(r, e)</code> is called, passes <code>e</code> to <code>f</code>, resulting in a <code>sender_to</code> <code>s2</code> and passes <code>output_receiver</code> to <code>submit(s2, output_receiver)</code>.</li>
+<li>If <code>set_error(r, e)</code> is called, passes <code>e</code> to <code>f</code>, resulting in a <code>sender</code> <code>s2</code> and passes <code>output_receiver</code> to <code>submit(s2, output_receiver)</code>.</li>
 <li>If <code>set_done(r)</code> is called, calls <code>execution::set_done(output_receiver)</code>.</li>
 </ul></li>
 </ul>
 <h1 id="customization-and-example"><span class="header-section-number">3</span> Customization and example<a href="#customization-and-example" class="self-link"></a></h1>
-<p>Each of these algorithms, apart from <code>just</code>, is customizable on one or more <code>sender_to</code> implementations. This allows full optimization. For example, in the following simple work chain:</p>
+<p>Each of these algorithms, apart from <code>just</code>, is customizable on one or more <code>sender</code> implementations. This allows full optimization. For example, in the following simple work chain:</p>
 <div class="sourceCode" id="cb10"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb10-1"><a href="#cb10-1"></a>auto s = just(3) |                                        // s1</span>
 <span id="cb10-2"><a href="#cb10-2"></a>         via(scheduler1) |                                // s2</span>
 <span id="cb10-3"><a href="#cb10-3"></a>         transform([](int a){return a+1;}) |              // s3</span>
@@ -638,13 +638,13 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <span id="cb10-5"><a href="#cb10-5"></a>         on(scheduler2) |                                 // s5</span>
 <span id="cb10-6"><a href="#cb10-6"></a>         handle_error([](auto e){return just_error(e);}); // s6</span>
 <span id="cb10-7"><a href="#cb10-7"></a>int r = sync_wait(s);</span></code></pre></div>
-<p>The result of <code>s1</code> might be a <code>just_sender_to&lt;int&gt;</code> implemented by the standard library vendor.</p>
-<p><code>on(just_sender_to&lt;int&gt;, scheduler1)</code> has no customization defined, and this expression returns an <code>scheduler1_on_sender_to&lt;int&gt;</code> that is a custom type from the author of <code>scheduler1</code>, it will call <code>submit</code> on the result of <code>s1</code>.</p>
-<p><code>s3</code> calls <code>transform(scheduler1_on_sender_to&lt;int&gt;, [](int a){return a+1;})</code> for which the author of <code>scheduler1</code> may have written a customization. The <code>scheduler1_on_sender_to</code> has stashed the value somewhere and build some work queue in the background. We do not see <code>submit</code> called at this point, it uses a behind-the-scenes implementation to schedule the work on the work queue. An <code>scheduler1_transform_sender_to&lt;int&gt;</code> is returned.</p>
+<p>The result of <code>s1</code> might be a <code>just_sender&lt;int&gt;</code> implemented by the standard library vendor.</p>
+<p><code>on(just_sender&lt;int&gt;, scheduler1)</code> has no customization defined, and this expression returns an <code>scheduler1_on_sender&lt;int&gt;</code> that is a custom type from the author of <code>scheduler1</code>, it will call <code>submit</code> on the result of <code>s1</code>.</p>
+<p><code>s3</code> calls <code>transform(scheduler1_on_sender&lt;int&gt;, [](int a){return a+1;})</code> for which the author of <code>scheduler1</code> may have written a customization. The <code>scheduler1_on_sender</code> has stashed the value somewhere and build some work queue in the background. We do not see <code>submit</code> called at this point, it uses a behind-the-scenes implementation to schedule the work on the work queue. An <code>scheduler1_transform_sender&lt;int&gt;</code> is returned.</p>
 <p><code>s4</code> implements a very similar customization, and again does not call <code>submit</code>. There need be no synchronization in this chain.</p>
-<p>At <code>s5</code>, however, the implementor of <code>scheduler2</code> does not know about the implementation of <code>scheduler1</code>. At this point it will call <code>submit</code> on the incoming <code>scheduler1_transform_sender_to</code>, forcing <code>scheduler1</code>’s sender to implement the necessary synchronization to map back from the behind-the-scenes optimal queue to something interoperable with another vendor’s implementation.</p>
+<p>At <code>s5</code>, however, the implementor of <code>scheduler2</code> does not know about the implementation of <code>scheduler1</code>. At this point it will call <code>submit</code> on the incoming <code>scheduler1_transform_sender</code>, forcing <code>scheduler1</code>’s sender to implement the necessary synchronization to map back from the behind-the-scenes optimal queue to something interoperable with another vendor’s implementation.</p>
 <p><code>handle_error</code> at <code>s6</code> will be generic in terms of <code>submit</code> and not do anything special, this uses the default implementation in terms of <code>submit</code>. <code>sync_wait</code> similarly constructs a <code>condition_variable</code> and a temporary <code>int</code>, submits a <code>receiver</code> to <code>s</code> and waits on the <code>condition_variable</code>, blocking the calling thread.</p>
-<p><code>r</code> is of course the value 8 at this point.</p>
+<p><code>r</code> is of course the value 8 at this point assuming that neither scheduler triggered an error.</p>
 <h1 id="references"><span class="header-section-number">4</span> References<a href="#references" class="self-link"></a></h1>
 
 <div id="refs" role="doc-bibliography">

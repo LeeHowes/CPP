@@ -1,7 +1,7 @@
 ---
 title: "Forward progress delegation for executors"
-document: D1898R0
-date: 2019-09-14
+document: P1898R0
+date: 2019-10-06
 audience: SG1
 author:
   - name: Lee Howes
@@ -276,6 +276,7 @@ vector<int> doWork(Sender<vector<int>> vec) {
  * Add `get_scheduler` CPO.
  * Additional wording to the `sync_wait` CPO specifying that it will pass an `executor_provider` to the `submit` method of the passed `sender`.
  * Add `on` CPO to apply the `scheduler` both upstream and downstream.
+ * Ensure that all asynchronous algorithms propagate the scheduler from the output to the input when this makes sense.
 
 ## Concept scheduler_provider
 ### Summary

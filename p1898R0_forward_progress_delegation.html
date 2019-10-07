@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="mpark/wg21" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <meta name="dcterms.date" content="2019-09-14" />
+  <meta name="dcterms.date" content="2019-10-06" />
   <title>Forward progress delegation for executors</title>
   <style>
       code{white-space: pre-wrap;}
@@ -424,7 +424,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
   </tr>
   <tr>
     <td>Date: </td>
-    <td>2019-09-14</td>
+    <td>2019-10-06</td>
   </tr>
   <tr>
     <td style="vertical-align:top">Project: </td>
@@ -581,6 +581,7 @@ To guarantee that all <code>s0</code>s are able to run eventually, we might need
 <li>Add <code>get_scheduler</code> CPO.</li>
 <li>Additional wording to the <code>sync_wait</code> CPO specifying that it will pass an <code>executor_provider</code> to the <code>submit</code> method of the passed <code>sender</code>.</li>
 <li>Add <code>on</code> CPO to apply the <code>scheduler</code> both upstream and downstream.</li>
+<li>Ensure that all asynchronous algorithms propagate the scheduler from the output to the input when this makes sense.</li>
 </ul>
 <h2 id="concept-scheduler_provider"><span class="header-section-number">5.1</span> Concept scheduler_provider<a href="#concept-scheduler_provider" class="self-link"></a></h2>
 <h3 id="summary"><span class="header-section-number">5.1.1</span> Summary<a href="#summary" class="self-link"></a></h3>
