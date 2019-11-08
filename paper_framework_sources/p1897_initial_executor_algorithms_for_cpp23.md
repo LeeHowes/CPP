@@ -1,13 +1,17 @@
 ---
 title: "Towards C++23 executors: A proposal for an initial set of algorithms"
-document: P1897R0
-date: 2019-10-06
+document: P1897R1
+date: 2019-11-08
 audience: SG1
 author:
   - name: Lee Howes
     email: <lwh@fb.com>
 toc: false
 ---
+
+# Differences between R0 and R1
+ * Thing
+ * Another thing
 
 # Introduction
 In [@P0443R11] we have included the fundamental principles described in [@P1660R0], and the fundamental requirement to customize algorithms.
@@ -22,7 +26,7 @@ In the long run we expect to have a much wider set of algorithms, potentially co
 The precise customization of these algorithms is open to discussion: they may be individually customized and individually defaulted, or they may be optionally individually customized but defaulted in a tree such that customizing one is known to accelerate dependencies.
 It is open to discussion how we achieve this and that is an independent topic, beyond the scope of this paper.
 
-# Impact on the Standard
+## Summary
 Starting with [@P0443R11] as a baseline we have the following customization points:
 
  * `execute(executor, invocable) -> void`
@@ -40,32 +44,177 @@ and the following Concepts:
  * `callback`
  * `sender`
 
-First, we should add wording such that the sender algorithms are defined as per range-adapters such that:
+We propose immediately discussing the addition of the following algorithms:
 
- * `algorithm(sender, args...)`
- * `algorithm(args...)(sender)`
- * `sender | algorithm(args...)`
+ * `just(v)`
+   * returns a `sender` of the value `v`
+ * `via(s, sch)`
+   * returns a sender that propagates the value or error from `s` on `sch`'s execution context
+ * `sync_wait(s)`
+   * blocks and returns the value type of the sender, throwing on error
+ * `transform(s, f)`
+   * returns a sender that applies `f` to the value passed by `s`, or propagates errors or cancellation
+ * `bulk_transform(s, f)`
+   * returns a sender that applies `f` to each element in a range sent by `s`, or propagates errors or cancellation
+ * `handle_error(s, f)`
+   * returns a sender that applies `f` to an error passed by `s`, ignoring the values or cancellation
+
+## Examples
+
+#### Simple example
+A very simple example of applying a function to a propagated value and waiting for it.
+```cpp
+auto  just_sender =       // sender_to<int>
+  just(3);
+
+auto transform_sender =  // sender_to<float>
+  transform(
+    std::move(via_sender),
+    [](int a){return a+0.5f;});
+
+int result =              // value: 5
+  sync_wait(std::move(error_sender));
+```
+
+In this very simple example we:
+ * start a chain with the value three
+ * apply a function to the incoming value, adding 0.5 and returning a sender of a float.
+ * block for the resulting value and assign the `float` value `3.5` to `result`.
+
+Using `operator|` as in ranges to remove the need to pass arguments around, we can represent this as:
+```cpp
+auto s = just(3) |                              // Start with an int value 3
+         transform([](int a){return a+0.5f;});  // Add 0.5f, return a float
+float f = sync_wait(std::move(s));              // Assign 3.5f to f
+```
+
+<!-- TODO: Continue tidying examples below -->
+
+## With exception
+A simple example showing how an exception that leaks out of a transform may propagate and be thrown from sync_wait.
+```cpp
+int result = 0;
+try {
+ auto s = just(3) |                              // Start with an int value 3
+          via(scheduler1) |                      // Schedule on scheduler1
+          transform([](int a){throw 2;}) |       // Catch and propagate 2 on error channel
+          transform([](){return 3;}) |           // Propagate 2 on error channel
+ result = sync_wait(std::move(s));               // Block and throw 2
+} catch(int a) {
+ result = a;                                     // Assign 2 to result
+}
+```
+
+
+
+In a simple example we:
+ * start a chain with the value three
+ * apply a function to the incoming value, adding 0.5 and returning a sender of a float.
+ * apply a function to the value 2.5f and throw an exception of value 2, catching and propagating the exception on the error channel.
+ * bypass a transform because there is an error
+ * receive an `exception_ptr` carrying a value `2` on the error channel. Return a sender that sends the value `5`.
+ * block for the resulting value and assign the value `5` to `result`.
+
+ This shows how the value and error channels interact.
+
+```cpp
+auto s = just(3) |                              // Start with an int value 3
+         via(scheduler1) |                      // Schedule on scheduler1
+         transform([](int a){return a+0.5f;}) | // Add 0.5f, return a float
+         transform([](float a){throw 2;}) |     // Receive 0.5f, throw 2
+         transform([](){return 3;}) |           // Catch and propagate 2 on error channel
+         handle_error([](auto e){               // Receive 2, return int sender of value 2
+           return just(5);});
+int result = sync_wait(std::move(s));           // Block and return value 5
+```
+
+## Expanded to underlying function calls
+```cpp
+auto  just_sender =       // sender_to<int>
+  just(3);
+
+auto  via_sender =        // sender_to<int>
+  via(std::move(just_sender), scheduler1);
+
+auto transform_sender1 =  // sender_to<float>
+  transform(
+    std::move(via_sender),
+    [](int a){return a+0.5f;});
+
+auto transform_sender2 =  // sender_to<float>
+  transform(
+    std::move(transform_sender1),
+    [](float b){throw 2;});
+
+auto transform_sender3 =  // sender_to<void>
+  transform(
+    std::move(transform_sender2),
+    [](){return 3;});
+
+auto  error_sender =      // sender_to<int>
+  handle_error(
+    std::move(transform_sender3),
+    [](auto e){return just(5);});
+
+int result =              // value: 5
+  sync_wait(std::move(error_sender));
+```
+
+## With exception
+A simple example showing how an exception that leaks out of a transform may propagate and be thrown from sync_wait.
+```cpp
+int result = 0;
+try {
+  auto s = just(3) |                              // Start with an int value 3
+           via(scheduler1) |                      // Schedule on scheduler1
+           transform([](int a){throw 2;}) |       // Catch and propagate 2 on error channel
+           transform([](){return 3;}) |           // Propagate 2 on error channel
+  result = sync_wait(std::move(s));               // Block and throw 2
+} catch(int a) {
+  result = a;                                     // Assign 2 to result
+}
+```
+
+
+
+
+
+# Impact on the standard library
+<!-- TODO: Check exactly how ranges are defined. We do the algorithm thing below, but how are the views then described? -->
+
+Add descriptions of customization points defining the following algorithms:
+
+<!-- TODO: Make these more solid signatures -->
+
+ <!-- * `is_noexcept_sender(sender) -> bool` -->
+ * `sender_to<T> just(T)`
+ <!-- * `just_error(E) -> sender` -->
+ * `sender_to<T> via(sender_to<T>, scheduler)`
+ * `T sync_wait(sender_to<T>)`
+ * `sender_to<T2> transform(sender_to<T>, invocable<T2(T)>)`
+ * `sender_to<range<T2>> bulk_transform(sender_to<range<T>>, invocable<T2(T)))`
+ * `sender_to<T> handle_error(sender_to<T>, invocable<sender_to<T>(E)>) -> sender`
+
+Add wording such that the sender algorithms are defined as per range-adapters such that:
+
+* `algorithm(sender, args...)`
+* `algorithm(args...)(sender)`
+* `sender | algorithm(args...)`
 
 are equivalent.
 In this way we can use `operator|` in code to make the code more readable.
 
-We propose immediately discussing the addition of the following algorithms:
-
- * `is_noexcept_sender(sender) -> bool`
- * `just(T) -> sender`
- * `just_error(E) -> sender`
- * `via(sender, scheduler) -> sender`
- * `sync_wait(sender) -> T`
- * `transform(sender, invocable) -> sender`
- * `bulk_transform(sender, invocable) -> sender`
- * `handle_error(sender, invocable) -> sender`
-
 Details below are in loosely approximated wording and should be made consistent with [@P0443R11] and the standard itself when finalized.
 We choose this set of algorithms as a basic set to allow a range of realistic, though still limited, compositions to be written against executors.
 
-## execution::is_noexcept_sender
+
+
+
+<!-- ## execution::is_noexcept_sender
 ### Summary
 Queries whether the passed sender will ever propagate an error when treated as an r-value to `submit`.
+
+### Signature
 
 ### Wording
 The name `execution::is_noexcept_sender` denotes a customization point object.
@@ -83,7 +232,7 @@ The expression `execution::is_noexcept_sender(S)` for some subexpression `S` is 
 
 If possible, `is_noexcept_sender` should be `noexcept`.
 
-If `execution::is_noexcept_sender(s)` returns true for a `sender` `s` then it is guaranteed that `s` will not call `error` on any `callback` `c` passed to `submit(s, c)`.
+If `execution::is_noexcept_sender(s)` returns true for a `sender` `s` then it is guaranteed that `s` will not call `error` on any `callback` `c` passed to `submit(s, c)`. -->
 
 
 ## execution::just
@@ -100,7 +249,7 @@ The expression `execution::just(t)` returns a sender, `s` wrapping the value `t`
  * When `execution::submit(s, r)` is called for some `r`, and l-value `s` will call `execution::set_value(r, t)`, inline with the caller.
  * If moving of `t` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`.
 
-
+<!--
 ## execution::just_error
 
 ### Summary
@@ -113,7 +262,7 @@ The expression `execution::just_error(e)` returns a sender, `s` wrapping the err
  * If `t` is nothrow movable then `execution::is_noexcept_sender(s)` shall be constexpr and return true.
  * When `execution::submit(s, r)` is called for some `r`, and r-value `s` will call `execution::set_error(r, std::move(t))`, inline with the caller.
  * When `execution::submit(s, r)` is called for some `r`, and l-value `s` will call `execution::set_error(r, t)`, inline with the caller.
- * If moving of `e` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`.
+ * If moving of `e` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`. -->
 
 
 ## execution::sync_wait
@@ -178,6 +327,8 @@ If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execut
 
 ## execution::transform
 
+<!-- TODO: Should transform have an overload set such that it *must* be callable, or should it try filtering? -->
+
 ### Summary
 Applies a function `f` to the value channel of a sender such that some type list `T...` is consumed and some type `T2` returned, resulting in a sender that transmits `T2` in its value channel.
 This is equivalent to common `Future::then` operations, for example:
@@ -236,6 +387,8 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 
 
 ## execution::handle_error
+
+<!-- TODO: Should this filter for error types? "if it is callable with...". -->
 
 ### Summary
 This is the only algorithm that deals with an incoming signal on the error channel of the `sender`.
