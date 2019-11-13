@@ -11,6 +11,9 @@ toc: false
 
 # Differences between R0 and R1
  * Improve examples to be clearer, and fully expanded into function call form.
+ * Add reference to range.adapter.
+ * Remove `is_noexcept_sender`.
+ * Remove `just_error`.
 
 # Introduction
 In [@P0443R11] we have included the fundamental principles described in [@P1660R0], and the fundamental requirement to customize algorithms.
@@ -77,6 +80,7 @@ int result =              // value: 5
 ```
 
 In this very simple example we:
+
  * start a chain with the value three
  * apply a function to the incoming value, adding 0.5 and returning a sender of a float.
  * block for the resulting value and assign the `float` value `3.5` to `result`.
@@ -110,6 +114,7 @@ try {
 ```
 
 In this example we:
+
  * start a chain with an int value `3`
  * switch the context to one owned by scheduler1
  * apply a transformation to the value `3`, but this transform throws an exception rather than returning a transformed value
@@ -152,6 +157,7 @@ auto result = sync_wait(std::move(error_handling_sender));
 ```
 
 In this example we:
+
  * start a chain with an int value `3`
  * switch the context to one owned by scheduler1
  * apply a transformation to the value `3`, but this transform throws an exception rather than returning a transformed value
@@ -175,33 +181,23 @@ int result = sync_wait(
 
 
 # Impact on the standard library
-<!-- TODO: Check exactly how ranges are defined. We do the algorithm thing below, but how are the views then described? -->
 
-Add descriptions of customization points defining the following algorithms:
+## Sender adapter objects
+Taking inspiration from [range adaptors](http://eel.is/c++draft/range.adaptor.object) define sender adapters.
 
-<!-- TODO: Make these more solid signatures -->
+Wording to be based on [range.adaptors] with the basic requirement that:
 
- <!-- * `is_noexcept_sender(sender) -> bool` -->
- * `sender_to<T> just(T)`
- <!-- * `just_error(E) -> sender` -->
- * `sender_to<T> via(sender_to<T>, scheduler)`
- * `T sync_wait(sender_to<T>)`
- * `sender_to<T2> transform(sender_to<T>, invocable<T2(T)>)`
- * `sender_to<range<T2>> bulk_transform(sender_to<range<T>>, invocable<T2(T)))`
- * `sender_to<T> handle_error(sender_to<T>, invocable<sender_to<T>(E)>) -> sender`
+ * `operator|` be overloaded for the purpose of creating pipelines over senders
+ * That the following are equivalent expressions:
+   * `algorithm(sender, args...)`
+   * `algorithm(args...)(sender)`
+   * `sender | algorithm(args...)`
+ * that `algorithms(args...)` is a *sender adaptor closure object*
+ * TBD where sender adapters are declared
 
-Add wording such that the sender algorithms are defined as per range-adapters such that:
-
-* `algorithm(sender, args...)`
-* `algorithm(args...)(sender)`
-* `sender | algorithm(args...)`
-
-are equivalent.
-In this way we can use `operator|` in code to make the code more readable.
 
 Details below are in loosely approximated wording and should be made consistent with [@P0443R11] and the standard itself when finalized.
 We choose this set of algorithms as a basic set to allow a range of realistic, though still limited, compositions to be written against executors.
-
 
 
 
@@ -232,9 +228,22 @@ If `execution::is_noexcept_sender(s)` returns true for a `sender` `s` then it is
 
 ## execution::just
 
-### Summary
-Returns a sender that propagates the passed value inline when `submit` is called.
-This is useful for starting a chain of work.
+### Overview
+`just` creates a `sender` that propagates a value inline to a submitted receiver.
+
+Signature:
+```cpp
+S<T> just(T);
+```
+
+where `S<T>` is an implementation-defined type that is a sender that sends a value of type `T` in its value channel.
+
+*[ Example:*
+```cpp
+int r = sync_wait(just(3));
+// r==3
+```
+*- end example]*
 
 ### Wording
 The expression `execution::just(t)` returns a sender, `s` wrapping the value `t`.
@@ -262,10 +271,22 @@ The expression `execution::just_error(e)` returns a sender, `s` wrapping the err
 
 ## execution::sync_wait
 
-### Summary
-Blocks the calling thread to wait for the resulting sender to complete.
+### Overview
+Blocks the calling thread to wait for the passed sender to complete.
 Returns a std::optional of the value or throws if an exception is propagated.^[Conversion from asynchronous callbacks to synchronous function-return can be achieved in different ways. A `CancellationException` would be an alternative approach.]
 On propagation of the `set_done()` signal, returns an empty optional.
+
+`std::optional<T> sync_wait(S<T>)`
+
+where `S<T>` is a sender that sends a value of type `T` in its value channel.
+
+*[ Example:*
+```cpp
+int r = sync_wait(just(3));
+// r==3
+```
+*- end example]*
+
 
 ### Wording
 The name `execution::sync_wait` denotes a customization point object.
@@ -286,21 +307,29 @@ The expression `execution::sync_wait(S)` for some subexpression `S` is expressio
    * If `set_error` is called on `r`, throws the error value as an exception.
    * If `set_done` is called on `r`, returns an empty `std::optional`.
 
+<!--
 If `execution::is_noexcept_sender(S)` returns true at compile-time, and the return type `T` is nothrow movable, then `sync_wait` is noexcept.
 Note that `sync_wait` requires `S` to propagate a single value type.
+-->
 
 ## execution::via
-### Summary
-Transitions execution from one executor to the context of a scheduler.
-That is that:
-```
-sender1 | via(scheduler1) | bulk_execute(f)...
+
+### Overview
+`via` is a sender adapter that takes a `sender` and a `scheduler` and returns a `sender` that propagates the same value as the original, but does so on the `sender`'s execution context.
+
+Signature:
+```cpp
+S<T> via(S<T>, Scheduler);
 ```
 
-will create return a sender that runs in the context of `scheduler1` such that `f` will run on the context of `scheduler1`, potentially customized, but that is not triggered until the completion of `sender1`.
+where `S<T>` is an implementation-defined type that is a sender that sends a value of type `T` in its value channel.
 
-`via(S1, S2)` may be customized on either or both of `S1` and `S2`.
-For example any two senders with their own implementations may provide some mechanism for interoperation that is more efficient than falling back to simple callbacks.
+*[ Example:*
+```cpp
+static_thread_pool t{1};
+int r = sync_wait(just(3) | via(t.scheduler()));
+// r==3
+```
 
 ### Wording
 The name `execution::via` denotes a customization point object.
@@ -317,19 +346,32 @@ The expression `execution::via(S1, S2)` for some subexpressions `S1`, `S2` is ex
  * The returned sender's value types match those of `sender1`.
  * The returned sender's execution context is that of `scheduler1`.
 
+<!--
 If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execution::is_noexcept_sender(S2)` returns true at compile-time and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(on(S1, S2))` should return `true` at compile time^[Should, shall, may?].
+-->
 
 
 ## execution::transform
 
 <!-- TODO: Should transform have an overload set such that it *must* be callable, or should it try filtering? -->
 
-### Summary
-Applies a function `f` to the value channel of a sender such that some type list `T...` is consumed and some type `T2` returned, resulting in a sender that transmits `T2` in its value channel.
-This is equivalent to common `Future::then` operations, for example:
+
+### Overview
+`transform` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that propagates the value resulting from calling the invocable on the value passed by the preceding `sender`.
+
+Signature:
+```cpp
+S<T2> transform(S<T>, invocable<T2(T));
 ```
- Future<float>f = folly::makeFuture<int>(3).thenValue(
-   [](int input){return float(input);});
+
+where `S<T>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type `T` or `T2` respectively in their value channels.
+Note that in the general case there may be many types `T` for a given `sender`, in which case the invocable may have to represent an overload set.
+
+*[ Example:*
+```cpp
+static_thread_pool t{1};
+int r = sync_wait(just(3) | transform([](int v){return v+1;}));
+// r==4
 ```
 
 ### Wording
@@ -352,7 +394,9 @@ The expression `execution::transform(S, F)` for some subexpressions `S` and `F` 
    * If `set_error(c, e)` is called, passes `e` to `execution::set_error(output_receiver, e)`.
    * If `set_done(c)` is called, calls `execution::set_done(output_receiver)`.
 
+<!--
 If `execution::is_noexcept_sender(S)` returns true at compile-time, and `F(S1::value_types)` is marked `noexcept` and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(transform(S1, F))` should return `true` at compile time.
+-->
 
 
 ## execution::bulk_transform
