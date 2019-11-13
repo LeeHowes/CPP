@@ -10,8 +10,7 @@ toc: false
 ---
 
 # Differences between R0 and R1
- * Thing
- * Another thing
+ * Improve examples to be clearer, and fully expanded into function call form.
 
 # Introduction
 In [@P0443R11] we have included the fundamental principles described in [@P1660R0], and the fundamental requirement to customize algorithms.
@@ -63,6 +62,7 @@ We propose immediately discussing the addition of the following algorithms:
 
 #### Simple example
 A very simple example of applying a function to a propagated value and waiting for it.
+
 ```cpp
 auto  just_sender =       // sender_to<int>
   just(3);
@@ -83,100 +83,95 @@ In this very simple example we:
 
 Using `operator|` as in ranges to remove the need to pass arguments around, we can represent this as:
 ```cpp
-auto s = just(3) |                              // Start with an int value 3
-         transform([](int a){return a+0.5f;});  // Add 0.5f, return a float
-float f = sync_wait(std::move(s));              // Assign 3.5f to f
+auto s = ;  
+float f = sync_wait(
+  just(3) | transform([](int a){return a+0.5f;}));              
 ```
-
-<!-- TODO: Continue tidying examples below -->
 
 ## With exception
 A simple example showing how an exception that leaks out of a transform may propagate and be thrown from sync_wait.
+
 ```cpp
 int result = 0;
 try {
- auto s = just(3) |                              // Start with an int value 3
-          via(scheduler1) |                      // Schedule on scheduler1
-          transform([](int a){throw 2;}) |       // Catch and propagate 2 on error channel
-          transform([](){return 3;}) |           // Propagate 2 on error channel
- result = sync_wait(std::move(s));               // Block and throw 2
+  auto just_sender = just(3);
+  auto via_sender = via(std::move(just_sender), scheduler1);
+  auto transform_sender = transform(
+    std::move(via_sender),
+    [](int a){throw 2;});
+  auto skipped_transform_sender = transform(
+    std::move(transform_sender).
+    [](){return 3;});
+
+  result = sync_wait(std::move(skipped_transform_sender));
 } catch(int a) {
  result = a;                                     // Assign 2 to result
 }
 ```
 
+In this example we:
+ * start a chain with an int value `3`
+ * switch the context to one owned by scheduler1
+ * apply a transformation to the value `3`, but this transform throws an exception rather than returning a transformed value
+ * skip the final transform because there is an error propagating
+ * block for the resulting value, seeing an exception thrown instead of a value returned
+ * handle the exception
 
+As before, using `operator|` as in ranges to remove the need to pass arguments around, we can represent this more cleanly:
 
-In a simple example we:
- * start a chain with the value three
- * apply a function to the incoming value, adding 0.5 and returning a sender of a float.
- * apply a function to the value 2.5f and throw an exception of value 2, catching and propagating the exception on the error channel.
- * bypass a transform because there is an error
- * receive an `exception_ptr` carrying a value `2` on the error channel. Return a sender that sends the value `5`.
- * block for the resulting value and assign the value `5` to `result`.
-
- This shows how the value and error channels interact.
-
-```cpp
-auto s = just(3) |                              // Start with an int value 3
-         via(scheduler1) |                      // Schedule on scheduler1
-         transform([](int a){return a+0.5f;}) | // Add 0.5f, return a float
-         transform([](float a){throw 2;}) |     // Receive 0.5f, throw 2
-         transform([](){return 3;}) |           // Catch and propagate 2 on error channel
-         handle_error([](auto e){               // Receive 2, return int sender of value 2
-           return just(5);});
-int result = sync_wait(std::move(s));           // Block and return value 5
-```
-
-## Expanded to underlying function calls
-```cpp
-auto  just_sender =       // sender_to<int>
-  just(3);
-
-auto  via_sender =        // sender_to<int>
-  via(std::move(just_sender), scheduler1);
-
-auto transform_sender1 =  // sender_to<float>
-  transform(
-    std::move(via_sender),
-    [](int a){return a+0.5f;});
-
-auto transform_sender2 =  // sender_to<float>
-  transform(
-    std::move(transform_sender1),
-    [](float b){throw 2;});
-
-auto transform_sender3 =  // sender_to<void>
-  transform(
-    std::move(transform_sender2),
-    [](){return 3;});
-
-auto  error_sender =      // sender_to<int>
-  handle_error(
-    std::move(transform_sender3),
-    [](auto e){return just(5);});
-
-int result =              // value: 5
-  sync_wait(std::move(error_sender));
-```
-
-## With exception
-A simple example showing how an exception that leaks out of a transform may propagate and be thrown from sync_wait.
 ```cpp
 int result = 0;
 try {
-  auto s = just(3) |                              // Start with an int value 3
-           via(scheduler1) |                      // Schedule on scheduler1
-           transform([](int a){throw 2;}) |       // Catch and propagate 2 on error channel
-           transform([](){return 3;}) |           // Propagate 2 on error channel
-  result = sync_wait(std::move(s));               // Block and throw 2
+ result = sync_wait(
+    just(3) |                           
+    via(scheduler1) |                    
+    transform([](int a){throw 2;}) |
+    transform([](){return 3;}));
 } catch(int a) {
-  result = a;                                     // Assign 2 to result
+ result = a;                                     // Assign 2 to result
 }
 ```
 
+## Handle an exception
+Very similar to the above, we can handle an error mid-stream
+
+```cpp
+auto just_sender = just(3);
+auto via_sender = via(std::move(just_sender), scheduler1);
+auto transform_sender = transform(
+  std::move(via_sender),
+  [](int a){throw 2;});
+auto skipped_transform_sender = transform(
+  std::move(transform_sender).
+  [](){return 3;});
+auto error_handling_sender = handle_error(
+  std::move(skipped_transform_sender),
+  [](exception_ptr e){return just(5);});
+
+auto result = sync_wait(std::move(error_handling_sender));
+```
+
+In this example we:
+ * start a chain with an int value `3`
+ * switch the context to one owned by scheduler1
+ * apply a transformation to the value `3`, but this transform throws an exception rather than returning a transformed value
+ * skip the final transform because there is an error propagating
+ * handle the error channel, applying an operation to an `exception_ptr` pointing to the value `2`
+ * in handling the error we return a sender that propagates the value `5`, thus recovering from the error
+ * block for the resulting value, assigning `5` to `result`
 
 
+ As before, using `operator|` as in ranges to remove the need to pass arguments around, we can represent this more cleanly:
+```cpp
+auto s = ;
+int result = sync_wait(
+  just(3) |                            
+  via(scheduler1) |                    
+  transform([](float a){throw 2;}) |   
+  transform([](){return 3;}) |         
+  handle_error([](auto e){         
+   return just(5);}));       
+```
 
 
 # Impact on the standard library
