@@ -88,7 +88,7 @@ float f = sync_wait(
   just(3) | transform([](int a){return a+0.5f;}));              
 ```
 
-## With exception
+#### With exception
 A simple example showing how an exception that leaks out of a transform may propagate and be thrown from sync_wait.
 
 ```cpp
@@ -132,7 +132,7 @@ try {
 }
 ```
 
-## Handle an exception
+#### Handle an exception
 Very similar to the above, we can handle an error mid-stream
 
 ```cpp
