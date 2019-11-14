@@ -1,7 +1,7 @@
 ---
 title: "Towards C++23 executors: A proposal for an initial set of algorithms"
 document: P1897R1
-date: 2019-11-08
+date: 2019-11-13
 audience: SG1
 author:
   - name: Lee Howes
@@ -14,6 +14,8 @@ toc: false
  * Add reference to range.adapter.
  * Remove `is_noexcept_sender`.
  * Remove `just_error`.
+ * Clarified use of parameter packs of values and errors.
+ * Removed confusing use of `on` in addition to `via` in the final example.
 
 # Introduction
 In [@P0443R11] we have included the fundamental principles described in [@P1660R0], and the fundamental requirement to customize algorithms.
@@ -494,17 +496,17 @@ auto s = just(3) |                                        // s1
          via(scheduler1) |                                // s2
          transform([](int a){return a+1;}) |              // s3
          transform([](int a){return a*2;}) |              // s4
-         on(scheduler2) |                                 // s5
-         handle_error([](auto e){return just_error(e);}); // s6
+         via(scheduler2) |                                // s5
+         handle_error([](auto e){return just(3);});       // s6
 int r = sync_wait(s);
 ```
 
 The result of `s1` might be a `just_sender<int>` implemented by the standard library vendor.
 
-`on(just_sender<int>, scheduler1)` has no customization defined, and this expression returns an `scheduler1_on_sender<int>` that is a custom type from the author of `scheduler1`, it will call `submit` on the result of `s1`.
+`via(just_sender<int>, scheduler1)` has no customization defined, and this expression returns an `scheduler1_via_sender<int>` that is a custom type from the author of `scheduler1`, it will call `submit` on the result of `s1`.
 
-`s3` calls `transform(scheduler1_on_sender<int>, [](int a){return a+1;})` for which the author of `scheduler1` may have written a customization.
-The `scheduler1_on_sender` has stashed the value somewhere and build some work queue in the background.
+`s3` calls `transform(scheduler1_via_sender<int>, [](int a){return a+1;})` for which the author of `scheduler1` may have written a customization.
+The `scheduler1_via_sender` has stashed the value somewhere and build some work queue in the background.
 We do not see `submit` called at this point, it uses a behind-the-scenes implementation to schedule the work on the work queue.
 An `scheduler1_transform_sender<int>` is returned.
 
@@ -518,6 +520,7 @@ At this point it will call `submit` on the incoming `scheduler1_transform_sender
 `sync_wait` similarly constructs a `condition_variable` and a temporary `int`, submits a `receiver` to `s` and waits on the `condition_variable`, blocking the calling thread.
 
 `r` is of course the value 8 at this point assuming that neither scheduler triggered an error.
+If there were to be a scheduling error, then that error would propagate to `handle_error` and `r` would subsequently have the value `3`.
 
 
 ---
