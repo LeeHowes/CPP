@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang xml:lang>
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="mpark/wg21" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="dcterms.date" content="2019-11-13" />
+  <title>Towards C++23 executors: A proposal for an initial set of algorithms</title>
+  <style>
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <style>
+code.sourceCode > span { display: inline-block; line-height: 1.25; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode { white-space: pre; position: relative; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+code.sourceCode { white-space: pre-wrap; }
+code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {  background-color: #f6f8fa; }
+@media screen {
+code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span. { } /* Normal */
+code span.al { color: #ff0000; } /* Alert */
+code span.an { } /* Annotation */
+code span.at { } /* Attribute */
+code span.bn { color: #9f6807; } /* BaseN */
+code span.bu { color: #9f6807; } /* BuiltIn */
+code span.cf { color: #00607c; } /* ControlFlow */
+code span.ch { color: #9f6807; } /* Char */
+code span.cn { } /* Constant */
+code span.co { color: #008000; font-style: italic; } /* Comment */
+code span.cv { color: #008000; font-style: italic; } /* CommentVar */
+code span.do { color: #008000; } /* Documentation */
+code span.dt { color: #00607c; } /* DataType */
+code span.dv { color: #9f6807; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #9f6807; } /* Float */
+code span.fu { } /* Function */
+code span.im { } /* Import */
+code span.in { color: #008000; } /* Information */
+code span.kw { color: #00607c; } /* Keyword */
+code span.op { color: #af1915; } /* Operator */
+code span.ot { } /* Other */
+code span.pp { color: #6f4e37; } /* Preprocessor */
+code span.re { } /* RegionMarker */
+code span.sc { color: #9f6807; } /* SpecialChar */
+code span.ss { color: #9f6807; } /* SpecialString */
+code span.st { color: #9f6807; } /* String */
+code span.va { } /* Variable */
+code span.vs { color: #9f6807; } /* VerbatimString */
+code span.wa { color: #008000; font-weight: bold; } /* Warning */
+code.diff {color: #898887}
+code.diff span.va {color: #006e28}
+code.diff span.st {color: #bf0303}
+  </style>
+  <style type="text/css">
+body {
+margin: 5em;
+font-family: serif;
+
+hyphens: auto;
+line-height: 1.35;
+}
+div.wrapper {
+max-width: 60em;
+margin: auto;
+}
+ul {
+list-style-type: none;
+padding-left: 2em;
+margin-top: -0.2em;
+margin-bottom: -0.2em;
+}
+a {
+text-decoration: none;
+color: #4183C4;
+}
+a.hidden_link {
+text-decoration: none;
+color: inherit;
+}
+li {
+margin-top: 0.6em;
+margin-bottom: 0.6em;
+}
+h1, h2, h3, h4 {
+position: relative;
+line-height: 1;
+}
+a.self-link {
+position: absolute;
+top: 0;
+left: calc(-1 * (3.5rem - 26px));
+width: calc(3.5rem - 26px);
+height: 2em;
+text-align: center;
+border: none;
+transition: opacity .2s;
+opacity: .5;
+font-family: sans-serif;
+font-weight: normal;
+font-size: 83%;
+}
+a.self-link:hover { opacity: 1; }
+a.self-link::before { content: "§"; }
+ul > li:before {
+content: "\2014";
+position: absolute;
+margin-left: -1.5em;
+}
+:target { background-color: #C9FBC9; }
+:target .codeblock { background-color: #C9FBC9; }
+:target ul { background-color: #C9FBC9; }
+.abbr_ref { float: right; }
+.folded_abbr_ref { float: right; }
+:target .folded_abbr_ref { display: none; }
+:target .unfolded_abbr_ref { float: right; display: inherit; }
+.unfolded_abbr_ref { display: none; }
+.secnum { display: inline-block; min-width: 35pt; }
+.header-section-number { display: inline-block; min-width: 35pt; }
+.annexnum { display: block; }
+div.sourceLinkParent {
+float: right;
+}
+a.sourceLink {
+position: absolute;
+opacity: 0;
+margin-left: 10pt;
+}
+a.sourceLink:hover {
+opacity: 1;
+}
+a.itemDeclLink {
+position: absolute;
+font-size: 75%;
+text-align: right;
+width: 5em;
+opacity: 0;
+}
+a.itemDeclLink:hover { opacity: 1; }
+span.marginalizedparent {
+position: relative;
+left: -5em;
+}
+li span.marginalizedparent { left: -7em; }
+li ul > li span.marginalizedparent { left: -9em; }
+li ul > li ul > li span.marginalizedparent { left: -11em; }
+li ul > li ul > li ul > li span.marginalizedparent { left: -13em; }
+div.footnoteNumberParent {
+position: relative;
+left: -4.7em;
+}
+a.marginalized {
+position: absolute;
+font-size: 75%;
+text-align: right;
+width: 5em;
+}
+a.enumerated_item_num {
+position: relative;
+left: -3.5em;
+display: inline-block;
+margin-right: -3em;
+text-align: right;
+width: 3em;
+}
+div.para { margin-bottom: 0.6em; margin-top: 0.6em; text-align: justify; }
+div.section { text-align: justify; }
+div.sentence { display: inline; }
+span.indexparent {
+display: inline;
+position: relative;
+float: right;
+right: -1em;
+}
+a.index {
+position: absolute;
+display: none;
+}
+a.index:before { content: "⟵"; }
+
+a.index:target {
+display: inline;
+}
+.indexitems {
+margin-left: 2em;
+text-indent: -2em;
+}
+div.itemdescr {
+margin-left: 3em;
+}
+.bnf {
+font-family: serif;
+margin-left: 40pt;
+margin-top: 0.5em;
+margin-bottom: 0.5em;
+}
+.ncbnf {
+font-family: serif;
+margin-top: 0.5em;
+margin-bottom: 0.5em;
+margin-left: 40pt;
+}
+.ncsimplebnf {
+font-family: serif;
+font-style: italic;
+margin-top: 0.5em;
+margin-bottom: 0.5em;
+margin-left: 40pt;
+background: inherit; 
+}
+span.textnormal {
+font-style: normal;
+font-family: serif;
+white-space: normal;
+display: inline-block;
+}
+span.rlap {
+display: inline-block;
+width: 0px;
+}
+span.descr { font-style: normal; font-family: serif; }
+span.grammarterm { font-style: italic; }
+span.term { font-style: italic; }
+span.terminal { font-family: monospace; font-style: normal; }
+span.nonterminal { font-style: italic; }
+span.tcode { font-family: monospace; font-style: normal; }
+span.textbf { font-weight: bold; }
+span.textsc { font-variant: small-caps; }
+a.nontermdef { font-style: italic; font-family: serif; }
+span.emph { font-style: italic; }
+span.techterm { font-style: italic; }
+span.mathit { font-style: italic; }
+span.mathsf { font-family: sans-serif; }
+span.mathrm { font-family: serif; font-style: normal; }
+span.textrm { font-family: serif; }
+span.textsl { font-style: italic; }
+span.mathtt { font-family: monospace; font-style: normal; }
+span.mbox { font-family: serif; font-style: normal; }
+span.ungap { display: inline-block; width: 2pt; }
+span.textit { font-style: italic; }
+span.texttt { font-family: monospace; }
+span.tcode_in_codeblock { font-family: monospace; font-style: normal; }
+span.phantom { color: white; }
+
+span.math { font-style: normal; }
+span.mathblock {
+display: block;
+margin-left: auto;
+margin-right: auto;
+margin-top: 1.2em;
+margin-bottom: 1.2em;
+text-align: center;
+}
+span.mathalpha {
+font-style: italic;
+}
+span.synopsis {
+font-weight: bold;
+margin-top: 0.5em;
+display: block;
+}
+span.definition {
+font-weight: bold;
+display: block;
+}
+.codeblock {
+margin-left: 1.2em;
+line-height: 127%;
+}
+.outputblock {
+margin-left: 1.2em;
+line-height: 127%;
+}
+div.itemdecl {
+margin-top: 2ex;
+}
+code.itemdeclcode {
+white-space: pre;
+display: block;
+}
+span.textsuperscript {
+vertical-align: super;
+font-size: smaller;
+line-height: 0;
+}
+.footnotenum { vertical-align: super; font-size: smaller; line-height: 0; }
+.footnote {
+font-size: small;
+margin-left: 2em;
+margin-right: 2em;
+margin-top: 0.6em;
+margin-bottom: 0.6em;
+}
+div.minipage {
+display: inline-block;
+margin-right: 3em;
+}
+div.numberedTable {
+text-align: center;
+margin: 2em;
+}
+div.figure {
+text-align: center;
+margin: 2em;
+}
+table {
+border: 1px solid black;
+border-collapse: collapse;
+margin-left: auto;
+margin-right: auto;
+margin-top: 0.8em;
+text-align: left;
+hyphens: none; 
+}
+td, th {
+padding-left: 1em;
+padding-right: 1em;
+vertical-align: top;
+}
+td.empty {
+padding: 0px;
+padding-left: 1px;
+}
+td.left {
+text-align: left;
+}
+td.right {
+text-align: right;
+}
+td.center {
+text-align: center;
+}
+td.justify {
+text-align: justify;
+}
+td.border {
+border-left: 1px solid black;
+}
+tr.rowsep, td.cline {
+border-top: 1px solid black;
+}
+tr.even, tr.odd {
+border-bottom: 1px solid black;
+}
+tr.capsep {
+border-top: 3px solid black;
+border-top-style: double;
+}
+tr.header {
+border-bottom: 3px solid black;
+border-bottom-style: double;
+}
+th {
+border-bottom: 1px solid black;
+}
+span.centry {
+font-weight: bold;
+}
+div.table {
+display: block;
+margin-left: auto;
+margin-right: auto;
+text-align: center;
+width: 90%;
+}
+span.indented {
+display: block;
+margin-left: 2em;
+margin-bottom: 1em;
+margin-top: 1em;
+}
+ol.enumeratea { list-style-type: none; background: inherit; }
+ol.enumerate { list-style-type: none; background: inherit; }
+
+code.sourceCode > span { display: inline; }
+
+div#refs p { padding-left: 32px; text-indent: -32px; }
+</style>
+  <link href="data:image/vnd.microsoft.icon;base64,AAABAAIAEBAAAAEAIABoBAAAJgAAACAgAAABACAAqBAAAI4EAAAoAAAAEAAAACAAAAABACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////AIJEAACCRAAAgkQAAIJEAACCRAAAgkQAVoJEAN6CRADegkQAWIJEAACCRAAAgkQAAIJEAACCRAAA////AP///wCCRAAAgkQAAIJEAACCRAAsgkQAvoJEAP+CRAD/gkQA/4JEAP+CRADAgkQALoJEAACCRAAAgkQAAP///wD///8AgkQAAIJEABSCRACSgkQA/IJEAP99PQD/dzMA/3czAP99PQD/gkQA/4JEAPyCRACUgkQAFIJEAAD///8A////AHw+AFiBQwDqgkQA/4BBAP9/PxP/uZd6/9rJtf/bybX/upd7/39AFP+AQQD/gkQA/4FDAOqAQgBc////AP///wDKklv4jlEa/3o7AP+PWC//8+3o///////////////////////z7un/kFox/35AAP+GRwD/mVYA+v///wD///8A0Zpk+NmibP+0d0T/8evj///////+/fv/1sKz/9bCs//9/fr//////+/m2/+NRwL/nloA/5xYAPj///8A////ANKaZPjRmGH/5cKh////////////k149/3UwAP91MQD/lmQ//86rhv+USg3/m1YA/5hSAP+bVgD4////AP///wDSmmT4zpJY/+/bx///////8+TV/8mLT/+TVx//gkIA/5lVAP+VTAD/x6B//7aEVv/JpH7/s39J+P///wD///8A0ppk+M6SWP/u2sf///////Pj1f/Nj1T/2KFs/8mOUv+eWhD/lEsA/8aee/+0glT/x6F7/7J8Rvj///8A////ANKaZPjRmGH/48Cf///////+/v7/2qt//82PVP/OkFX/37KJ/86siv+USg7/mVQA/5hRAP+bVgD4////AP///wDSmmT40ppk/9CVXP/69O////////7+/v/x4M//8d/P//7+/f//////9u7n/6tnJf+XUgD/nFgA+P///wD///8A0ppk+NKaZP/RmWL/1qNy//r07///////////////////////+vXw/9akdP/Wnmn/y5FY/6JfFvj///8A////ANKaZFTSmmTo0ppk/9GYYv/Ql1//5cWm//Hg0P/x4ND/5cWm/9GXYP/RmGH/0ppk/9KaZOjVnmpY////AP///wDSmmQA0ppkEtKaZI7SmmT60ppk/9CWX//OkVb/zpFW/9CWX//SmmT/0ppk/NKaZJDSmmQS0ppkAP///wD///8A0ppkANKaZADSmmQA0ppkKtKaZLrSmmT/0ppk/9KaZP/SmmT/0ppkvNKaZCrSmmQA0ppkANKaZAD///8A////ANKaZADSmmQA0ppkANKaZADSmmQA0ppkUtKaZNzSmmTc0ppkVNKaZADSmmQA0ppkANKaZADSmmQA////AP5/AAD4HwAA4AcAAMADAACAAQAAgAEAAIABAACAAQAAgAEAAIABAACAAQAAgAEAAMADAADgBwAA+B8AAP5/AAAoAAAAIAAAAEAAAAABACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////AP///wCCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAAyCRACMgkQA6oJEAOqCRACQgkQAEIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAA////AP///wD///8A////AIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRABigkQA5oJEAP+CRAD/gkQA/4JEAP+CRADqgkQAZoJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAAD///8A////AP///wD///8AgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAA4gkQAwoJEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQAxIJEADyCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAP///wD///8A////AP///wCCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAWgkQAmIJEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAJyCRAAYgkQAAIJEAACCRAAAgkQAAIJEAACCRAAA////AP///wD///8A////AIJEAACCRAAAgkQAAIJEAACCRAAAgkQAdIJEAPCCRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAPSCRAB4gkQAAIJEAACCRAAAgkQAAIJEAAD///8A////AP///wD///8AgkQAAIJEAACCRAAAgkQASoJEANKCRAD/gkQA/4JEAP+CRAD/g0YA/39AAP9zLgD/bSQA/2shAP9rIQD/bSQA/3MuAP9/PwD/g0YA/4JEAP+CRAD/gkQA/4JEAP+CRADUgkQAToJEAACCRAAAgkQAAP///wD///8A////AP///wB+PwAAgkUAIoJEAKiCRAD/gkQA/4JEAP+CRAD/hEcA/4BBAP9sIwD/dTAA/5RfKv+viF7/vp56/76ee/+wiF7/lWAr/3YxAP9sIwD/f0AA/4RHAP+CRAD/gkQA/4JEAP+CRAD/gkQArIJEACaBQwAA////AP///wD///8A////AIBCAEBzNAD6f0EA/4NFAP+CRAD/gkQA/4VIAP92MwD/bSUA/6N1Tv/ezsL/////////////////////////////////38/D/6V3Uv9uJgD/dTEA/4VJAP+CRAD/gkQA/4JEAP+BQwD/fUAA/4FDAEj///8A////AP///wD///8AzJRd5qBlKf91NgD/dDUA/4JEAP+FSQD/cy4A/3YyAP/PuKP//////////////////////////////////////////////////////9K7qP94NQD/ciwA/4VJAP+CRAD/fkEA/35BAP+LSwD/mlYA6v///wD///8A////AP///wDdpnL/4qx3/8KJUv+PUhf/cTMA/3AsAP90LgD/4dK+/////////////////////////////////////////////////////////////////+TYxf91MAD/dTIA/31CAP+GRwD/llQA/6FcAP+gWwD8////AP///wD///8A////ANGZY/LSm2X/4ap3/92mcP+wdT3/byQA/8mwj////////////////////////////////////////////////////////////////////////////+LYxv9zLgP/jUoA/59bAP+hXAD/nFgA/5xYAPL///8A////AP///wD///8A0ppk8tKaZP/RmWL/1p9q/9ubXv/XqXj////////////////////////////7+fD/vZyG/6BxS/+gcUr/vJuE//r37f//////////////////////3MOr/5dQBf+dVQD/nVkA/5xYAP+cWAD/nFgA8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/SmWP/yohJ//jo2P//////////////////////4NTG/4JDFf9lGAD/bSQA/20kAP9kGAD/fz8S/+Xb0f//////5NG9/6txN/+LOgD/m1QA/51aAP+cWAD/m1cA/5xYAP+cWADy////AP///wD///8A////ANKaZPLSmmT/0ppk/8+TWf/Unmv//v37//////////////////////+TWRr/VwsA/35AAP+ERgD/g0UA/4JGAP9lHgD/kFga/8KXX/+TRwD/jT4A/49CAP+VTQD/n10A/5xYAP+OQQD/lk4A/55cAPL///8A////AP///wD///8A0ppk8tKaZP/SmmT/y4tO/92yiP//////////////////////8NnE/8eCQP+rcTT/ez0A/3IyAP98PgD/gEMA/5FSAP+USwD/jj8A/5lUAP+JNwD/yqV2/694Mf+HNQD/jkAA/82rf/+laBj/jT4A8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/LiUr/4byY///////////////////////gupX/0I5P/+Wuev/Lklz/l1sj/308AP+QSwD/ol0A/59aAP+aVQD/k0oA/8yoh///////+fXv/6pwO//Lp3v///////Pr4f+oay7y////AP///wD///8A////ANKaZPLSmmT/0ppk/8uJSv/hvJj//////////////////////+G7l//Jhkb/0ppk/96nc//fqXX/x4xO/6dkFP+QSQD/llEA/5xXAP+USgD/yaOA///////38uv/qG05/8ijdv//////8efb/6ZpLPL///8A////AP///wD///8A0ppk8tKaZP/SmmT/zIxO/9yxh///////////////////////7dbA/8iEQf/Sm2X/0Zlj/9ScZv/eqHf/2KJv/7yAQf+XTgD/iToA/5lSAP+JNgD/yKFv/611LP+HNQD/jT8A/8qmeP+kZRT/jT4A8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/Pk1n/1J5q//78+//////////////////+/fv/1aFv/8iEQv/Tm2b/0ppl/9GZY//Wn2z/1pZc/9eldf/Bl2b/kUcA/4w9AP+OQAD/lUwA/59eAP+cWQD/jT8A/5ZOAP+eXADy////AP///wD///8A////ANKaZPLSmmT/0ppk/9KZY//KiEn/8d/P///////////////////////47+f/05tm/8iCP//KiEj/yohJ/8eCP//RmGH//vfy///////n1sP/rXQ7/4k4AP+TTAD/nVoA/5xYAP+cVwD/nFgA/5xYAPL///8A////AP///wD///8A0ppk8tKaZP/SmmT/0ptl/8uLTf/aq37////////////////////////////+/fz/6c2y/961jv/etY7/6Myx//78+v//////////////////////3MWv/5xXD/+ORAD/mFQA/51ZAP+cWAD/nFgA8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/SmmT/0ppk/8mFRP/s1b//////////////////////////////////////////////////////////////////////////////+PD/0JFU/7NzMv+WUQD/kUsA/5tXAP+dWQDy////AP///wD///8A////ANKaZP/SmmT/0ppk/9KaZP/Sm2X/z5NZ/8yMT//z5NX/////////////////////////////////////////////////////////////////9Ofa/8yNUP/UmGH/36p5/8yTWv+qaSD/kksA/5ROAPz///8A////AP///wD///8A0ppk5NKaZP/SmmT/0ppk/9KaZP/TnGf/zY9T/82OUv/t1sD//////////////////////////////////////////////////////+7Yw//OkFX/zI5R/9OcZ//SmmP/26V0/9ymdf/BhUf/ol8R6P///wD///8A////AP///wDSmmQ80ppk9tKaZP/SmmT/0ppk/9KaZP/TnGj/zpFW/8qJSv/dson/8uHS//////////////////////////////////Lj0//etIv/y4lL/86QVf/TnGj/0ppk/9KaZP/RmWP/05xn/9ymdfjUnWdC////AP///wD///8A////ANKaZADSmmQc0ppkotKaZP/SmmT/0ppk/9KaZP/Tm2b/0Zli/8qJSf/NjlH/16Z3/+G8mP/myKr/5siq/+G8mP/Xp3f/zY5S/8qISf/RmGH/05tm/9KaZP/SmmT/0ppk/9KaZP/SmmSm0pljINWdaQD///8A////AP///wD///8A0ppkANKaZADSmmQA0ppkQtKaZMrSmmT/0ppk/9KaZP/SmmT/0ptl/9GYYf/Nj1P/y4lL/8qISP/KiEj/y4lK/82PU//RmGH/0ptl/9KaZP/SmmT/0ppk/9KaZP/SmmTO0ppkRtKaZADSmmQA0ppkAP///wD///8A////AP///wDSmmQA0ppkANKaZADSmmQA0ppkANKaZGzSmmTu0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmTw0ppkcNKaZADSmmQA0ppkANKaZADSmmQA////AP///wD///8A////ANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZBLSmmSQ0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppklNKaZBTSmmQA0ppkANKaZADSmmQA0ppkANKaZAD///8A////AP///wD///8A0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQy0ppkutKaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppkvtKaZDbSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkAP///wD///8A////AP///wDSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkXNKaZODSmmT/0ppk/9KaZP/SmmT/0ppk5NKaZGDSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA////AP///wD///8A////ANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkBtKaZIbSmmTo0ppk6tKaZIrSmmQK0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZAD///8A////AP/8P///+B///+AH//+AAf//AAD//AAAP/AAAA/gAAAHwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA+AAAAfwAAAP/AAAP/8AAP//gAH//+AH///4H////D//" rel="icon" />
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  
+</head>
+<body>
+<div class="wrapper">
+<header id="title-block-header">
+<h1 class="title" style="text-align:center">Towards C++23 executors: A proposal for an initial set of algorithms</h1>
+
+<table style="border:none;float:right">
+  <tr>
+    <td>Document #: </td>
+    <td>P1897R1</td>
+  </tr>
+  <tr>
+    <td>Date: </td>
+    <td>2019-11-13</td>
+  </tr>
+  <tr>
+    <td style="vertical-align:top">Project: </td>
+    <td>Programming Language C++<br>
+      SG1<br>
+    </td>
+  </tr>
+  <tr>
+    <td style="vertical-align:top">Reply-to: </td>
+    <td>
+      Lee Howes<br>&lt;<a href="mailto:lwh@fb.com" class="email">lwh@fb.com</a>&gt;<br>
+    </td>
+  </tr>
+</table>
+
+</header>
+<div style="clear:both">
+<h1 id="differences-between-r0-and-r1"><span class="header-section-number">1</span> Differences between R0 and R1<a href="#differences-between-r0-and-r1" class="self-link"></a></h1>
+<ul>
+<li>Improve examples to be clearer, and fully expanded into function call form.</li>
+<li>Add reference to range.adapter.</li>
+<li>Remove <code>is_noexcept_sender</code>.</li>
+<li>Remove <code>just_error</code>.</li>
+<li>Clarified use of parameter packs of values and errors.</li>
+<li>Removed confusing use of <code>on</code> in addition to <code>via</code> in the final example.</li>
+</ul>
+<h1 id="introduction"><span class="header-section-number">2</span> Introduction<a href="#introduction" class="self-link"></a></h1>
+<p>In <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> we have included the fundamental principles described in <span class="citation" data-cites="P1660R0">[<a href="#ref-P1660R0" role="doc-biblioref">P1660R0</a>]</span>, and the fundamental requirement to customize algorithms. In recent discussions we have converged to an understanding of the <code>submit</code> operation on a <code>sender</code> acting as a fundamental interoperation primitive, and algorithm customization giving us full flexibility to optimize, to offload and to avoid synchronization in chains of mutually compatible algorithm customizations.</p>
+<p>As a starting point, in <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> we only include a <code>bulk_execute</code> algorithm, that satisfies the core requirement we planned with P0443 to provide scalar and bulk execution. To make the C++23 solution completely practical, we should extend the set of algorithms, however. This paper suggests an expanded initial set that enables early useful work chains. This set is intended to act as a discussion focus for us to discuss one by one, and to analyze the finer constraints of the wording to make sure we do not over-constrain the design.</p>
+<p>In the long run we expect to have a much wider set of algorithms, potentially covering the full set in the current C++20 parallel algorithms. The precise customization of these algorithms is open to discussion: they may be individually customized and individually defaulted, or they may be optionally individually customized but defaulted in a tree such that customizing one is known to accelerate dependencies. It is open to discussion how we achieve this and that is an independent topic, beyond the scope of this paper.</p>
+<h2 id="summary"><span class="header-section-number">2.1</span> Summary<a href="#summary" class="self-link"></a></h2>
+<p>Starting with <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> as a baseline we have the following customization points:</p>
+<ul>
+<li><code>execute(executor, invocable) -&gt; void</code></li>
+<li><code>submit(sender, receiver) -&gt; void</code></li>
+<li><code>schedule(scheduler) -&gt; sender</code></li>
+<li><code>set_done</code></li>
+<li><code>set_error</code></li>
+<li><code>set_value</code></li>
+</ul>
+<p>and the following Concepts:</p>
+<ul>
+<li><code>executor</code></li>
+<li><code>scheduler</code></li>
+<li><code>callback_signal</code></li>
+<li><code>callback</code></li>
+<li><code>sender</code></li>
+</ul>
+<p>We propose immediately discussing the addition of the following algorithms:</p>
+<ul>
+<li><code>just(v)</code>
+<ul>
+<li>returns a <code>sender</code> of the value <code>v</code></li>
+</ul></li>
+<li><code>via(s, sch)</code>
+<ul>
+<li>returns a sender that propagates the value or error from <code>s</code> on <code>sch</code>’s execution context</li>
+</ul></li>
+<li><code>sync_wait(s)</code>
+<ul>
+<li>blocks and returns the value type of the sender, throwing on error</li>
+</ul></li>
+<li><code>transform(s, f)</code>
+<ul>
+<li>returns a sender that applies <code>f</code> to the value passed by <code>s</code>, or propagates errors or cancellation</li>
+</ul></li>
+<li><code>bulk_transform(s, f)</code>
+<ul>
+<li>returns a sender that applies <code>f</code> to each element in a range sent by <code>s</code>, or propagates errors or cancellation</li>
+</ul></li>
+<li><code>handle_error(s, f)</code>
+<ul>
+<li>returns a sender that applies <code>f</code> to an error passed by <code>s</code>, ignoring the values or cancellation</li>
+</ul></li>
+</ul>
+<h2 id="examples"><span class="header-section-number">2.2</span> Examples<a href="#examples" class="self-link"></a></h2>
+<h4 id="simple-example"><span class="header-section-number">2.2.0.1</span> Simple example<a href="#simple-example" class="self-link"></a></h4>
+<p>A very simple example of applying a function to a propagated value and waiting for it.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb1-1"><a href="#cb1-1"></a><span class="kw">auto</span>  just_sender <span class="op">=</span>       <span class="co">// sender_to&lt;int&gt;</span></span>
+<span id="cb1-2"><a href="#cb1-2"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span>;</span>
+<span id="cb1-3"><a href="#cb1-3"></a></span>
+<span id="cb1-4"><a href="#cb1-4"></a><span class="kw">auto</span> transform_sender <span class="op">=</span>  <span class="co">// sender_to&lt;float&gt;</span></span>
+<span id="cb1-5"><a href="#cb1-5"></a>  transform<span class="op">(</span></span>
+<span id="cb1-6"><a href="#cb1-6"></a>    std<span class="op">::</span>move<span class="op">(</span>via_sender<span class="op">)</span>,</span>
+<span id="cb1-7"><a href="#cb1-7"></a>    <span class="op">[](</span><span class="dt">int</span> a<span class="op">){</span><span class="cf">return</span> a<span class="op">+</span><span class="fl">0.5</span><span class="bu">f</span>;<span class="op">})</span>;</span>
+<span id="cb1-8"><a href="#cb1-8"></a></span>
+<span id="cb1-9"><a href="#cb1-9"></a><span class="dt">int</span> result <span class="op">=</span>              <span class="co">// value: 5</span></span>
+<span id="cb1-10"><a href="#cb1-10"></a>  sync_wait<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>error_sender<span class="op">))</span>;</span></code></pre></div>
+<p>In this very simple example we:</p>
+<ul>
+<li>start a chain with the value three</li>
+<li>apply a function to the incoming value, adding 0.5 and returning a sender of a float.</li>
+<li>block for the resulting value and assign the <code>float</code> value <code>3.5</code> to <code>result</code>.</li>
+</ul>
+<p>Using <code>operator|</code> as in ranges to remove the need to pass arguments around, we can represent this as:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb2-1"><a href="#cb2-1"></a><span class="kw">auto</span> s <span class="op">=</span> ;  </span>
+<span id="cb2-2"><a href="#cb2-2"></a><span class="dt">float</span> f <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<span id="cb2-3"><a href="#cb2-3"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span> transform<span class="op">([](</span><span class="dt">int</span> a<span class="op">){</span><span class="cf">return</span> a<span class="op">+</span><span class="fl">0.5</span><span class="bu">f</span>;<span class="op">}))</span>;              </span></code></pre></div>
+<h4 id="with-exception"><span class="header-section-number">2.2.0.2</span> With exception<a href="#with-exception" class="self-link"></a></h4>
+<p>A simple example showing how an exception that leaks out of a transform may propagate and be thrown from sync_wait.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb3-1"><a href="#cb3-1"></a><span class="dt">int</span> result <span class="op">=</span> <span class="dv">0</span>;</span>
+<span id="cb3-2"><a href="#cb3-2"></a><span class="cf">try</span> <span class="op">{</span></span>
+<span id="cb3-3"><a href="#cb3-3"></a>  <span class="kw">auto</span> just_sender <span class="op">=</span> just<span class="op">(</span><span class="dv">3</span><span class="op">)</span>;</span>
+<span id="cb3-4"><a href="#cb3-4"></a>  <span class="kw">auto</span> via_sender <span class="op">=</span> via<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>just_sender<span class="op">)</span>, scheduler1<span class="op">)</span>;</span>
+<span id="cb3-5"><a href="#cb3-5"></a>  <span class="kw">auto</span> transform_sender <span class="op">=</span> transform<span class="op">(</span></span>
+<span id="cb3-6"><a href="#cb3-6"></a>    std<span class="op">::</span>move<span class="op">(</span>via_sender<span class="op">)</span>,</span>
+<span id="cb3-7"><a href="#cb3-7"></a>    <span class="op">[](</span><span class="dt">int</span> a<span class="op">){</span><span class="cf">throw</span> <span class="dv">2</span>;<span class="op">})</span>;</span>
+<span id="cb3-8"><a href="#cb3-8"></a>  <span class="kw">auto</span> skipped_transform_sender <span class="op">=</span> transform<span class="op">(</span></span>
+<span id="cb3-9"><a href="#cb3-9"></a>    std<span class="op">::</span>move<span class="op">(</span>transform_sender<span class="op">).</span></span>
+<span id="cb3-10"><a href="#cb3-10"></a>    <span class="op">[](){</span><span class="cf">return</span> <span class="dv">3</span>;<span class="op">})</span>;</span>
+<span id="cb3-11"><a href="#cb3-11"></a></span>
+<span id="cb3-12"><a href="#cb3-12"></a>  result <span class="op">=</span> sync_wait<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>skipped_transform_sender<span class="op">))</span>;</span>
+<span id="cb3-13"><a href="#cb3-13"></a><span class="op">}</span> <span class="cf">catch</span><span class="op">(</span><span class="dt">int</span> a<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb3-14"><a href="#cb3-14"></a> result <span class="op">=</span> a;                                     <span class="co">// Assign 2 to result</span></span>
+<span id="cb3-15"><a href="#cb3-15"></a><span class="op">}</span></span></code></pre></div>
+<p>In this example we:</p>
+<ul>
+<li>start a chain with an int value <code>3</code></li>
+<li>switch the context to one owned by scheduler1</li>
+<li>apply a transformation to the value <code>3</code>, but this transform throws an exception rather than returning a transformed value</li>
+<li>skip the final transform because there is an error propagating</li>
+<li>block for the resulting value, seeing an exception thrown instead of a value returned</li>
+<li>handle the exception</li>
+</ul>
+<p>As before, using <code>operator|</code> as in ranges to remove the need to pass arguments around, we can represent this more cleanly:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb4-1"><a href="#cb4-1"></a><span class="dt">int</span> result <span class="op">=</span> <span class="dv">0</span>;</span>
+<span id="cb4-2"><a href="#cb4-2"></a><span class="cf">try</span> <span class="op">{</span></span>
+<span id="cb4-3"><a href="#cb4-3"></a> result <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<span id="cb4-4"><a href="#cb4-4"></a>    just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span>                           </span>
+<span id="cb4-5"><a href="#cb4-5"></a>    via<span class="op">(</span>scheduler1<span class="op">)</span> <span class="op">|</span>                    </span>
+<span id="cb4-6"><a href="#cb4-6"></a>    transform<span class="op">([](</span><span class="dt">int</span> a<span class="op">){</span><span class="cf">throw</span> <span class="dv">2</span>;<span class="op">})</span> <span class="op">|</span></span>
+<span id="cb4-7"><a href="#cb4-7"></a>    transform<span class="op">([](){</span><span class="cf">return</span> <span class="dv">3</span>;<span class="op">}))</span>;</span>
+<span id="cb4-8"><a href="#cb4-8"></a><span class="op">}</span> <span class="cf">catch</span><span class="op">(</span><span class="dt">int</span> a<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb4-9"><a href="#cb4-9"></a> result <span class="op">=</span> a;                                     <span class="co">// Assign 2 to result</span></span>
+<span id="cb4-10"><a href="#cb4-10"></a><span class="op">}</span></span></code></pre></div>
+<h4 id="handle-an-exception"><span class="header-section-number">2.2.0.3</span> Handle an exception<a href="#handle-an-exception" class="self-link"></a></h4>
+<p>Very similar to the above, we can handle an error mid-stream</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb5-1"><a href="#cb5-1"></a><span class="kw">auto</span> just_sender <span class="op">=</span> just<span class="op">(</span><span class="dv">3</span><span class="op">)</span>;</span>
+<span id="cb5-2"><a href="#cb5-2"></a><span class="kw">auto</span> via_sender <span class="op">=</span> via<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>just_sender<span class="op">)</span>, scheduler1<span class="op">)</span>;</span>
+<span id="cb5-3"><a href="#cb5-3"></a><span class="kw">auto</span> transform_sender <span class="op">=</span> transform<span class="op">(</span></span>
+<span id="cb5-4"><a href="#cb5-4"></a>  std<span class="op">::</span>move<span class="op">(</span>via_sender<span class="op">)</span>,</span>
+<span id="cb5-5"><a href="#cb5-5"></a>  <span class="op">[](</span><span class="dt">int</span> a<span class="op">){</span><span class="cf">throw</span> <span class="dv">2</span>;<span class="op">})</span>;</span>
+<span id="cb5-6"><a href="#cb5-6"></a><span class="kw">auto</span> skipped_transform_sender <span class="op">=</span> transform<span class="op">(</span></span>
+<span id="cb5-7"><a href="#cb5-7"></a>  std<span class="op">::</span>move<span class="op">(</span>transform_sender<span class="op">).</span></span>
+<span id="cb5-8"><a href="#cb5-8"></a>  <span class="op">[](){</span><span class="cf">return</span> <span class="dv">3</span>;<span class="op">})</span>;</span>
+<span id="cb5-9"><a href="#cb5-9"></a><span class="kw">auto</span> error_handling_sender <span class="op">=</span> handle_error<span class="op">(</span></span>
+<span id="cb5-10"><a href="#cb5-10"></a>  std<span class="op">::</span>move<span class="op">(</span>skipped_transform_sender<span class="op">)</span>,</span>
+<span id="cb5-11"><a href="#cb5-11"></a>  <span class="op">[](</span>exception_ptr e<span class="op">){</span><span class="cf">return</span> just<span class="op">(</span><span class="dv">5</span><span class="op">)</span>;<span class="op">})</span>;</span>
+<span id="cb5-12"><a href="#cb5-12"></a></span>
+<span id="cb5-13"><a href="#cb5-13"></a><span class="kw">auto</span> result <span class="op">=</span> sync_wait<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>error_handling_sender<span class="op">))</span>;</span></code></pre></div>
+<p>In this example we:</p>
+<ul>
+<li>start a chain with an int value <code>3</code></li>
+<li>switch the context to one owned by scheduler1</li>
+<li>apply a transformation to the value <code>3</code>, but this transform throws an exception rather than returning a transformed value</li>
+<li>skip the final transform because there is an error propagating</li>
+<li>handle the error channel, applying an operation to an <code>exception_ptr</code> pointing to the value <code>2</code></li>
+<li>in handling the error we return a sender that propagates the value <code>5</code>, thus recovering from the error</li>
+<li>block for the resulting value, assigning <code>5</code> to <code>result</code></li>
+</ul>
+<p>As before, using <code>operator|</code> as in ranges to remove the need to pass arguments around, we can represent this more cleanly:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb6-1"><a href="#cb6-1"></a><span class="kw">auto</span> s <span class="op">=</span> ;</span>
+<span id="cb6-2"><a href="#cb6-2"></a><span class="dt">int</span> result <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<span id="cb6-3"><a href="#cb6-3"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span>                            </span>
+<span id="cb6-4"><a href="#cb6-4"></a>  via<span class="op">(</span>scheduler1<span class="op">)</span> <span class="op">|</span>                    </span>
+<span id="cb6-5"><a href="#cb6-5"></a>  transform<span class="op">([](</span><span class="dt">float</span> a<span class="op">){</span><span class="cf">throw</span> <span class="dv">2</span>;<span class="op">})</span> <span class="op">|</span>   </span>
+<span id="cb6-6"><a href="#cb6-6"></a>  transform<span class="op">([](){</span><span class="cf">return</span> <span class="dv">3</span>;<span class="op">})</span> <span class="op">|</span>         </span>
+<span id="cb6-7"><a href="#cb6-7"></a>  handle_error<span class="op">([](</span><span class="kw">auto</span> e<span class="op">){</span>         </span>
+<span id="cb6-8"><a href="#cb6-8"></a>   <span class="cf">return</span> just<span class="op">(</span><span class="dv">5</span><span class="op">)</span>;<span class="op">}))</span>;       </span></code></pre></div>
+<h1 id="impact-on-the-standard-library"><span class="header-section-number">3</span> Impact on the standard library<a href="#impact-on-the-standard-library" class="self-link"></a></h1>
+<h2 id="sender-adapter-objects"><span class="header-section-number">3.1</span> Sender adapter objects<a href="#sender-adapter-objects" class="self-link"></a></h2>
+<p>Taking inspiration from <a href="http://eel.is/c++draft/range.adaptor.object">range adaptors</a> define sender adapters.</p>
+<p>Wording to be based on [range.adaptors] with the basic requirement that:</p>
+<ul>
+<li><code>operator|</code> be overloaded for the purpose of creating pipelines over senders</li>
+<li>That the following are equivalent expressions:
+<ul>
+<li><code>algorithm(sender, args...)</code></li>
+<li><code>algorithm(args...)(sender)</code></li>
+<li><code>sender | algorithm(args...)</code></li>
+</ul></li>
+<li>that <code>algorithms(args...)</code> is a <em>sender adaptor closure object</em></li>
+<li>TBD where sender adapters are declared</li>
+</ul>
+<p>Details below are in loosely approximated wording and should be made consistent with <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> and the standard itself when finalized. We choose this set of algorithms as a basic set to allow a range of realistic, though still limited, compositions to be written against executors.</p>
+<!-- ## execution::is_noexcept_sender
+### Summary
+Queries whether the passed sender will ever propagate an error when treated as an r-value to `submit`.
+
+### Signature
+
+### Wording
+The name `execution::is_noexcept_sender` denotes a customization point object.
+The expression `execution::is_noexcept_sender(S)` for some subexpression `S` is expression-equivalent to:
+
+ * `S.is_noexcept()`, if that expression is valid.
+ * Otherwise, `is_noexcept_sender(S)`, if that expression is valid, with overload resolution performed in a context that includes the declaration
+```
+        template<class S>
+          void is_noexcept_sender(S) = delete;
+```
+    and that does not include a declaration of `execution::is_noexcept_sender`.
+
+ * Otherwise, `false`.
+
+If possible, `is_noexcept_sender` should be `noexcept`.
+
+If `execution::is_noexcept_sender(s)` returns true for a `sender` `s` then it is guaranteed that `s` will not call `error` on any `callback` `c` passed to `submit(s, c)`. -->
+<h2 id="executionjust"><span class="header-section-number">3.2</span> execution::just<a href="#executionjust" class="self-link"></a></h2>
+<h3 id="overview"><span class="header-section-number">3.2.1</span> Overview<a href="#overview" class="self-link"></a></h3>
+<p><code>just</code> creates a <code>sender</code> that propagates a value inline to a submitted receiver.</p>
+<p>Signature:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb7-1"><a href="#cb7-1"></a>S<span class="op">&lt;</span>T<span class="op">...&gt;</span> just<span class="op">(</span>T<span class="op">...)</span>;</span></code></pre></div>
+<p>where <code>S&lt;T...&gt;</code> is an implementation-defined <code>typed_sender</code> that that sends a set of values of type <code>T...</code> in its value channel.</p>
+<p><em>[ Example:</em></p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb8-1"><a href="#cb8-1"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just<span class="op">(</span><span class="dv">3</span><span class="op">))</span>;</span>
+<span id="cb8-2"><a href="#cb8-2"></a><span class="co">// r==3</span></span></code></pre></div>
+<p><em>- end example]</em></p>
+<h3 id="wording"><span class="header-section-number">3.2.2</span> Wording<a href="#wording" class="self-link"></a></h3>
+<p>The expression <code>execution::just(t)</code> returns a sender, <code>s</code> wrapping the value <code>t</code>.</p>
+<ul>
+<li>If <code>t...</code> are nothrow movable then <code>execution::is_noexcept_sender(s)</code> shall be constexpr and return true.</li>
+<li>When <code>execution::submit(s, r)</code> is called for some <code>r</code>, and r-value <code>s</code> will call <code>execution::set_value(r, std::move(t)...)</code>, inline with the caller.</li>
+<li>When <code>execution::submit(s, r)</code> is called for some <code>r</code>, and l-value <code>s</code> will call <code>execution::set_value(r, t...)</code>, inline with the caller.</li>
+<li>If moving of <code>t</code> throws, then will catch the exception and call <code>execution::set_error(r, e)</code> with the caught <code>exception_ptr</code>.</li>
+</ul>
+<!--
+## execution::just_error
+
+### Summary
+Returns a sender that propagates the passed error inline when `submit` is called.
+This is useful for starting a chain of work.
+
+### Wording
+The expression `execution::just_error(e)` returns a sender, `s` wrapping the error `e`.
+
+ * If `t` is nothrow movable then `execution::is_noexcept_sender(s)` shall be constexpr and return true.
+ * When `execution::submit(s, r)` is called for some `r`, and r-value `s` will call `execution::set_error(r, std::move(t))`, inline with the caller.
+ * When `execution::submit(s, r)` is called for some `r`, and l-value `s` will call `execution::set_error(r, t)`, inline with the caller.
+ * If moving of `e` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`. -->
+<h2 id="executionsync_wait"><span class="header-section-number">3.3</span> execution::sync_wait<a href="#executionsync_wait" class="self-link"></a></h2>
+<h3 id="overview-1"><span class="header-section-number">3.3.1</span> Overview<a href="#overview-1" class="self-link"></a></h3>
+<p>Blocks the calling thread to wait for the passed sender to complete. Returns the value (or void if the sender carries no value), throws if an exception is propagated and throws a TBD exception type on cancellation.<a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a> On propagation of the <code>set_done()</code> signal, returns an empty optional.</p>
+<p><code>T... sync_wait(S&lt;T...&gt;)</code></p>
+<p>where <code>S&lt;T...&gt;</code> is a sender that sends zero or one values of type <code>T...</code> in its value channel. The existence of, and if existing the type <code>T</code> must be known statically and cannot be part of an overload set.</p>
+<p><em>[ Example:</em></p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb9-1"><a href="#cb9-1"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just<span class="op">(</span><span class="dv">3</span><span class="op">))</span>;</span>
+<span id="cb9-2"><a href="#cb9-2"></a><span class="co">// r==3</span></span></code></pre></div>
+<p><em>- end example]</em></p>
+<h3 id="wording-1"><span class="header-section-number">3.3.2</span> Wording<a href="#wording-1" class="self-link"></a></h3>
+<p>The name <code>execution::sync_wait</code> denotes a customization point object. The expression <code>execution::sync_wait(S)</code> for some subexpression <code>S</code> is expression-equivalent to:</p>
+<ul>
+<li><code>S.sync_wait()</code> if that expression is valid.</li>
+<li>Otherwise, <code>sync_wait(S)</code>, if that expression is valid with overload resolution performed in a context that includes the declaration</li>
+</ul>
+<div class="sourceCode" id="cb10"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb10-1"><a href="#cb10-1"></a>        template&lt;class S&gt;</span>
+<span id="cb10-2"><a href="#cb10-2"></a>          void sync_wait(S) = delete;</span></code></pre></div>
+<p>and that does not include a declaration of <code>execution::sync_wait</code>.</p>
+<ul>
+<li><p>Otherwise constructs a <code>receiver</code>, <code>r</code> over an implementation-defined synchronization primitive and passes that <code>receiver</code> to <code>execution::submit(S, r)</code>. Waits on the synchronization primitive to block on completion of <code>S</code>.</p>
+<ul>
+<li>If <code>set_value</code> is called on <code>r</code>, returns the passed value (or simply returns for <code>void</code> sender).</li>
+<li>If <code>set_error</code> is called on <code>r</code>, throws the error value as an exception.</li>
+<li>If <code>set_done</code> is called on <code>r</code>, throws some TBD cancellation exception type.</li>
+</ul></li>
+</ul>
+<!--
+If `execution::is_noexcept_sender(S)` returns true at compile-time, and the return type `T` is nothrow movable, then `sync_wait` is noexcept.
+Note that `sync_wait` requires `S` to propagate a single value type.
+-->
+<h2 id="executionvia"><span class="header-section-number">3.4</span> execution::via<a href="#executionvia" class="self-link"></a></h2>
+<h3 id="overview-2"><span class="header-section-number">3.4.1</span> Overview<a href="#overview-2" class="self-link"></a></h3>
+<p><code>via</code> is a sender adapter that takes a <code>sender</code> and a <code>scheduler</code> and returns a <code>sender</code> that propagates the same value as the original, but does so on the <code>sender</code>’s execution context.</p>
+<p>Signature:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb11-1"><a href="#cb11-1"></a>S<span class="op">&lt;</span>T<span class="op">...&gt;</span> via<span class="op">(</span>S<span class="op">&lt;</span>T<span class="op">...&gt;</span>, Scheduler<span class="op">)</span>;</span></code></pre></div>
+<p>where <code>S&lt;T&gt;</code> is an implementation-defined type that is a sender that sends a value of type <code>T</code> in its value channel.</p>
+<p><em>[ Example:</em></p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb12-1"><a href="#cb12-1"></a>static_thread_pool t<span class="op">{</span><span class="dv">1</span><span class="op">}</span>;</span>
+<span id="cb12-2"><a href="#cb12-2"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span> via<span class="op">(</span>t<span class="op">.</span>scheduler<span class="op">()))</span>;</span>
+<span id="cb12-3"><a href="#cb12-3"></a><span class="co">// r==3</span></span></code></pre></div>
+<h3 id="wording-2"><span class="header-section-number">3.4.2</span> Wording<a href="#wording-2" class="self-link"></a></h3>
+<p>The name <code>execution::via</code> denotes a customization point object. The expression <code>execution::via(S, Sch)</code> for some subexpressions <code>S</code>, <code>Sch</code> is expression-equivalent to:</p>
+<ul>
+<li><code>S.via(Sch)</code> if that expression is valid.</li>
+<li>Otherwise, <code>via(S, Sch)</code> if that expression is valid with overload resolution performed in a context that includes the declaration</li>
+</ul>
+<div class="sourceCode" id="cb13"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb13-1"><a href="#cb13-1"></a>        template&lt;class S, class Sch&gt;</span>
+<span id="cb13-2"><a href="#cb13-2"></a>          void via(S, Sch) = delete;</span></code></pre></div>
+<ul>
+<li>Otherwise constructs a receiver <code>r</code> such that when <code>set_value</code>, <code>set_error</code> or <code>set_done</code> is called on <code>r</code> the value(s) or error(s) are packaged, and a receiver <code>r2</code> constructed such that when <code>execution::set_value(r2)</code> is called, the stored value or error is transmitted and <code>r2</code> is submitted to <code>Sch</code>. If <code>set_error</code> or <code>set_done</code> is called on <code>r2</code> the error or cancellation is propagated and the packaged values ignored.</li>
+<li>The returned sender’s value types match those of <code>sender1</code>.</li>
+<li>The returned sender’s execution context is that of <code>scheduler1</code>.</li>
+</ul>
+<!--
+If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execution::is_noexcept_sender(S2)` returns true at compile-time and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(on(S1, S2))` should return `true` at compile time^[Should, shall, may?].
+-->
+<h2 id="executiontransform"><span class="header-section-number">3.5</span> execution::transform<a href="#executiontransform" class="self-link"></a></h2>
+<h3 id="overview-3"><span class="header-section-number">3.5.1</span> Overview<a href="#overview-3" class="self-link"></a></h3>
+<p><code>transform</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that propagates the value resulting from calling the invocable on the value passed by the preceding <code>sender</code>.</p>
+<p>Signature:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb14-1"><a href="#cb14-1"></a>S<span class="op">&lt;</span>T2<span class="op">&gt;</span> transform<span class="op">(</span>S<span class="op">&lt;</span>T<span class="op">...&gt;</span>, invocable<span class="op">&lt;</span>T2<span class="op">(</span>T<span class="op">...))</span>;</span></code></pre></div>
+<p>where <code>S&lt;T...&gt;</code> and <code>S&lt;T2&gt;</code> are implementation-defined types that is represent senders that send a value of type list <code>T...</code> or <code>T2</code> respectively in their value channels. Note that in the general case there may be many types <code>T...</code> for a given <code>sender</code>, in which case the invocable may have to represent an overload set.</p>
+<p><em>[ Example:</em></p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb15-1"><a href="#cb15-1"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span> transform<span class="op">([](</span><span class="dt">int</span> v<span class="op">){</span><span class="cf">return</span> v<span class="op">+</span><span class="dv">1</span>;<span class="op">}))</span>;</span>
+<span id="cb15-2"><a href="#cb15-2"></a><span class="co">// r==4</span></span></code></pre></div>
+<h3 id="wording-3"><span class="header-section-number">3.5.2</span> Wording<a href="#wording-3" class="self-link"></a></h3>
+<p>The name <code>execution::transform</code> denotes a customization point object. The expression <code>execution::transform(S, F)</code> for some subexpressions <code>S</code> and <code>F</code> is expression-equivalent to:</p>
+<ul>
+<li><code>S.transform(F)</code> if that expression is valid.</li>
+<li>Otherwise, <code>transform(S, F)</code>, if that expression is valid with overload resolution performed in a context that includes the declaration</li>
+</ul>
+<div class="sourceCode" id="cb16"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb16-1"><a href="#cb16-1"></a>        template&lt;class S, class F&gt;</span>
+<span id="cb16-2"><a href="#cb16-2"></a>          void transform(S, F) = delete;</span></code></pre></div>
+<p>and that does not include a declaration of <code>execution::transform</code>.</p>
+<ul>
+<li><p>Otherwise constructs a receiver, <code>r</code> over an implementation-defined synchronization primitive and passes that receiver to <code>execution::submit(S, r)</code>. When some <code>output_receiver</code> has been passed to <code>submit</code> on the returned <code>sender</code>.</p>
+<ul>
+<li>If <code>set_value(r, Ts... ts)</code> is called, calls <code>std::invoke(F, ts...)</code> and passes the result <code>v</code> to <code>execution::set_value(output_receiver, v)</code>.</li>
+<li>If <code>F</code> throws, catches the exception and passes it to <code>execution::set_error(output_receiver, e)</code>.</li>
+<li>If <code>set_error(c, e)</code> is called, passes <code>e</code> to <code>execution::set_error(output_receiver, e)</code>.</li>
+<li>If <code>set_done(c)</code> is called, calls <code>execution::set_done(output_receiver)</code>.</li>
+</ul></li>
+</ul>
+<!--
+If `execution::is_noexcept_sender(S)` returns true at compile-time, and `F(S1::value_types)` is marked `noexcept` and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(transform(S1, F))` should return `true` at compile time.
+-->
+<h2 id="executionbulk_transform"><span class="header-section-number">3.6</span> execution::bulk_transform<a href="#executionbulk_transform" class="self-link"></a></h2>
+<h3 id="overview-4"><span class="header-section-number">3.6.1</span> Overview<a href="#overview-4" class="self-link"></a></h3>
+<p><code>bulk_transform</code> is a sender adapter that takes a <code>sender</code> of a <code>range</code> of values and an invocable and returns a <code>sender</code> that executes the invocable for each element of the input range, and propagates the range of returned values.</p>
+<p>Signature:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb17-1"><a href="#cb17-1"></a>S<span class="op">&lt;</span>range<span class="op">&lt;</span>T2<span class="op">&gt;&gt;</span> bulk_transform<span class="op">(</span>S<span class="op">&lt;</span>range<span class="op">&lt;</span>T<span class="op">&gt;&gt;</span>, invocable<span class="op">&lt;</span>T2<span class="op">(</span>T<span class="op">))</span>;</span></code></pre></div>
+<p>where <code>S&lt;range&lt;T&gt;&gt;</code> and <code>S&lt;T2&gt;</code> are implementation-defined types that is represent senders that send a value of type list <code>T</code> or <code>T2</code> respectively in their value channels. Note that in the general case there may be many types <code>T</code> for a given <code>sender</code>, in which case the invocable may have to represent an overload set.</p>
+<p><em>[ Example:</em></p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb18-1"><a href="#cb18-1"></a>std<span class="op">::</span>vector<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just<span class="op">(</span>std<span class="op">::</span>vector<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;{</span><span class="dv">3</span>, <span class="dv">4</span>, <span class="dv">5</span><span class="op">})</span> <span class="op">|</span> bulk_transform<span class="op">([](</span><span class="dt">int</span> v<span class="op">){</span><span class="cf">return</span> v<span class="op">+</span><span class="dv">1</span>;<span class="op">}))</span>;</span>
+<span id="cb18-2"><a href="#cb18-2"></a><span class="co">// r=={4, 5, 6}</span></span></code></pre></div>
+<p>Note: it is TBD how precisely we should represent the intermediate data types here. Intermediate vectors would require allocator support. Purely lazy ranges may be inadequate.</p>
+<h3 id="wording-4"><span class="header-section-number">3.6.2</span> Wording<a href="#wording-4" class="self-link"></a></h3>
+<p>The name <code>execution::bulk_transform</code> denotes a customization point object. The expression <code>execution::bulk_transform(S, F)</code> for some subexpressions S and F is expression-equivalent to:</p>
+<ul>
+<li>S.bulk_transform(F), if that expression is valid.</li>
+<li>Otherwise, <code>bulk_transform(S, F)</code>, if that expression is valid with overload resolution performed in a context that includes the declaration</li>
+</ul>
+<div class="sourceCode" id="cb19"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb19-1"><a href="#cb19-1"></a>        template&lt;class S, class F&gt;</span>
+<span id="cb19-2"><a href="#cb19-2"></a>          void bulk_transform(S, F) = delete;</span></code></pre></div>
+<p>and that does not include a declaration of <code>execution::bulk_transform</code>.</p>
+<ul>
+<li><p>Otherwise constructs a receiver, <code>r</code> over an implementation-defined synchronization primitive and passes that receiver to <code>execution::submit(S, r)</code>.</p>
+<ul>
+<li>If <code>S::value_type</code> does not model the concept <code>Range&lt;T&gt;</code> for some <code>T</code> the expression ill-formed.<br />
+</li>
+<li>If <code>set_value</code> is called on <code>r</code> with some parameter <code>input</code> applies the equivalent of <code>out = std::ranges::transform_view(input, F)</code> and passes the result <code>output</code> to <code>execution::set_value(output_receiver, v)</code>.</li>
+<li>If <code>set_error(r, e)</code> is called, passes <code>e</code> to <code>execution::set_error(output_receiver, e)</code>.</li>
+<li>If <code>set_done(r)</code> is called, calls <code>execution::set_done(output_receiver)</code>.</li>
+</ul></li>
+</ul>
+<h2 id="executionhandle_error"><span class="header-section-number">3.7</span> execution::handle_error<a href="#executionhandle_error" class="self-link"></a></h2>
+<!-- TODO: Should this filter for error types? "if it is callable with...". -->
+<h3 id="overview-5"><span class="header-section-number">3.7.1</span> Overview<a href="#overview-5" class="self-link"></a></h3>
+<p><code>handle_error</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that propagates the value, error or done signal from the <code>sender</code> returned by the invocable.</p>
+<p>Signature:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb20-1"><a href="#cb20-1"></a>S<span class="op">&lt;</span>T2<span class="op">...</span>, E2<span class="op">...&gt;</span> handle_error<span class="op">(</span>S<span class="op">&lt;</span>T<span class="op">...</span>, E<span class="op">...&gt;</span>, invocable<span class="op">&lt;</span>sender<span class="op">&lt;</span>T2<span class="op">...</span>, E2<span class="op">...&gt;(</span>E<span class="op">...))</span>;</span></code></pre></div>
+<p>where <code>S&lt;T..., E...&gt;</code> and <code>S&lt;T2..., E2...&gt;</code> are implementation-defined types that is represent senders that send a value of type list <code>T...</code> or <code>T2...</code> respectively in their value channels and error type lists <code>E...</code> and <code>E2...</code> in their error channels. The invocable takes the error types <code>E...</code> and returns a <code>sender</code> over some potentially new set of types. By returning a <code>sender</code> the algorithm has control of error recovery as well as use cases such as logging and propagation. Note that in the general case there may be many types <code>E...</code> for a given <code>sender</code>, in which case the invocable may have to represent an overload set.</p>
+<p><em>[ Example:</em></p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb21-1"><a href="#cb21-1"></a><span class="dt">float</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<span id="cb21-2"><a href="#cb21-2"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span></span>
+<span id="cb21-3"><a href="#cb21-3"></a>  transform<span class="op">([](</span><span class="dt">int</span> v<span class="op">){</span><span class="cf">throw</span> <span class="fl">2.0</span><span class="bu">f</span>;<span class="op">})</span> <span class="op">|</span></span>
+<span id="cb21-4"><a href="#cb21-4"></a>  handle_error<span class="op">([](</span><span class="dt">float</span> e<span class="op">){</span><span class="cf">return</span> just<span class="op">(</span>e<span class="op">+</span><span class="dv">1</span><span class="op">)</span>;<span class="op">}))</span>;</span>
+<span id="cb21-5"><a href="#cb21-5"></a><span class="co">// r==3.0f</span></span></code></pre></div>
+<h3 id="wording-5"><span class="header-section-number">3.7.2</span> Wording<a href="#wording-5" class="self-link"></a></h3>
+<p>The name <code>execution::handle_error</code> denotes a customization point object. The expression <code>execution::handle_error(S, F)</code> for some subexpressions S and F is expression-equivalent to:</p>
+<ul>
+<li>S.handle_error(F), if that expression is valid.</li>
+<li>Otherwise, <code>handle_error(S, F)</code>, if that expression is valid with overload resolution performed in a context that includes the declaration</li>
+</ul>
+<div class="sourceCode" id="cb22"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb22-1"><a href="#cb22-1"></a>        template&lt;class S, class F&gt;</span>
+<span id="cb22-2"><a href="#cb22-2"></a>          void handle_error(S, F) = delete;</span></code></pre></div>
+<p>and that does not include a declaration of <code>execution::handle_error</code>.</p>
+<ul>
+<li><p>Otherwise constructs a receiver, <code>r</code> over an implementation-defined synchronization primitive and passes that receiver to <code>execution::submit(S, r)</code>.</p>
+<ul>
+<li>If <code>set_value(r, v...)</code> is called, passes <code>v...</code> to <code>execution::set_value(output_receiver, v...)</code>.</li>
+<li>If <code>set_error(r, e...)</code> is called, passes <code>e...</code> to <code>f</code>, resulting in a <code>sender</code> <code>s2</code> and passes <code>output_receiver</code> to <code>submit(s2, output_receiver)</code>.</li>
+<li>If <code>set_done(r)</code> is called, calls <code>execution::set_done(output_receiver)</code>.</li>
+</ul></li>
+</ul>
+<h1 id="customization-and-example"><span class="header-section-number">4</span> Customization and example<a href="#customization-and-example" class="self-link"></a></h1>
+<p>Each of these algorithms, apart from <code>just</code>, is customizable on one or more <code>sender</code> implementations. This allows full optimization. For example, in the following simple work chain:</p>
+<div class="sourceCode" id="cb23"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb23-1"><a href="#cb23-1"></a>auto s = just(3) |                                        // s1</span>
+<span id="cb23-2"><a href="#cb23-2"></a>         via(scheduler1) |                                // s2</span>
+<span id="cb23-3"><a href="#cb23-3"></a>         transform([](int a){return a+1;}) |              // s3</span>
+<span id="cb23-4"><a href="#cb23-4"></a>         transform([](int a){return a*2;}) |              // s4</span>
+<span id="cb23-5"><a href="#cb23-5"></a>         via(scheduler2) |                                // s5</span>
+<span id="cb23-6"><a href="#cb23-6"></a>         handle_error([](auto e){return just(3);});       // s6</span>
+<span id="cb23-7"><a href="#cb23-7"></a>int r = sync_wait(s);</span></code></pre></div>
+<p>The result of <code>s1</code> might be a <code>just_sender&lt;int&gt;</code> implemented by the standard library vendor.</p>
+<p><code>via(just_sender&lt;int&gt;, scheduler1)</code> has no customization defined, and this expression returns an <code>scheduler1_via_sender&lt;int&gt;</code> that is a custom type from the author of <code>scheduler1</code>, it will call <code>submit</code> on the result of <code>s1</code>.</p>
+<p><code>s3</code> calls <code>transform(scheduler1_via_sender&lt;int&gt;, [](int a){return a+1;})</code> for which the author of <code>scheduler1</code> may have written a customization. The <code>scheduler1_via_sender</code> has stashed the value somewhere and build some work queue in the background. We do not see <code>submit</code> called at this point, it uses a behind-the-scenes implementation to schedule the work on the work queue. An <code>scheduler1_transform_sender&lt;int&gt;</code> is returned.</p>
+<p><code>s4</code> implements a very similar customization, and again does not call <code>submit</code>. There need be no synchronization in this chain.</p>
+<p>At <code>s5</code>, however, the implementor of <code>scheduler2</code> does not know about the implementation of <code>scheduler1</code>. At this point it will call <code>submit</code> on the incoming <code>scheduler1_transform_sender</code>, forcing <code>scheduler1</code>’s sender to implement the necessary synchronization to map back from the behind-the-scenes optimal queue to something interoperable with another vendor’s implementation.</p>
+<p><code>handle_error</code> at <code>s6</code> will be generic in terms of <code>submit</code> and not do anything special, this uses the default implementation in terms of <code>submit</code>. <code>sync_wait</code> similarly constructs a <code>condition_variable</code> and a temporary <code>int</code>, submits a <code>receiver</code> to <code>s</code> and waits on the <code>condition_variable</code>, blocking the calling thread.</p>
+<p><code>r</code> is of course the value 8 at this point assuming that neither scheduler triggered an error. If there were to be a scheduling error, then that error would propagate to <code>handle_error</code> and <code>r</code> would subsequently have the value <code>3</code>.</p>
+<h1 id="references"><span class="header-section-number">5</span> References<a href="#references" class="self-link"></a></h1>
+
+<div id="refs" role="doc-bibliography">
+<div id="ref-P0443R11">
+<p>[P0443R11] 2019. A Unified Executors Proposal for C++. <br />
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0443r11.html">http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0443r11.html</a></p>
+</div>
+<div id="ref-P1660R0">
+<p>[P1660R0] 2019. A Compromise Executor Design Sketch. <br />
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1660r0.pdf">http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1660r0.pdf</a></p>
+</div>
+</div>
+<section class="footnotes" role="doc-endnotes">
+<hr />
+<ol>
+<li id="fn1" role="doc-endnote"><p>Other options include an optional return type.<a href="#fnref1" class="footnote-back" role="doc-backlink">↩︎</a></p></li>
+</ol>
+</section>
+</div>
+</div>
+</body>
+</html>
