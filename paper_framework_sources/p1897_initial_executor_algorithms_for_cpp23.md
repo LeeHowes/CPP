@@ -233,10 +233,10 @@ If `execution::is_noexcept_sender(s)` returns true for a `sender` `s` then it is
 
 Signature:
 ```cpp
-S<T> just(T);
+S<T...> just(T...);
 ```
 
-where `S<T>` is an implementation-defined type that is a sender that sends a value of type `T` in its value channel.
+where `S<T...>` is an implementation-defined `typed_sender` that that sends a set of values of type `T...` in its value channel.
 
 *[ Example:*
 ```cpp
@@ -248,9 +248,9 @@ int r = sync_wait(just(3));
 ### Wording
 The expression `execution::just(t)` returns a sender, `s` wrapping the value `t`.
 
- * If `t` is nothrow movable then `execution::is_noexcept_sender(s)` shall be constexpr and return true.
- * When `execution::submit(s, r)` is called for some `r`, and r-value `s` will call `execution::set_value(r, std::move(t))`, inline with the caller.
- * When `execution::submit(s, r)` is called for some `r`, and l-value `s` will call `execution::set_value(r, t)`, inline with the caller.
+ * If `t...` are nothrow movable then `execution::is_noexcept_sender(s)` shall be constexpr and return true.
+ * When `execution::submit(s, r)` is called for some `r`, and r-value `s` will call `execution::set_value(r, std::move(t)...)`, inline with the caller.
+ * When `execution::submit(s, r)` is called for some `r`, and l-value `s` will call `execution::set_value(r, t...)`, inline with the caller.
  * If moving of `t` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`.
 
 <!--
@@ -273,12 +273,13 @@ The expression `execution::just_error(e)` returns a sender, `s` wrapping the err
 
 ### Overview
 Blocks the calling thread to wait for the passed sender to complete.
-Returns a std::optional of the value or throws if an exception is propagated.^[Conversion from asynchronous callbacks to synchronous function-return can be achieved in different ways. A `CancellationException` would be an alternative approach.]
+Returns the value (or void if the sender carries no value), throws if an exception is propagated and throws a TBD exception type on cancellation.^[Other options include an optional return type.]
 On propagation of the `set_done()` signal, returns an empty optional.
 
-`std::optional<T> sync_wait(S<T>)`
+`T... sync_wait(S<T...>)`
 
-where `S<T>` is a sender that sends a value of type `T` in its value channel.
+where `S<T...>` is a sender that sends zero or one values of type `T...` in its value channel.
+The existence of, and if existing the type `T` must be known statically and cannot be part of an overload set.
 
 *[ Example:*
 ```cpp
@@ -303,9 +304,9 @@ The expression `execution::sync_wait(S)` for some subexpression `S` is expressio
  * Otherwise constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes that `receiver` to `execution::submit(S, r)`.
    Waits on the synchronization primitive to block on completion of `S`.
 
-   * If `set_value` is called on `r`, returns a `std::optional` wrapping the passed value.
+   * If `set_value` is called on `r`, returns the passed value (or simply returns for `void` sender).
    * If `set_error` is called on `r`, throws the error value as an exception.
-   * If `set_done` is called on `r`, returns an empty `std::optional`.
+   * If `set_done` is called on `r`, throws some TBD cancellation exception type.
 
 <!--
 If `execution::is_noexcept_sender(S)` returns true at compile-time, and the return type `T` is nothrow movable, then `sync_wait` is noexcept.
@@ -319,7 +320,7 @@ Note that `sync_wait` requires `S` to propagate a single value type.
 
 Signature:
 ```cpp
-S<T> via(S<T>, Scheduler);
+S<T...> via(S<T...>, Scheduler);
 ```
 
 where `S<T>` is an implementation-defined type that is a sender that sends a value of type `T` in its value channel.
@@ -333,16 +334,16 @@ int r = sync_wait(just(3) | via(t.scheduler()));
 
 ### Wording
 The name `execution::via` denotes a customization point object.
-The expression `execution::via(S1, S2)` for some subexpressions `S1`, `S2` is expression-equivalent to:
+The expression `execution::via(S, Sch)` for some subexpressions `S`, `Sch` is expression-equivalent to:
 
- * `S1.via(S2)` if that expression is valid.
- * Otherwise, `via(S1, S2)` if that expression is valid with overload resolution performed in a context that includes the declaration
+ * `S.via(Sch)` if that expression is valid.
+ * Otherwise, `via(S, Sch)` if that expression is valid with overload resolution performed in a context that includes the declaration
  ```
-         template<class S1, class S2>
-           void via(S1, S2) = delete;
+         template<class S, class Sch>
+           void via(S, Sch) = delete;
  ```
 
- * Otherwise constructs a receiver `r` such that when `set_value`, `set_error` or `set_done` is called on `r` the value(s) or error(s) are packaged, and a receiver `r2` constructed such that when `execution::set_value(r2)` is called, the stored value or error is transmitted and `r2` is submitted to `S2`.
+ * Otherwise constructs a receiver `r` such that when `set_value`, `set_error` or `set_done` is called on `r` the value(s) or error(s) are packaged, and a receiver `r2` constructed such that when `execution::set_value(r2)` is called, the stored value or error is transmitted and `r2` is submitted to `Sch`. If `set_error` or `set_done` is called on `r2` the error or cancellation is propagated and the packaged values ignored.
  * The returned sender's value types match those of `sender1`.
  * The returned sender's execution context is that of `scheduler1`.
 
@@ -353,23 +354,20 @@ If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execut
 
 ## execution::transform
 
-<!-- TODO: Should transform have an overload set such that it *must* be callable, or should it try filtering? -->
-
 
 ### Overview
 `transform` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that propagates the value resulting from calling the invocable on the value passed by the preceding `sender`.
 
 Signature:
 ```cpp
-S<T2> transform(S<T>, invocable<T2(T));
+S<T2> transform(S<T...>, invocable<T2(T...));
 ```
 
-where `S<T>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type `T` or `T2` respectively in their value channels.
-Note that in the general case there may be many types `T` for a given `sender`, in which case the invocable may have to represent an overload set.
+where `S<T...>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T2` respectively in their value channels.
+Note that in the general case there may be many types `T...` for a given `sender`, in which case the invocable may have to represent an overload set.
 
 *[ Example:*
 ```cpp
-static_thread_pool t{1};
 int r = sync_wait(just(3) | transform([](int v){return v+1;}));
 // r==4
 ```
@@ -401,9 +399,24 @@ If `execution::is_noexcept_sender(S)` returns true at compile-time, and `F(S1::v
 
 ## execution::bulk_transform
 
-### Summary
-`bulk_execute` is a side-effecting operation across an iteration space.
-`bulk_transform` is a very similar operation that operates element-wise over an input range and returns the result as an output range of the same size.
+### Overview
+`bulk_transform` is a sender adapter that takes a `sender` of a `range` of values and an invocable and returns a `sender` that executes the invocable for each element of the input range, and propagates the range of returned values.
+
+Signature:
+```cpp
+S<range<T2>> bulk_transform(S<range<T>>, invocable<T2(T));
+```
+
+where `S<range<T>>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type list `T` or `T2` respectively in their value channels.
+Note that in the general case there may be many types `T` for a given `sender`, in which case the invocable may have to represent an overload set.
+
+*[ Example:*
+```cpp
+std::vector<int> r = sync_wait(just(std::vector<int>{3, 4, 5}) | bulk_transform([](int v){return v+1;}));
+// r=={4, 5, 6}
+```
+
+Note: it is TBD how precisely we should represent the intermediate data types here. Intermediate vectors would require allocator support. Purely lazy ranges may be inadequate.
 
 ### Wording
 The name `execution::bulk_transform` denotes a customization point object.
@@ -429,11 +442,28 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 
 <!-- TODO: Should this filter for error types? "if it is callable with...". -->
 
-### Summary
-This is the only algorithm that deals with an incoming signal on the error channel of the `sender`.
-Others only deal with the value channel directly.
-For full generality, the formulation we suggest here applies a function `f(e)` to the error `e`, and returns a `sender` that may output on any of its channels.
-In that way we can solve and replace an error, cancel on error, or log and propagate the error, all within the same algorithm.
+
+### Overview
+`handle_error` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that propagates the value, error or done signal from the `sender` returned by the invocable.
+
+Signature:
+```cpp
+S<T2..., E2...> handle_error(S<T..., E...>, invocable<sender<T2..., E2...>(E...));
+```
+
+where `S<T..., E...>` and `S<T2..., E2...>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T2...` respectively in their value channels and error type lists `E...` and `E2...` in their error channels.
+The invocable takes the error types `E...` and returns a `sender` over some potentially new set of types.
+By returning a `sender` the algorithm has control of error recovery as well as use cases such as logging and propagation.
+Note that in the general case there may be many types `E...` for a given `sender`, in which case the invocable may have to represent an overload set.
+
+*[ Example:*
+```cpp
+float r = sync_wait(
+  just(3) |
+  transform([](int v){throw 2.0f;}) |
+  handle_error([](float e){return just(e+1);}));
+// r==3.0f
+```
 
 ### Wording
 The name `execution::handle_error` denotes a customization point object.
@@ -449,8 +479,8 @@ The expression `execution::handle_error(S, F)` for some subexpressions S and F i
 
  * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
 
-   * If `set_value(r, v)` is called, passes `v` to `execution::set_value(output_receiver, v)`.
-   * If `set_error(r, e)` is called, passes `e` to `f`, resulting in a `sender` `s2` and passes `output_receiver` to `submit(s2, output_receiver)`.
+   * If `set_value(r, v...)` is called, passes `v...` to `execution::set_value(output_receiver, v...)`.
+   * If `set_error(r, e...)` is called, passes `e...` to `f`, resulting in a `sender` `s2` and passes `output_receiver` to `submit(s2, output_receiver)`.
    * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
 
 
