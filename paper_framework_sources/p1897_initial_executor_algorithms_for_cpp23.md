@@ -13,7 +13,7 @@ toc: false
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
  * Add `when_all` to fill missing gap in the ability to join sender chains.
- * Add `indexed_for` based on feedback during the Belfast meeting to have a side-effecting algorithm.   
+ * Add `indexed_for` based on feedback during the Belfast meeting to have a side-effecting algorithm.
  * Propose question on replacing `bulk_execute` with `indexed_for` for the Prague meeting.
 
 ## Differences between R0 and R1
@@ -68,7 +68,7 @@ We propose immediately discussing the addition of the following algorithms:
  * `when_all(s...)`
    * returns a sender that completes when all Senders `s...` complete, propagating all values
  * `indexed_for(s, dim, policy, f)`
-   * returns a sender that applies `f` for each element of `dim` passing that element and the values from the incoming sender, completes when all `f`s complete propagating s's values onwards   
+   * returns a sender that applies `f` for each element of `dim` passing that element and the values from the incoming sender, completes when all `f`s complete propagating s's values onwards
  * `transform(s, f)`
    * returns a sender that applies `f` to the value passed by `s`, or propagates errors or cancellation
  * `bulk_transform(s, f)`
@@ -103,7 +103,7 @@ In this very simple example we:
 Using `operator|` as in ranges to remove the need to pass arguments around, we can represent this as:
 ```cpp
 float f = sync_wait(
-  just(3) | transform([](int a){return a+0.5f;}));              
+  just(3) | transform([](int a){return a+0.5f;}));
 ```
 
 #### Using indexed_for
@@ -126,7 +126,7 @@ auto transform_sender = transform(
   std::move(indexed_for_sender), [](vector<int> vec, int /*i*/){return vec;});
 
 vector<int> result =       // value: {13, 14, 15}
-  sync_wait(std::move(indexed_for_sender));
+  sync_wait(std::move(transform_sender));
 ```
 
 In this less simple example we:
@@ -222,8 +222,8 @@ As before, using `operator|` as in ranges to remove the need to pass arguments a
 int result = 0;
 try {
  result = sync_wait(
-    just(3) |                           
-    via(scheduler1) |                    
+    just(3) |
+    via(scheduler1) |
     transform([](int a){throw 2;}) |
     transform([](){return 3;}));
 } catch(int a) {
@@ -265,12 +265,12 @@ In this example we:
 ```cpp
 auto s = ;
 int result = sync_wait(
-  just(3) |                            
-  via(scheduler1) |                    
-  transform([](float a){throw 2;}) |   
-  transform([](){return 3;}) |         
-  handle_error([](auto e){         
-   return just(5);}));       
+  just(3) |
+  via(scheduler1) |
+  transform([](float a){throw 2;}) |
+  transform([](){return 3;}) |
+  handle_error([](auto e){
+   return just(5);}));
 ```
 
 
@@ -663,7 +663,7 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 
  * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
 
-   * If `S::value_type` does not model the concept `Range<T>` for some `T` the expression ill-formed.   
+   * If `S::value_type` does not model the concept `Range<T>` for some `T` the expression ill-formed.
    * If `set_value` is called on `r` with some parameter `input` applies the equivalent of `out = std::ranges::transform_view(input, F)` and passes the result `output` to `execution::set_value(output_receiver, v)`.
    * If `set_error(r, e)` is called, passes `e` to `execution::set_error(output_receiver, e)`.
    * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
