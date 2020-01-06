@@ -67,7 +67,7 @@ We propose immediately discussing the addition of the following algorithms:
    * blocks and returns the value type of the sender, throwing on error
  * `when_all(s...)`
    * returns a sender that completes when all Senders `s...` complete, propagating all values
- * `indexed_for(s, dim, policy, f)`
+ * `indexed_for(s, policy, dim, f)`
    * returns a sender that applies `f` for each element of `dim` passing that element and the values from the incoming sender, completes when all `f`s complete propagating s's values onwards
  * `transform(s, f)`
    * returns a sender that applies `f` to the value passed by `s`, or propagates errors or cancellation
@@ -117,7 +117,7 @@ auto indexed_for_sender =  // sender_to<float>
   indexed_for(
     std::move(just_sender),
     std::execution::par,
-    3
+    ranges::iota_view{3},
     [](size_t idx, std::vector<int>& vec, const int& i){
       vec[idx] = vec[idx] + i;
     });
@@ -133,7 +133,7 @@ In this less simple example we:
 
  * start a chain with a vector of three ints and an int
  * apply a function for each element in an index space, that receives the vector and int by reference and modifies the vector
- * specifies the most relaxed execution policy on which we guarantee the invocable to be safe to run
+ * specifies the most relaxed execution policy on which we guarantee the invocable and range access function to be safe to call
  * applies a transform to filter out the int result, demonstrating how indexed_for does not change the structure of the data
  * block for the resulting value and assign vector {13, 14, 15} to `result`
 
@@ -142,8 +142,8 @@ Using `operator|` as in ranges to remove the need to pass arguments around, we c
 vector<int> result_vec = sync_wait(
   just(std::vector<int>{3, 4, 5}, 10) |
   indexed_for(
-    3,
     std::execution::par,
+    ranges::iota_view{3},
     [](size_t idx, vector<int>&vec, const int& i){vec[idx] = vec[idx] + i;}) |
   transform([](vector<int> vec, int /*i*/){return vec;}));
 ```
@@ -528,13 +528,13 @@ Signature:
 ```cpp
 S<T...> indexed_for(
   S<T...>,
-  range<Idx>,
   execution_policy,
+  range<Idx>,
   invocable<void(Idx, T&...));
 S<T...> indexed_for(
   S<T...>,
-  invocable<range<Idx>(const T&...)>,
   execution_policy,
+  invocable<range<Idx>(const T&...)>,
   invocable<void(Idx, T&...));
 ```
 
@@ -546,21 +546,22 @@ Note that in the general case there may be many types `T...` for a given `sender
 int r = sync_wait(
   just(3) |
   indexed_for(
-    std::vector<size_t>{6},
     std::execution::par,
-    [](size_t idx, int& v){v = v + idx;}));
+    ranges::iota_view{6},
+    [](int idx, int& v){v = v + idx;}));
 // r==9
 ```
 
 ### Wording
 
 The name `execution::indexed_for` denotes a customization point object.
-The expression `execution::indexed_for(S, R, P, F)` for some subexpressions `S`, `R`, `P` and `F` is expression-equivalent to:
+The expression `execution::indexed_for(S, P, R, F)` for some subexpressions `S`, `P`, `R` and `F` is expression-equivalent to:
 
- * If `R` does not satisfy either `range` or `range(T...)` then the expression is invalid.
  * If `P` does not satisfy `std::is_execution_policy_v<P>`, then the expression is invalid.
+ * If `R` does not satisfy either `range` or `range(T...)` then the expression is invalid.
+ * If `P` is `std::execution::sequenced_policy` then `range` must satisfy `forward_range` otherwise `range` must satisfy `random_access_range`.
  * If `F` does not satisfy `MoveConstructible` then the expression is invalid.
- * S.indexed_for(R, P, F), if that expression is valid.
+ * S.indexed_for(P, R, F), if that expression is valid.
  * Otherwise, `indexed_for(S, R, P, F)`, if that expression is valid with overload resolution performed in a context that includes the declaration
  ```
          template<class S, class R, class P, class F>
@@ -580,7 +581,7 @@ The expression `execution::indexed_for(S, R, P, F)` for some subexpressions `S`,
 
 **Notes:**
  * If `P` is not `execution::seq` and `R` satisfies `random_access_range` then `indexed_for` may run the instances of `F` concurrently.
- * `P` represents a guarantee on the most relaxed execution policy `F` is safe to run under, and hence the most parallel fashion in which the underlying `scheduler` may map instances of `F` to execution agents.
+ * `P` represents a guarantee on the most relaxed execution policy `F` and the element access function of range `R` or `R(t...)` are safe to run under, and hence the most parallel fashion in which the underlying `scheduler` may map instances of `F` to execution agents.
 
 
 ## execution::transform
@@ -824,3 +825,4 @@ references:
     issued:
       year: 2019
     URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1993r0.pdf
+---
