@@ -503,9 +503,9 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <ul>
 <li>returns a sender that completes when all Senders <code>s...</code> complete, propagating all values</li>
 </ul></li>
-<li><code>indexed_for(s, policy, dim, f)</code>
+<li><code>indexed_for(s, policy, rng, f)</code>
 <ul>
-<li>returns a sender that applies <code>f</code> for each element of <code>dim</code> passing that element and the values from the incoming sender, completes when all <code>f</code>s complete propagating s’s values onwards</li>
+<li>returns a sender that applies <code>f</code> for each element of <code>rng</code> passing that element and the values from the incoming sender, completes when all <code>f</code>s complete propagating s’s values onwards</li>
 </ul></li>
 <li><code>transform(s, f)</code>
 <ul>
@@ -858,18 +858,13 @@ If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execut
 </ul>
 <h2 id="executionindexed_for"><span class="header-section-number">3.7</span> execution::indexed_for<a href="#executionindexed_for" class="self-link"></a></h2>
 <h3 id="overview-5"><span class="header-section-number">3.7.1</span> Overview<a href="#overview-5" class="self-link"></a></h3>
-<p><code>indexed_for</code> is a sender adapter that takes a <code>sender</code>, a range, execution policy and an invocable and returns a <code>sender</code> that propagates the input values but runs the invocable once for each element of the range, passing the input by non-const reference.</p>
+<p><code>indexed_for</code> is a sender adapter that takes a <code>sender</code>, execution policy, a range and an invocable and returns a <code>sender</code> that propagates the input values but runs the invocable once for each element of the range, passing the input by non-const reference.</p>
 <p>Signature:</p>
 <div class="sourceCode" id="cb24"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb24-1"><a href="#cb24-1"></a>S<span class="op">&lt;</span>T<span class="op">...&gt;</span> indexed_for<span class="op">(</span></span>
 <span id="cb24-2"><a href="#cb24-2"></a>  S<span class="op">&lt;</span>T<span class="op">...&gt;</span>,</span>
 <span id="cb24-3"><a href="#cb24-3"></a>  execution_policy,</span>
 <span id="cb24-4"><a href="#cb24-4"></a>  range<span class="op">&lt;</span>Idx<span class="op">&gt;</span>,</span>
-<span id="cb24-5"><a href="#cb24-5"></a>  invocable<span class="op">&lt;</span><span class="dt">void</span><span class="op">(</span>Idx, T<span class="op">&amp;...))</span>;</span>
-<span id="cb24-6"><a href="#cb24-6"></a>S<span class="op">&lt;</span>T<span class="op">...&gt;</span> indexed_for<span class="op">(</span></span>
-<span id="cb24-7"><a href="#cb24-7"></a>  S<span class="op">&lt;</span>T<span class="op">...&gt;</span>,</span>
-<span id="cb24-8"><a href="#cb24-8"></a>  execution_policy,</span>
-<span id="cb24-9"><a href="#cb24-9"></a>  invocable<span class="op">&lt;</span>range<span class="op">&lt;</span>Idx<span class="op">&gt;(</span><span class="kw">const</span> T<span class="op">&amp;...)&gt;</span>,</span>
-<span id="cb24-10"><a href="#cb24-10"></a>  invocable<span class="op">&lt;</span><span class="dt">void</span><span class="op">(</span>Idx, T<span class="op">&amp;...))</span>;</span></code></pre></div>
+<span id="cb24-5"><a href="#cb24-5"></a>  invocable<span class="op">&lt;</span><span class="dt">void</span><span class="op">(</span>Idx, T<span class="op">&amp;...))</span>;</span></code></pre></div>
 <p>where <code>S&lt;T...&gt;</code> represents implementation-defined sender types that send a value of type list <code>T...</code> in their value channels. Note that in the general case there may be many types <code>T...</code> for a given <code>sender</code>, in which case the invocable may have to represent an overload set.</p>
 <p><em>[ Example:</em></p>
 <div class="sourceCode" id="cb25"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb25-1"><a href="#cb25-1"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
@@ -883,8 +878,8 @@ If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execut
 <p>The name <code>execution::indexed_for</code> denotes a customization point object. The expression <code>execution::indexed_for(S, P, R, F)</code> for some subexpressions <code>S</code>, <code>P</code>, <code>R</code> and <code>F</code> is expression-equivalent to:</p>
 <ul>
 <li>If <code>P</code> does not satisfy <code>std::is_execution_policy_v&lt;P&gt;</code>, then the expression is invalid.</li>
-<li>If <code>R</code> does not satisfy either <code>range</code> or <code>range(T...)</code> then the expression is invalid.</li>
-<li>If <code>P</code> is <code>std::execution::sequenced_policy</code> then <code>range</code> must satisfy <code>forward_range</code> otherwise <code>range</code> must satisfy <code>random_access_range</code>.</li>
+<li>If <code>R</code> does not satisfy either <code>range</code> then the expression is invalid.</li>
+<li>If <code>P</code> is <code>std::execution::sequenced_policy</code> then <code>range</code> must satisfy <code>input_range</code> otherwise <code>range</code> must satisfy <code>random_access_range</code>.</li>
 <li>If <code>F</code> does not satisfy <code>MoveConstructible</code> then the expression is invalid.</li>
 <li>S.indexed_for(P, R, F), if that expression is valid.</li>
 <li>Otherwise, <code>indexed_for(S, R, P, F)</code>, if that expression is valid with overload resolution performed in a context that includes the declaration</li>
@@ -895,7 +890,7 @@ If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execut
 <ul>
 <li><p>Otherwise constructs a receiver, <code>r</code> over an implementation-defined synchronization primitive and passes that receiver to <code>execution::submit(S, r)</code>.</p>
 <ul>
-<li><p>If <code>set_value</code> is called on <code>r</code> with some parameter pack <code>t...</code> then calls <code>F(idx, t...)</code> for each element <code>idx</code> in <code>R</code> or <code>R(t...)</code>. Once all complete calls <code>execution::set_value(output_receiver, v)</code>.</p>
+<li><p>If <code>set_value</code> is called on <code>r</code> with some parameter pack <code>t...</code> then calls <code>F(idx, t...)</code> for each element <code>idx</code> in <code>R</code>. Once all complete calls <code>execution::set_value(output_receiver, v)</code>.</p>
 <ul>
 <li>If any call to <code>set_value</code> throws an exception, then call <code>set_error(r, e)</code> with some exception from the set.</li>
 </ul></li>
@@ -903,7 +898,7 @@ If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execut
 <li><p>If <code>set_done(r)</code> is called, calls <code>execution::set_done(output_receiver)</code>.</p></li>
 </ul></li>
 </ul>
-<p><strong>Notes:</strong> * If <code>P</code> is not <code>execution::seq</code> and <code>R</code> satisfies <code>random_access_range</code> then <code>indexed_for</code> may run the instances of <code>F</code> concurrently. * <code>P</code> represents a guarantee on the most relaxed execution policy <code>F</code> and the element access function of range <code>R</code> or <code>R(t...)</code> are safe to run under, and hence the most parallel fashion in which the underlying <code>scheduler</code> may map instances of <code>F</code> to execution agents.</p>
+<p><strong>Notes:</strong> * If <code>P</code> is not <code>execution::seq</code> and <code>R</code> satisfies <code>random_access_range</code> then <code>indexed_for</code> may run the instances of <code>F</code> concurrently. * <code>P</code> represents a guarantee on the most relaxed execution policy <code>F</code> and the element access function of range <code>R</code> are safe to run under, and hence the most parallel fashion in which the underlying <code>scheduler</code> may map instances of <code>F</code> to execution agents.</p>
 <h2 id="executiontransform"><span class="header-section-number">3.8</span> execution::transform<a href="#executiontransform" class="self-link"></a></h2>
 <h3 id="overview-6"><span class="header-section-number">3.8.1</span> Overview<a href="#overview-6" class="self-link"></a></h3>
 <p><code>transform</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that propagates the value resulting from calling the invocable on the value passed by the preceding <code>sender</code>.</p>

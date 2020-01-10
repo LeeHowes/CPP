@@ -67,8 +67,8 @@ We propose immediately discussing the addition of the following algorithms:
    * blocks and returns the value type of the sender, throwing on error
  * `when_all(s...)`
    * returns a sender that completes when all Senders `s...` complete, propagating all values
- * `indexed_for(s, policy, dim, f)`
-   * returns a sender that applies `f` for each element of `dim` passing that element and the values from the incoming sender, completes when all `f`s complete propagating s's values onwards
+ * `indexed_for(s, policy, rng, f)`
+   * returns a sender that applies `f` for each element of `rng` passing that element and the values from the incoming sender, completes when all `f`s complete propagating s's values onwards
  * `transform(s, f)`
    * returns a sender that applies `f` to the value passed by `s`, or propagates errors or cancellation
  * `bulk_transform(s, f)`
@@ -522,7 +522,7 @@ The expression `execution::when_all(S)` for some subexpression `S` is expression
 ## execution::indexed_for
 
 ### Overview
-`indexed_for` is a sender adapter that takes a `sender`, a range, execution policy and an invocable and returns a `sender` that propagates the input values but runs the invocable once for each element of the range, passing the input by non-const reference.
+`indexed_for` is a sender adapter that takes a `sender`, execution policy, a range and an invocable and returns a `sender` that propagates the input values but runs the invocable once for each element of the range, passing the input by non-const reference.
 
 Signature:
 ```cpp
@@ -530,11 +530,6 @@ S<T...> indexed_for(
   S<T...>,
   execution_policy,
   range<Idx>,
-  invocable<void(Idx, T&...));
-S<T...> indexed_for(
-  S<T...>,
-  execution_policy,
-  invocable<range<Idx>(const T&...)>,
   invocable<void(Idx, T&...));
 ```
 
@@ -558,8 +553,8 @@ The name `execution::indexed_for` denotes a customization point object.
 The expression `execution::indexed_for(S, P, R, F)` for some subexpressions `S`, `P`, `R` and `F` is expression-equivalent to:
 
  * If `P` does not satisfy `std::is_execution_policy_v<P>`, then the expression is invalid.
- * If `R` does not satisfy either `range` or `range(T...)` then the expression is invalid.
- * If `P` is `std::execution::sequenced_policy` then `range` must satisfy `forward_range` otherwise `range` must satisfy `random_access_range`.
+ * If `R` does not satisfy either `range` then the expression is invalid.
+ * If `P` is `std::execution::sequenced_policy` then `range` must satisfy `input_range` otherwise `range` must satisfy `random_access_range`.
  * If `F` does not satisfy `MoveConstructible` then the expression is invalid.
  * S.indexed_for(P, R, F), if that expression is valid.
  * Otherwise, `indexed_for(S, R, P, F)`, if that expression is valid with overload resolution performed in a context that includes the declaration
@@ -571,7 +566,7 @@ The expression `execution::indexed_for(S, P, R, F)` for some subexpressions `S`,
 
  * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
 
-   * If `set_value` is called on `r` with some parameter pack `t...` then calls `F(idx, t...)` for each element `idx` in `R` or `R(t...)`.
+   * If `set_value` is called on `r` with some parameter pack `t...` then calls `F(idx, t...)` for each element `idx` in `R`.
      Once all complete calls `execution::set_value(output_receiver, v)`.
 
      * If any call to `set_value` throws an exception, then call `set_error(r, e)` with some exception from the set.
@@ -581,7 +576,7 @@ The expression `execution::indexed_for(S, P, R, F)` for some subexpressions `S`,
 
 **Notes:**
  * If `P` is not `execution::seq` and `R` satisfies `random_access_range` then `indexed_for` may run the instances of `F` concurrently.
- * `P` represents a guarantee on the most relaxed execution policy `F` and the element access function of range `R` or `R(t...)` are safe to run under, and hence the most parallel fashion in which the underlying `scheduler` may map instances of `F` to execution agents.
+ * `P` represents a guarantee on the most relaxed execution policy `F` and the element access function of range `R`  are safe to run under, and hence the most parallel fashion in which the underlying `scheduler` may map instances of `F` to execution agents.
 
 
 ## execution::transform
