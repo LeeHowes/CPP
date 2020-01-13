@@ -776,10 +776,10 @@ The changes this leads to:
    This allows the algorithm to be a side-effecting view on data, but because that data is in-band in the data stream it is safe from a lifetime point of view.
    More so that it would be if the data had to be captured by reference.
  * Replaces the max value with a range for the index space. This allows for more flexibility.
- * Provides the option for the range to be constructed based on input data.
-   While this is less efficient for certain use cases (current GPUs), we still support the direct value overload and this provides far more flexibility.
-   We do, after all, often write for loops over data where the data size depends on some earlier value.
-   This is common enough that we should support it as an option.
+ * Adds the execution policy back in, defining the forward progress guarantee both the invocable and range accessor make.
+   This is preferred because the policy is a statement the programmer makes about the capabilities of the invocable.
+   An indexed_for that requires seq, and an executor that cannot execute seq can fail at this point.
+   An invocable that requires seq run on an executor that cannot run seq algorithms would be invisible at the point of chaining the algorithm.
  * Does not add any sort of factory as [@P1993R0].
    These are not necessary if we carry the data in the stream.
    Data can be allocated to a device using, for example, a `device_vector`.
