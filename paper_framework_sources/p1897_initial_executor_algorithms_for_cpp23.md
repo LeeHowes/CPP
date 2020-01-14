@@ -1,7 +1,7 @@
 ---
 title: "Towards C++23 executors: A proposal for an initial set of algorithms"
-document: P1897R1
-date: 2019-11-13
+document: P1897R2
+date: 2020-01-10
 audience: SG1
 author:
   - name: Lee Howes
@@ -9,7 +9,14 @@ author:
 toc: false
 ---
 
-# Differences between R0 and R1
+# Changelog
+## Differences between R1 and R2
+ * Add `just_via` algorithm to allow type customization at the head of a work chain.
+ * Add `when_all` to fill missing gap in the ability to join sender chains.
+ * Add `indexed_for` based on feedback during the Belfast meeting to have a side-effecting algorithm.
+ * Propose question on replacing `bulk_execute` with `indexed_for` for the Prague meeting.
+
+## Differences between R0 and R1
  * Improve examples to be clearer, and fully expanded into function call form.
  * Add reference to range.adapter.
  * Remove `is_noexcept_sender`.
@@ -21,7 +28,7 @@ toc: false
 In [@P0443R11] we have included the fundamental principles described in [@P1660R0], and the fundamental requirement to customize algorithms.
 In recent discussions we have converged to an understanding of the `submit` operation on a `sender` acting as a fundamental interoperation primitive, and algorithm customization giving us full flexibility to optimize, to offload and to avoid synchronization in chains of mutually compatible algorithm customizations.
 
-As a starting point, in [@P0443R11] we only include a `bulk_execute` algorithm, that satisfies the core requirement we planned with P0443 to provide scalar and bulk execution.
+As a starting point, in [@P0443R11] we only include a `bulk_execute` algorithm, that satisfies the core requirement we planned with [@P0443R11] to provide scalar and bulk execution.
 To make the C++23 solution completely practical, we should extend the set of algorithms, however.
 This paper suggests an expanded initial set that enables early useful work chains.
 This set is intended to act as a discussion focus for us to discuss one by one, and to analyze the finer constraints of the wording to make sure we do not over-constrain the design.
@@ -52,10 +59,16 @@ We propose immediately discussing the addition of the following algorithms:
 
  * `just(v)`
    * returns a `sender` of the value `v`
+ * `just_via(sch, v)`
+   * a variant of the above that embeds the `via` algorithm
  * `via(s, sch)`
    * returns a sender that propagates the value or error from `s` on `sch`'s execution context
  * `sync_wait(s)`
    * blocks and returns the value type of the sender, throwing on error
+ * `when_all(s...)`
+   * returns a sender that completes when all Senders `s...` complete, propagating all values
+ * `indexed_for(s, policy, rng, f)`
+   * returns a sender that applies `f` for each element of `rng` passing that element and the values from the incoming sender, completes when all `f`s complete propagating s's values onwards
  * `transform(s, f)`
    * returns a sender that applies `f` to the value passed by `s`, or propagates errors or cancellation
  * `bulk_transform(s, f)`
@@ -74,11 +87,11 @@ auto  just_sender =       // sender_to<int>
 
 auto transform_sender =  // sender_to<float>
   transform(
-    std::move(via_sender),
+    std::move(just_sender),
     [](int a){return a+0.5f;});
 
-int result =              // value: 5
-  sync_wait(std::move(error_sender));
+int result =              // value: 3.5
+  sync_wait(std::move(transform_sender));
 ```
 
 In this very simple example we:
@@ -89,9 +102,88 @@ In this very simple example we:
 
 Using `operator|` as in ranges to remove the need to pass arguments around, we can represent this as:
 ```cpp
-auto s = ;  
 float f = sync_wait(
-  just(3) | transform([](int a){return a+0.5f;}));              
+  just(3) | transform([](int a){return a+0.5f;}));
+```
+
+#### Using indexed_for
+We propose that indexed_for be the cleaned up version of bulk_execute, this shows how it fits into a work chain, with a parameter pack of inputs
+
+```cpp
+auto  just_sender =       // sender_to<int>
+  just(std::vector<int>{3, 4, 5}, 10);
+
+auto indexed_for_sender =  // sender_to<float>
+  indexed_for(
+    std::move(just_sender),
+    std::execution::par,
+    ranges::iota_view{3},
+    [](size_t idx, std::vector<int>& vec, const int& i){
+      vec[idx] = vec[idx] + i;
+    });
+
+auto transform_sender = transform(
+  std::move(indexed_for_sender), [](vector<int> vec, int /*i*/){return vec;});
+
+vector<int> result =       // value: {13, 14, 15}
+  sync_wait(std::move(transform_sender));
+```
+
+In this less simple example we:
+
+ * start a chain with a vector of three ints and an int
+ * apply a function for each element in an index space, that receives the vector and int by reference and modifies the vector
+ * specifies the most relaxed execution policy on which we guarantee the invocable and range access function to be safe to call
+ * applies a transform to filter out the int result, demonstrating how indexed_for does not change the structure of the data
+ * block for the resulting value and assign vector {13, 14, 15} to `result`
+
+Using `operator|` as in ranges to remove the need to pass arguments around, we can represent this as:
+```cpp
+vector<int> result_vec = sync_wait(
+  just(std::vector<int>{3, 4, 5}, 10) |
+  indexed_for(
+    std::execution::par,
+    ranges::iota_view{3},
+    [](size_t idx, vector<int>&vec, const int& i){vec[idx] = vec[idx] + i;}) |
+  transform([](vector<int> vec, int /*i*/){return vec;}));
+```
+
+
+#### Using when_all
+when_all joins a list of incoming senders, propagating their values.
+
+```cpp
+auto  just_sender =       // sender_to<int>
+  just(std::vector<int>{3, 4, 5}, 10);
+auto  just_float_sender =       // sender_to<int>
+  just(20.0f);
+
+auto when_all_sender = when_all(
+  std::move(just_sender), std::move(just_float_sender));
+
+auto transform_sender(
+  std::move(when_all_sender),
+  [](std::vector<int> vec, int /*i*/, float /*f*/) {
+    return vec;
+  })
+
+vector<int> result =       // value: {3, 4, 5}
+  sync_wait(std::move(transform_sender));
+```
+
+This demonstrates simple joining of senders:
+
+ * start a chain with a pack of a vector and an int
+ * start a second chain with a float
+ * join the two to produce a pack of a vector, an int and a float
+ * applies a transform to filter out the vector result
+ * block for the resulting value and assign vector {3, 4, 5} to `result`
+
+Using `operator|` as in ranges to remove the need to pass arguments around, we can represent this as:
+```cpp
+vector<int> result_vec = sync_wait(
+  when_all(just(std::vector<int>{3, 4, 5}, 10), just(20.0f)) |
+  transform([](vector<int> vec, int /*i*/, float /*f*/){return vec;}));
 ```
 
 #### With exception
@@ -130,8 +222,8 @@ As before, using `operator|` as in ranges to remove the need to pass arguments a
 int result = 0;
 try {
  result = sync_wait(
-    just(3) |                           
-    via(scheduler1) |                    
+    just(3) |
+    via(scheduler1) |
     transform([](int a){throw 2;}) |
     transform([](){return 3;}));
 } catch(int a) {
@@ -173,12 +265,12 @@ In this example we:
 ```cpp
 auto s = ;
 int result = sync_wait(
-  just(3) |                            
-  via(scheduler1) |                    
-  transform([](float a){throw 2;}) |   
-  transform([](){return 3;}) |         
-  handle_error([](auto e){         
-   return just(5);}));       
+  just(3) |
+  via(scheduler1) |
+  transform([](float a){throw 2;}) |
+  transform([](){return 3;}) |
+  handle_error([](auto e){
+   return just(5);}));
 ```
 
 
@@ -248,12 +340,47 @@ int r = sync_wait(just(3));
 *- end example]*
 
 ### Wording
-The expression `execution::just(t)` returns a sender, `s` wrapping the value `t`.
+The expression `execution::just(t...)` returns a sender, `s` wrapping the values `t...`.
 
  * If `t...` are nothrow movable then `execution::is_noexcept_sender(s)` shall be constexpr and return true.
  * When `execution::submit(s, r)` is called for some `r`, and r-value `s` will call `execution::set_value(r, std::move(t)...)`, inline with the caller.
  * When `execution::submit(s, r)` is called for some `r`, and l-value `s` will call `execution::set_value(r, t...)`, inline with the caller.
  * If moving of `t` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`.
+
+## execution::just_via
+
+### Overview
+`just_via` creates a `sender` that propagates a value to a submitted receiver on the execution context of a passed `scheduler`.
+Semantically equivalent to `just(t) | via(s)` if `just_via` is not customized on `s`.
+
+Signature:
+```cpp
+S<T...> just_via(Scheduler, T...);
+```
+
+where `S<T...>` is an implementation-defined `typed_sender` that that sends a set of values of type `T...` in its value channel in the context of the passed `Scheduler`.
+
+*[ Example:*
+```cpp
+MyScheduler s;
+int r = sync_wait(just_via(s, 3));
+// r==3
+```
+*- end example]*
+
+### Wording
+The name `execution::just_via` denotes a customization point object.
+The expression `execution::just_via(sch, t...)` for some subexpression `S` is expression-equivalent to:
+
+ * `sch.just(t...)` if that expression is valid.
+ * Otherwise, `just_via(sch, t...)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+ ```
+         template<class Sch, class T...>
+           void just_via(Sch, T...) = delete;
+ ```
+   and that does not include a declaration of `execution::just_via`.
+
+ * Otherwise returns the result of the expression: `via(just(t...), sch)`
 
 <!--
 ## execution::just_error
@@ -318,7 +445,7 @@ Note that `sync_wait` requires `S` to propagate a single value type.
 ## execution::via
 
 ### Overview
-`via` is a sender adapter that takes a `sender` and a `scheduler` and returns a `sender` that propagates the same value as the original, but does so on the `sender`'s execution context.
+`via` is a sender adapter that takes a `sender` and a `scheduler` and returns a `sender` that propagates the same value as the original, but does so on the `scheduler`'s execution context.
 
 Signature:
 ```cpp
@@ -352,6 +479,104 @@ The expression `execution::via(S, Sch)` for some subexpressions `S`, `Sch` is ex
 <!--
 If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execution::is_noexcept_sender(S2)` returns true at compile-time and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(on(S1, S2))` should return `true` at compile time^[Should, shall, may?].
 -->
+
+## execution::when_all
+
+### Overview
+`when_all` combines a set of *non-void* `senders`, returning a `sender` that, on success, completes with the combined values of all incoming `sender`s.
+
+Signature:
+```cpp
+S<T0..., T1..., Tn...> when_all(S<Tn...>);
+```
+
+where `S<T>` is an implementation-defined type that is a sender that sends a value of type `T` in its value channel.
+
+*[ Example:*
+```cpp
+float r =
+  sync_wait(
+    transform(
+      when_all(just(3) | just(1.2f)),
+      [](int a, float b){return a + b;}));
+// r==4.2
+```
+
+### Wording
+
+The name `execution::when_all` denotes a customization point object.
+The expression `execution::when_all(S)` for some subexpression `S` is expression-equivalent to:
+
+ * Otherwise, `when_all(S)` if that expression is valid with overload resolution performed in a context that includes the declaration
+ ```
+         template<class S>
+           void when_all(S) = delete;
+ ```
+
+ * Otherwise constructs a receiver, `ri` for each passed `sender` `Si` in `S` and passes that receiver to `execution::submit(Si, ri)`.
+   When some `output_receiver` has been passed to `submit` on the returned `sender`.
+    * if `set_value(t...)` is called on all `ri`, will concatenate the list of values and call `set_value(output_receiver, t0..., t1..., tn...)` on the received passed to `submit` on the returned `sender`.
+    * if `set_done()` is called on any `ri`, will call `set_done(output_receiver)`, discarding other results.
+    * if `set_error(e)` is called on any `ri` will call `set_error(output_receiver, e)` for some `e`, discarding other results.
+
+## execution::indexed_for
+
+### Overview
+`indexed_for` is a sender adapter that takes a `sender`, execution policy, a range and an invocable and returns a `sender` that propagates the input values but runs the invocable once for each element of the range, passing the input by non-const reference.
+
+Signature:
+```cpp
+S<T...> indexed_for(
+  S<T...>,
+  execution_policy,
+  range<Idx>,
+  invocable<void(Idx, T&...));
+```
+
+where `S<T...>` represents implementation-defined sender types that send a value of type list `T...` in their value channels.
+Note that in the general case there may be many types `T...` for a given `sender`, in which case the invocable may have to represent an overload set.
+
+*[ Example:*
+```cpp
+int r = sync_wait(
+  just(3) |
+  indexed_for(
+    std::execution::par,
+    ranges::iota_view{6},
+    [](int idx, int& v){v = v + idx;}));
+// r==9
+```
+
+### Wording
+
+The name `execution::indexed_for` denotes a customization point object.
+The expression `execution::indexed_for(S, P, R, F)` for some subexpressions `S`, `P`, `R` and `F` is expression-equivalent to:
+
+ * If `P` does not satisfy `std::is_execution_policy_v<P>`, then the expression is invalid.
+ * If `R` does not satisfy either `range` then the expression is invalid.
+ * If `P` is `std::execution::sequenced_policy` then `range` must satisfy `input_range` otherwise `range` must satisfy `random_access_range`.
+ * If `F` does not satisfy `MoveConstructible` then the expression is invalid.
+ * S.indexed_for(P, R, F), if that expression is valid.
+ * Otherwise, `indexed_for(S, R, P, F)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+ ```
+         template<class S, class R, class P, class F>
+           void indexed_for(S, R, P, F) = delete;
+ ```
+   and that does not include a declaration of `execution::indexed_for`.
+
+ * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
+
+   * If `set_value` is called on `r` with some parameter pack `t...` then calls `F(idx, t...)` for each element `idx` in `R`.
+     Once all complete calls `execution::set_value(output_receiver, v)`.
+
+     * If any call to `set_value` throws an exception, then call `set_error(r, e)` with some exception from the set.
+
+   * If `set_error(r, e)` is called, passes `e` to `execution::set_error(output_receiver, e)`.
+   * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
+
+**Notes:**
+ * If `P` is not `execution::seq` and `R` satisfies `random_access_range` then `indexed_for` may run the instances of `F` concurrently.
+ * `P` represents a guarantee on the most relaxed execution policy `F` and the element access function of range `R`  are safe to run under, and hence the most parallel fashion in which the underlying `scheduler` may map instances of `F` to execution agents.
 
 
 ## execution::transform
@@ -434,7 +659,7 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 
  * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
 
-   * If `S::value_type` does not model the concept `Range<T>` for some `T` the expression ill-formed.   
+   * If `S::value_type` does not model the concept `Range<T>` for some `T` the expression ill-formed.
    * If `set_value` is called on `r` with some parameter `input` applies the equivalent of `out = std::ranges::transform_view(input, F)` and passes the result `output` to `execution::set_value(output_receiver, v)`.
    * If `set_error(r, e)` is called, passes `e` to `execution::set_error(output_receiver, e)`.
    * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
@@ -522,6 +747,52 @@ At this point it will call `submit` on the incoming `scheduler1_transform_sender
 `r` is of course the value 8 at this point assuming that neither scheduler triggered an error.
 If there were to be a scheduling error, then that error would propagate to `handle_error` and `r` would subsequently have the value `3`.
 
+# Potential future changes
+## bi-directional via
+`via` will become a bi-directional algorithm.
+It will propagate a scheduler upstream as discussed in [@P1898R0].
+It will switch context to the passed scheduler, and allow customization of the returned receiver as discussed above.
+
+## when_all's context
+Based on experience in Facebook's codebase, I believe that `when_all` should return a sender that requires an executor-provider and uses forward progress delegation as discussed in [@P1898R0].
+The returned sender should complete on the delegated context.
+This removes the ambiguity about which context it completes on.
+
+## when_all for void types and mixed success
+We should add a when_all variant that returns tuples and variants in its result, or some similar mechanism for to allow parameter packs, including empty packs in the form of void-senders, and mixed success/error to propagate.
+
+
+# Proposed question for the Prague 2020 meeting
+## Replace `bulk_execute` in P0443 with `indexed_for` as described above.
+
+`indexed_for` as described above should replace bulk_execute during the merge of [@P0443R11] into C++23.
+Suggest fine-tuning this wording and forwarding to LEWG.
+
+The changes this leads to:
+
+ * Renames the algorithm to fit in with a set of user-level algorithms rather than making it distinct and internal-only.
+   We found it hard to define a difference between `bulk_execute` and `indexed_for` and so suggest we not try, instead we rename it.
+ * Propagating the data from the incoming sender into the invocable by reference and out the other end.
+   This allows the algorithm to be a side-effecting view on data, but because that data is in-band in the data stream it is safe from a lifetime point of view.
+   More so that it would be if the data had to be captured by reference.
+ * Replaces the max value with a range for the index space. This allows for more flexibility.
+ * Adds the execution policy back in, defining the forward progress guarantee both the invocable and range accessor make.
+   This is preferred because the policy is a statement the programmer makes about the capabilities of the invocable.
+   An indexed_for that requires seq, and an executor that cannot execute seq can fail at this point.
+   An invocable that requires seq run on an executor that cannot run seq algorithms would be invisible at the point of chaining the algorithm.
+ * Does not add any sort of factory as [@P1993R0].
+   These are not necessary if we carry the data in the stream.
+   Data can be allocated to a device using, for example, a `device_vector`.
+   This maintains full flexibility - we can add custom data management algorithms independently and keep `indexed_for` focused on its primary use cause: the asynchronous for loop itself.
+ * Relaxes the CopyConstructible restriction that [@P0443R11], but also the standard algorithms in C++20 place.
+   Wide discussion suggests that this restriction may not be necessary, and it could certainly be harmful.
+   In an asynchronous world we cannot rely on scoped `reference_wrapper` semantics, and the cost of injecting `shared_ptr` would be high.
+   If an implementation needs to copy, then that implementation should implement a wrapper that is custom for the algorthmic structure it is using.
+   For example, a forking tree of threads may allocate once on the first thread by move and reference back to it, knowing the lifetime is safe.
+
+
+
+
 
 ---
 references:
@@ -537,4 +808,16 @@ references:
     issued:
       year: 2019
     URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1660r0.pdf
+  - id: P1898R0
+    citation-label: P1898R0
+    title: "Forward progress delegation for executors"
+    issued:
+      year: 2019
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1898r0.html
+  - id: P1993R0
+    citation-label: P1993R0
+    title: "Restore factories to bulk_execute"
+    issued:
+      year: 2019
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1993r0.pdf
 ---
