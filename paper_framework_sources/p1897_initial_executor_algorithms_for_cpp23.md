@@ -1,7 +1,7 @@
 ---
 title: "Towards C++23 executors: A proposal for an initial set of algorithms"
-document: P1897R2
-date: 2020-01-10
+document: P1897R3
+date: 2020-04-10
 audience: SG1
 author:
   - name: Lee Howes
@@ -10,6 +10,9 @@ toc: false
 ---
 
 # Changelog
+## Differences between R2 and R3
+ * Rename `just_via` to `just_on`.
+
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
  * Add `when_all` to fill missing gap in the ability to join sender chains.
@@ -59,7 +62,7 @@ We propose immediately discussing the addition of the following algorithms:
 
  * `just(v)`
    * returns a `sender` of the value `v`
- * `just_via(sch, v)`
+ * `just_on(sch, v)`
    * a variant of the above that embeds the `via` algorithm
  * `via(s, sch)`
    * returns a sender that propagates the value or error from `s` on `sch`'s execution context
@@ -347,15 +350,15 @@ The expression `execution::just(t...)` returns a sender, `s` wrapping the values
  * When `execution::submit(s, r)` is called for some `r`, and l-value `s` will call `execution::set_value(r, t...)`, inline with the caller.
  * If moving of `t` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`.
 
-## execution::just_via
+## execution::just_on
 
 ### Overview
-`just_via` creates a `sender` that propagates a value to a submitted receiver on the execution context of a passed `scheduler`.
-Semantically equivalent to `just(t) | via(s)` if `just_via` is not customized on `s`.
+`just_on` creates a `sender` that propagates a value to a submitted receiver on the execution context of a passed `scheduler`.
+Semantically equivalent to `just(t) | via(s)` if `just_on` is not customized on `s`.
 
 Signature:
 ```cpp
-S<T...> just_via(Scheduler, T...);
+S<T...> just_on(Scheduler, T...);
 ```
 
 where `S<T...>` is an implementation-defined `typed_sender` that that sends a set of values of type `T...` in its value channel in the context of the passed `Scheduler`.
@@ -363,22 +366,22 @@ where `S<T...>` is an implementation-defined `typed_sender` that that sends a se
 *[ Example:*
 ```cpp
 MyScheduler s;
-int r = sync_wait(just_via(s, 3));
+int r = sync_wait(just_on(s, 3));
 // r==3
 ```
 *- end example]*
 
 ### Wording
-The name `execution::just_via` denotes a customization point object.
-The expression `execution::just_via(sch, t...)` for some subexpression `S` is expression-equivalent to:
+The name `execution::just_on` denotes a customization point object.
+The expression `execution::just_on(sch, t...)` for some subexpression `S` is expression-equivalent to:
 
  * `sch.just(t...)` if that expression is valid.
- * Otherwise, `just_via(sch, t...)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+ * Otherwise, `just_on(sch, t...)`, if that expression is valid with overload resolution performed in a context that includes the declaration
  ```
          template<class Sch, class T...>
-           void just_via(Sch, T...) = delete;
+           void just_on(Sch, T...) = delete;
  ```
-   and that does not include a declaration of `execution::just_via`.
+   and that does not include a declaration of `execution::just_on`.
 
  * Otherwise returns the result of the expression: `via(just(t...), sch)`
 
