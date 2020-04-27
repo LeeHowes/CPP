@@ -12,6 +12,7 @@ toc: false
 # Changelog
 ## Differences between R2 and R3
  * Rename `just_via` to `just_on`.
+ * Rename `via` to `on`. Ensure that `get_scheduler` is incorporated into `on`'s and `just_on`'s behaviour.
 
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
@@ -64,7 +65,7 @@ We propose immediately discussing the addition of the following algorithms:
    * returns a `sender` of the value `v`
  * `just_on(sch, v)`
    * a variant of the above that embeds the `via` algorithm
- * `via(s, sch)`
+ * `on(s, sch)`
    * returns a sender that propagates the value or error from `s` on `sch`'s execution context
  * `sync_wait(s)`
    * blocks and returns the value type of the sender, throwing on error
@@ -373,17 +374,18 @@ int r = sync_wait(just_on(s, 3));
 
 ### Wording
 The name `execution::just_on` denotes a customization point object.
-The expression `execution::just_on(sch, t...)` for some subexpression `S` is expression-equivalent to:
+The expression `execution::just_on(Sch, t...)` for some subexpression `Sch` is expression-equivalent to:
 
- * `sch.just(t...)` if that expression is valid.
- * Otherwise, `just_on(sch, t...)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+ * `Sch.just(t...)` if that expression is valid.
+ * Otherwise, `just_on(Sch, t...)`, if that expression is valid with overload resolution performed in a context that includes the declaration
  ```
          template<class Sch, class T...>
            void just_on(Sch, T...) = delete;
  ```
    and that does not include a declaration of `execution::just_on`.
 
- * Otherwise returns the result of the expression: `via(just(t...), sch)`
+ * Otherwise returns the result of the expression: `on(just(t...), Sch)`
+ * For some returned sender `S` returned by `just_on(Sch, t...)`, `get_scheduler(S)` will return `Sch`.
 
 <!--
 ## execution::just_error
@@ -445,14 +447,14 @@ If `execution::is_noexcept_sender(S)` returns true at compile-time, and the retu
 Note that `sync_wait` requires `S` to propagate a single value type.
 -->
 
-## execution::via
+## execution::on
 
 ### Overview
-`via` is a sender adapter that takes a `sender` and a `scheduler` and returns a `sender` that propagates the same value as the original, but does so on the `scheduler`'s execution context.
+`on` is a sender adapter that takes a `sender` and a `scheduler` and returns a `sender` that propagates the same value as the original, but does so on the `scheduler`'s execution context.
 
 Signature:
 ```cpp
-S<T...> via(S<T...>, Scheduler);
+S<T...> on(S<T...>, Scheduler);
 ```
 
 where `S<T>` is an implementation-defined type that is a sender that sends a value of type `T` in its value channel.
@@ -460,24 +462,27 @@ where `S<T>` is an implementation-defined type that is a sender that sends a val
 *[ Example:*
 ```cpp
 static_thread_pool t{1};
-int r = sync_wait(just(3) | via(t.scheduler()));
+int r = sync_wait(just(3) | on(t.scheduler()));
 // r==3
 ```
 
 ### Wording
-The name `execution::via` denotes a customization point object.
-The expression `execution::via(S, Sch)` for some subexpressions `S`, `Sch` is expression-equivalent to:
+The name `execution::on` denotes a customization point object.
+The expression `execution::on(S, sch)` for some subexpressions `S`, `Sch` is expression-equivalent to:
 
- * `S.via(Sch)` if that expression is valid.
- * Otherwise, `via(S, Sch)` if that expression is valid with overload resolution performed in a context that includes the declaration
+ * `S.on(Sch)` if that expression is valid.
+ * Otherwise, `on(S, Sch)` if that expression is valid with overload resolution performed in a context that includes the declaration
  ```
          template<class S, class Sch>
-           void via(S, Sch) = delete;
+           void on(S, Sch) = delete;
  ```
 
- * Otherwise constructs a receiver `r` such that when `set_value`, `set_error` or `set_done` is called on `r` the value(s) or error(s) are packaged, and a receiver `r2` constructed such that when `execution::set_value(r2)` is called, the stored value or error is transmitted and `r2` is submitted to `Sch`. If `set_error` or `set_done` is called on `r2` the error or cancellation is propagated and the packaged values ignored.
- * The returned sender's value types match those of `sender1`.
- * The returned sender's execution context is that of `scheduler1`.
+ * Otherwise constructs a receiver `r` such that:
+    * when `set_value`, `set_error` or `set_done` is called on `r` the value(s) or error(s) are packaged, and a receiver `r2` constructed such that when `execution::set_value(r2)` is called, the stored value or error is transmitted and `r2` is submitted to `Sch`. If `set_error` or `set_done` is called on `r2` the error or cancellation is propagated and the packaged values ignored.
+    * `get_scheduler(r)` returns `Sch`.
+ * The returned sender's value types match those of `S`.
+ * The returned sender's execution context is that of `Sch`.
+ * For some returned sender `S2` returned by `on`, `get_scheduler(S2)` will return Sch.
 
 <!--
 If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execution::is_noexcept_sender(S2)` returns true at compile-time and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(on(S1, S2))` should return `true` at compile time^[Should, shall, may?].
@@ -721,20 +726,20 @@ For example, in the following simple work chain:
 
 ```
 auto s = just(3) |                                        // s1
-         via(scheduler1) |                                // s2
+         on(scheduler1) |                                // s2
          transform([](int a){return a+1;}) |              // s3
          transform([](int a){return a*2;}) |              // s4
-         via(scheduler2) |                                // s5
+         on(scheduler2) |                                // s5
          handle_error([](auto e){return just(3);});       // s6
 int r = sync_wait(s);
 ```
 
 The result of `s1` might be a `just_sender<int>` implemented by the standard library vendor.
 
-`via(just_sender<int>, scheduler1)` has no customization defined, and this expression returns an `scheduler1_via_sender<int>` that is a custom type from the author of `scheduler1`, it will call `submit` on the result of `s1`.
+`on(just_sender<int>, scheduler1)` has no customization defined, and this expression returns an `scheduler1_on_sender<int>` that is a custom type from the author of `scheduler1`, it will call `submit` on the result of `s1`.
 
-`s3` calls `transform(scheduler1_via_sender<int>, [](int a){return a+1;})` for which the author of `scheduler1` may have written a customization.
-The `scheduler1_via_sender` has stashed the value somewhere and build some work queue in the background.
+`s3` calls `transform(scheduler1_on_sender<int>, [](int a){return a+1;})` for which the author of `scheduler1` may have written a customization.
+The `scheduler1_on_sender` has stashed the value somewhere and build some work queue in the background.
 We do not see `submit` called at this point, it uses a behind-the-scenes implementation to schedule the work on the work queue.
 An `scheduler1_transform_sender<int>` is returned.
 
@@ -751,10 +756,6 @@ At this point it will call `submit` on the incoming `scheduler1_transform_sender
 If there were to be a scheduling error, then that error would propagate to `handle_error` and `r` would subsequently have the value `3`.
 
 # Potential future changes
-## bi-directional via
-`via` will become a bi-directional algorithm.
-It will propagate a scheduler upstream as discussed in [@P1898R0].
-It will switch context to the passed scheduler, and allow customization of the returned receiver as discussed above.
 
 ## when_all's context
 Based on experience in Facebook's codebase, I believe that `when_all` should return a sender that requires an executor-provider and uses forward progress delegation as discussed in [@P1898R0].
