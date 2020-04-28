@@ -441,6 +441,7 @@ The expression `execution::sync_wait(S)` for some subexpression `S` is expressio
    * If `set_value` is called on `r`, returns the passed value (or simply returns for `void` sender).
    * If `set_error` is called on `r`, throws the error value as an exception.
    * If `set_done` is called on `r`, throws some TBD cancellation exception type.
+   * `get_scheduler(r)` returns an implementation-defined scheduler representing the calling thread context.
 
 <!--
 If `execution::is_noexcept_sender(S)` returns true at compile-time, and the return type `T` is nothrow movable, then `sync_wait` is noexcept.
@@ -526,6 +527,13 @@ The expression `execution::when_all(S)` for some subexpression `S` is expression
     * if `set_value(t...)` is called on all `ri`, will concatenate the list of values and call `set_value(output_receiver, t0..., t1..., tn...)` on the received passed to `submit` on the returned `sender`.
     * if `set_done()` is called on any `ri`, will call `set_done(output_receiver)`, discarding other results.
     * if `set_error(e)` is called on any `ri` will call `set_error(output_receiver, e)` for some `e`, discarding other results.
+    * `get_scheduler(ri)` for any `ri` will return the result of `get_scheduler(output_receiver)`, if that expression is valid.
+    * If `get_scheduler(output_receiver)` is a valid expression, whichever of `set_value(output_receiver,...)`, `set_done(output_receiver)` or `set_error(output_receiver, e)` is called will be called on the context of `get_scheduler(output_receiver)`.
+
+**Notes:**
+ * Efficient execution here under exceptional conditions requires cancellation support. This will be detailed separately.
+ * Explicitly transitioning onto a downstream execution context maintains correctness in the general case.
+ * Propagating the value of `get_scheduler(output_receiver)` upstream ensures that contexts are available where needed, and that forward progress delegation is generally available.
 
 ## execution::indexed_for
 
