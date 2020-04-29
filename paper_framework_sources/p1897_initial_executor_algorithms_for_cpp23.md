@@ -14,7 +14,8 @@ toc: false
  * Rename `just_via` to `just_on`.
  * Rename `via` to `on`.
  * Add `share`.
- * Add note on the feedback about `indexed_for` in Prague.
+ * Add note on the feedback about `indexed_for` in Prague. Removed `indexed_for` from the paper of initial algorothms.
+ * Add `let`.
 
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
@@ -73,8 +74,8 @@ We propose immediately discussing the addition of the following algorithms:
    * blocks and returns the value type of the sender, throwing on error
  * `when_all(s...)`
    * returns a sender that completes when all Senders `s...` complete, propagating all values
- * `indexed_for(s, policy, rng, f)`
-   * returns a sender that applies `f` for each element of `rng` passing that element and the values from the incoming sender, completes when all `f`s complete propagating s's values onwards
+ <!--* `indexed_for(s, policy, rng, f)`
+   * returns a sender that applies `f` for each element of `rng` passing that element and the values from the incoming sender, completes when all `f`s complete propagating s's values onwards-->
  * `transform(s, f)`
    * returns a sender that applies `f` to the value passed by `s`, or propagates errors or cancellation
  <!--* `bulk_transform(s, f)`
@@ -83,6 +84,8 @@ We propose immediately discussing the addition of the following algorithms:
    * returns a sender that applies `f` to an error passed by `s`, ignoring the values or cancellation
  * `share(s)`
    * Eagerly submits `s` and returns a sender that may be used more than once, propagating the value by reference.
+ * `let(s, f)`
+   * Creates an async scope where the result of one operation is available for the duration of another async operation.
 
 ## Examples
 
@@ -781,7 +784,47 @@ The expression `execution::share(S)` for some subexpression `S` is expression-eq
 TODO: When is `shr` destroyed?
 
 ## execution::let
-<!-- TODO -->
+
+### Overview
+`let` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that keeps the completion result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.
+
+Signature:
+```cpp
+S<T2> transform(S<T...>, invocable<S<T2>(T&...));
+```
+
+where `S<T...>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T2` respectively in their value channels.
+Note that in the general case there may be many types `T...` for a given `sender`, in which case the invocable may have to represent an overload set.
+
+*[ Example:*
+```cpp
+int r = sync_wait(
+  just(3) |
+  let([](int& let_v){
+    return just(4) | transform([&](int v){return let_v + v;})));
+// r==7
+```
+
+### Wording
+The name `execution::let` denotes a customization point object.
+The expression `execution::let(S, F)` for some subexpressions `S` and `F` is expression-equivalent to:
+
+ * `S.let(F)` if that expression is valid.
+ * Otherwise, `let(S, F)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+ ```
+         template<class S, class F>
+           void let(S, F) = delete;
+ ```
+   and that does not include a declaration of `execution::let`.
+
+ * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
+   When some `output_receiver` has been passed to `submit` on the returned `sender`:
+
+   * If `set_value(r, Ts... ts)` is called, calls `std::invoke(F, ts...)` to return some `invoke_result`, and calls `submit(invoke_result, output_receiver)`.
+   * If `F` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
+   * If `set_error(c, e)` is called, passes `e` to `set_error(output_receiver, e)`.
+   * If `set_done(c)` is called, calls `set_done(output_receiver)`.
+
 
 # Customization and example
 Each of these algorithms, apart from `just`, is customizable on one or more `sender` implementations.
@@ -878,6 +921,7 @@ The bulk_execute primitive should take an execution policy to constrain the invo
 SA: 5; F: 7; N: 8; A: 3; SA: 1
 
 
+R3 of this paper removes `indexed_for`. If `bulk_execute` is to remain, there is less urgent need to add `indexed_for`. Instead R3 focuses on the core set of algorithms. Something like `indexed_for`, or `for_each` will be in the async update of the parallel algorithms.
 
 
 
