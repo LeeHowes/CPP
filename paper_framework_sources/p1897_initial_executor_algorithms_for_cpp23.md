@@ -13,6 +13,7 @@ toc: false
 ## Differences between R2 and R3
  * Rename `just_via` to `just_on`.
  * Rename `via` to `on`.
+ * Add `share`.
 
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
