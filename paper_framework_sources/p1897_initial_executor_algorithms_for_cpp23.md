@@ -12,7 +12,7 @@ toc: false
 # Changelog
 ## Differences between R2 and R3
  * Rename `just_via` to `just_on`.
- * Rename `via` to `on`. Ensure that `get_scheduler` is incorporated into `on`'s and `just_on`'s behaviour.
+ * Rename `via` to `on`.
 
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
@@ -75,10 +75,12 @@ We propose immediately discussing the addition of the following algorithms:
    * returns a sender that applies `f` for each element of `rng` passing that element and the values from the incoming sender, completes when all `f`s complete propagating s's values onwards
  * `transform(s, f)`
    * returns a sender that applies `f` to the value passed by `s`, or propagates errors or cancellation
- * `bulk_transform(s, f)`
-   * returns a sender that applies `f` to each element in a range sent by `s`, or propagates errors or cancellation
+ <!--* `bulk_transform(s, f)`
+   * returns a sender that applies `f` to each element in a range sent by `s`, or propagates errors or cancellation-->
  * `handle_error(s, f)`
    * returns a sender that applies `f` to an error passed by `s`, ignoring the values or cancellation
+ * `share(s)`
+   * Eagerly submits `s` and returns a sender that may be used more than once, propagating the value by reference.
 
 ## Examples
 
@@ -110,6 +112,7 @@ float f = sync_wait(
   just(3) | transform([](int a){return a+0.5f;}));
 ```
 
+<!--
 #### Using indexed_for
 We propose that indexed_for be the cleaned up version of bulk_execute, this shows how it fits into a work chain, with a parameter pack of inputs
 
@@ -151,7 +154,7 @@ vector<int> result_vec = sync_wait(
     [](size_t idx, vector<int>&vec, const int& i){vec[idx] = vec[idx] + i;}) |
   transform([](vector<int> vec, int /*i*/){return vec;}));
 ```
-
+-->
 
 #### Using when_all
 when_all joins a list of incoming senders, propagating their values.
@@ -385,7 +388,7 @@ The expression `execution::just_on(Sch, t...)` for some subexpression `Sch` is e
    and that does not include a declaration of `execution::just_on`.
 
  * Otherwise returns the result of the expression: `on(just(t...), Sch)`
- * For some returned sender `S` returned by `just_on(Sch, t...)`, `get_scheduler(S)` will return `Sch`.
+ * For some returned sender `S` returned by `just_on(Sch, t...)`, `execution::get_scheduler(S)` will return `Sch`.
 
 <!--
 ## execution::just_error
@@ -441,7 +444,6 @@ The expression `execution::sync_wait(S)` for some subexpression `S` is expressio
    * If `set_value` is called on `r`, returns the passed value (or simply returns for `void` sender).
    * If `set_error` is called on `r`, throws the error value as an exception.
    * If `set_done` is called on `r`, throws some TBD cancellation exception type.
-   * `get_scheduler(r)` returns an implementation-defined scheduler representing the calling thread context.
 
 <!--
 If `execution::is_noexcept_sender(S)` returns true at compile-time, and the return type `T` is nothrow movable, then `sync_wait` is noexcept.
@@ -480,10 +482,8 @@ The expression `execution::on(S, sch)` for some subexpressions `S`, `Sch` is exp
 
  * Otherwise constructs a receiver `r` such that:
     * when `set_value`, `set_error` or `set_done` is called on `r` the value(s) or error(s) are packaged, and a receiver `r2` constructed such that when `execution::set_value(r2)` is called, the stored value or error is transmitted and `r2` is submitted to `Sch`. If `set_error` or `set_done` is called on `r2` the error or cancellation is propagated and the packaged values ignored.
-    * `get_scheduler(r)` returns `Sch`.
  * The returned sender's value types match those of `S`.
  * The returned sender's execution context is that of `Sch`.
- * For some returned sender `S2` returned by `on`, `get_scheduler(S2)` will return Sch.
 
 <!--
 If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execution::is_noexcept_sender(S2)` returns true at compile-time and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(on(S1, S2))` should return `true` at compile time^[Should, shall, may?].
@@ -527,14 +527,13 @@ The expression `execution::when_all(S)` for some subexpression `S` is expression
     * if `set_value(t...)` is called on all `ri`, will concatenate the list of values and call `set_value(output_receiver, t0..., t1..., tn...)` on the received passed to `submit` on the returned `sender`.
     * if `set_done()` is called on any `ri`, will call `set_done(output_receiver)`, discarding other results.
     * if `set_error(e)` is called on any `ri` will call `set_error(output_receiver, e)` for some `e`, discarding other results.
-    * `get_scheduler(ri)` for any `ri` will return the result of `get_scheduler(output_receiver)`, if that expression is valid.
-    * If `get_scheduler(output_receiver)` is a valid expression, whichever of `set_value(output_receiver,...)`, `set_done(output_receiver)` or `set_error(output_receiver, e)` is called will be called on the context of `get_scheduler(output_receiver)`.
 
 **Notes:**
  * Efficient execution here under exceptional conditions requires cancellation support. This will be detailed separately.
  * Explicitly transitioning onto a downstream execution context maintains correctness in the general case.
- * Propagating the value of `get_scheduler(output_receiver)` upstream ensures that contexts are available where needed, and that forward progress delegation is generally available.
 
+
+<!--
 ## execution::indexed_for
 
 ### Overview
@@ -593,7 +592,7 @@ The expression `execution::indexed_for(S, P, R, F)` for some subexpressions `S`,
 **Notes:**
  * If `P` is not `execution::seq` and `R` satisfies `random_access_range` then `indexed_for` may run the instances of `F` concurrently.
  * `P` represents a guarantee on the most relaxed execution policy `F` and the element access function of range `R`  are safe to run under, and hence the most parallel fashion in which the underlying `scheduler` may map instances of `F` to execution agents.
-
+-->
 
 ## execution::transform
 
@@ -639,6 +638,7 @@ The expression `execution::transform(S, F)` for some subexpressions `S` and `F` 
 If `execution::is_noexcept_sender(S)` returns true at compile-time, and `F(S1::value_types)` is marked `noexcept` and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(transform(S1, F))` should return `true` at compile time.
 -->
 
+<!--
 
 ## execution::bulk_transform
 
@@ -679,7 +679,7 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
    * If `set_value` is called on `r` with some parameter `input` applies the equivalent of `out = std::ranges::transform_view(input, F)` and passes the result `output` to `execution::set_value(output_receiver, v)`.
    * If `set_error(r, e)` is called, passes `e` to `execution::set_error(output_receiver, e)`.
    * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
-
+-->
 
 ## execution::handle_error
 
@@ -726,6 +726,60 @@ The expression `execution::handle_error(S, F)` for some subexpressions S and F i
    * If `set_error(r, e...)` is called, passes `e...` to `f`, resulting in a `sender` `s2` and passes `output_receiver` to `submit(s2, output_receiver)`.
    * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
 
+
+## execution::share
+
+### Overview
+`share` is a sender adapter that takes a `sender`, eagerly submits it and returns a `sender` that propagates the value by reference and can be used as an l-value.
+
+Signature:
+```cpp
+S<T& const...> share(S<T...>);
+```
+
+where `S<T...>` and `S<T& const...>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T& const...` respectively in their value channels.
+Note that in the general case there may be many types `T...` for a given `sender`, in which case the invocable may have to represent an overload set.
+
+*[ Example:*
+```cpp
+auto s1 = just(3) | share();
+auto s2 = r | transform([](const int& v){return v+1;}))
+auto s3 = r | transform([](const int& v){return v+2;}))
+int r = sync_wait(
+  transform(
+    when_all(s2, s3),
+    [](int a, int b){return a+b;}));
+// r==9
+```
+
+### Wording
+The name `execution::share` denotes a customization point object.
+The expression `execution::share(S)` for some subexpression `S` is expression-equivalent to:
+
+ * `S.share()` if that expression is valid.
+ * Otherwise, `share(S)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+ ```
+         template<class S>
+           void share(S) = delete;
+ ```
+   and that does not include a declaration of `execution::share`.
+
+ * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
+   Constructs some shared state, `shr` to store the completion result(s) of `S`.
+
+   * If `set_value(r, Ts... ts)` is called stores `ts` in `shr`.
+   * If `set_error(r, e)` is called, stores `e` in `shr`.
+   * If `set_done(r)` is called stores the done result in `shr`.
+
+   When some `output_receiver` has been passed to `submit` on the returned `sender` and one of the above has been called on `r`:
+   * If `r` was satisfied with a call to `set_value`, call `set_value(output_receiver, ts...)`
+   * If `r` was satisfied with a call to `set_error`, call `set_error(output_receiver, e)`.
+   * If `r` was satisfied with a call to `set_done`, call `execution::set_done(output_receiver)`.
+
+TODO: When is `shr` destroyed?
+
+## execution::let
+<!-- TODO -->
 
 # Customization and example
 Each of these algorithms, apart from `just`, is customizable on one or more `sender` implementations.
