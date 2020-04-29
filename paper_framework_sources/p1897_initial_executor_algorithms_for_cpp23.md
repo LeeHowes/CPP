@@ -14,6 +14,7 @@ toc: false
  * Rename `just_via` to `just_on`.
  * Rename `via` to `on`.
  * Add `share`.
+ * Add note on the feedback about `indexed_for` in Prague.
 
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
@@ -856,6 +857,25 @@ The changes this leads to:
    In an asynchronous world we cannot rely on scoped `reference_wrapper` semantics, and the cost of injecting `shared_ptr` would be high.
    If an implementation needs to copy, then that implementation should implement a wrapper that is custom for the algorthmic structure it is using.
    For example, a forking tree of threads may allocate once on the first thread by move and reference back to it, knowing the lifetime is safe.
+
+## Result of discussion and vote
+Poll: We should add a sender argument and sender result to bulk execution functions (providing an opportunity to build shared state, established dependencies in/out)
+
+SA: 17; F: 7; N: 0; A: 0; SA: 0
+
+Consensus.
+
+
+Poll: We should replace bulk_execute with indexed_for
+
+SA: 4; F: 11; N: 3; A: 7; SA: 1
+
+No consensus for change. Discussed in the room that indexed_for (and other algorithms by inference) should be build on top of bulk_execute.
+
+
+The bulk_execute primitive should take an execution policy to constrain the invocable.
+
+SA: 5; F: 7; N: 8; A: 3; SA: 1
 
 
 
