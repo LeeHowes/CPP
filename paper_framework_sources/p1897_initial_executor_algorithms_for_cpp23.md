@@ -689,7 +689,8 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 ## execution::handle_error
 
 ### Overview
-`handle_error` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that propagates the value, error or done signal from the `sender` returned by the invocable.
+`handle_error` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that, on error propagation, keeps the error result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.
+
 
 Signature:
 ```cpp
@@ -721,13 +722,13 @@ The expression `execution::handle_error(S, F)` for some subexpressions S and F i
           void handle_error(S, F) = delete;
 ```
   and that does not include a declaration of `execution::handle_error`.
-
  * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
+   When some `output_receiver` has been passed to `submit` on the returned `sender`:
 
-   * If `set_value(r, v...)` is called, passes `v...` to `execution::set_value(output_receiver, v...)`.
-   * If `set_error(r, e...)` is called, passes `e...` to `f`, resulting in a `sender` `s2` and passes `output_receiver` to `submit(s2, output_receiver)`.
-   * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
-
+   * If `set_value(c, ts...)` is called, passes `ts...` to `set_value(output_receiver, ts...)`.
+   * If `F` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
+   * If `set_error(r, e)` is called, calls `std::invoke(F, ts...)` to return some `invoke_result`, and calls `submit(invoke_result, output_receiver)`.
+   * If `set_done(c)` is called, calls `set_done(output_receiver)`.
 
 ## execution::share
 
