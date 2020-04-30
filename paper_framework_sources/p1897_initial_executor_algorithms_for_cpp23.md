@@ -688,9 +688,6 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 
 ## execution::handle_error
 
-<!-- TODO: Should this filter for error types? "if it is callable with...". -->
-
-
 ### Overview
 `handle_error` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that propagates the value, error or done signal from the `sender` returned by the invocable.
 
@@ -790,7 +787,7 @@ TODO: When is `shr` destroyed?
 
 Signature:
 ```cpp
-S<T2> transform(S<T...>, invocable<S<T2>(T&...));
+S<T2> let(S<T...>, invocable<S<T2>(T&...));
 ```
 
 where `S<T...>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T2` respectively in their value channels.
