@@ -584,7 +584,7 @@ The expression `execution::indexed_for(S, P, R, F)` for some subexpressions `S`,
  ```
    and that does not include a declaration of `execution::indexed_for`.
 
- * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
+ * Otherwise constructs a receiver, `r` and passes that receiver to `execution::submit(S, r)`.
 
    * If `set_value` is called on `r` with some parameter pack `t...` then calls `F(idx, t...)` for each element `idx` in `R`.
      Once all complete calls `execution::set_value(output_receiver, v)`.
@@ -631,7 +631,7 @@ The expression `execution::transform(S, F)` for some subexpressions `S` and `F` 
  ```
    and that does not include a declaration of `execution::transform`.
 
- * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
+ * Otherwise constructs a receiver, `r`  and passes that receiver to `execution::submit(S, r)`.
    When some `output_receiver` has been passed to `submit` on the returned `sender`.
 
    * If `set_value(r, Ts... ts)` is called, calls `std::invoke(F, ts...)` and passes the result `v` to `execution::set_value(output_receiver, v)`.
@@ -678,7 +678,7 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
  ```
    and that does not include a declaration of `execution::bulk_transform`.
 
- * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
+ * Otherwise constructs a receiver, `r`  and passes that receiver to `execution::submit(S, r)`.
 
    * If `S::value_type` does not model the concept `Range<T>` for some `T` the expression ill-formed.
    * If `set_value` is called on `r` with some parameter `input` applies the equivalent of `out = std::ranges::transform_view(input, F)` and passes the result `output` to `execution::set_value(output_receiver, v)`.
@@ -722,7 +722,7 @@ The expression `execution::handle_error(S, F)` for some subexpressions S and F i
           void handle_error(S, F) = delete;
 ```
   and that does not include a declaration of `execution::handle_error`.
- * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
+ * Otherwise constructs a receiver, `r` and passes that receiver to `execution::submit(S, r)`.
    When some `output_receiver` has been passed to `submit` on the returned `sender`:
 
    * If `set_value(c, ts...)` is called, passes `ts...` to `set_value(output_receiver, ts...)`.
@@ -767,7 +767,7 @@ The expression `execution::share(S)` for some subexpression `S` is expression-eq
  ```
    and that does not include a declaration of `execution::share`.
 
- * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
+ * Otherwise constructs a receiver, `r` and passes that receiver to `execution::submit(S, r)`.
    Constructs some shared state, `shr` to store the completion result(s) of `S`.
 
    * If `set_value(r, Ts... ts)` is called stores `ts` in `shr`.
@@ -815,7 +815,7 @@ The expression `execution::let(S, F)` for some subexpressions `S` and `F` is exp
  ```
    and that does not include a declaration of `execution::let`.
 
- * Otherwise constructs a receiver, `r` over an implementation-defined synchronization primitive and passes that receiver to `execution::submit(S, r)`.
+ * Otherwise constructs a receiver, `r`  and passes that receiver to `execution::submit(S, r)`.
    When some `output_receiver` has been passed to `submit` on the returned `sender`:
 
    * If `set_value(r, Ts... ts)` is called, calls `std::invoke(F, ts...)` to return some `invoke_result`, and calls `submit(invoke_result, output_receiver)`.
