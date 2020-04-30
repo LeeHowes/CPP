@@ -75,7 +75,7 @@ awaitable<vector<int>> doWork(vector<int> vec) {
 
 Or a declarative formulation as in [@P1897R3]:
 ```cpp
-sender_to<vector<int>> doWork(sender_to<vector<int>> vec) {
+Sender<vector<int>> doWork(Sender<vector<int>> vec) {
   return std::move(vec) | range_transform([](int i) {return i+1;});
 }
 ```
@@ -165,9 +165,11 @@ Therefore the most appropriate solution is to make available a valid downstream 
 # Generalising
 Let us say that a given asynchronous algorithm promises some forward progress guarantee that depends on its executor/scheduler^[Potentially also on the execution property passed but we leave that out here for simplicity.].
 
+Note that in the examples below `Sender<T>` refers to a `sender` that will call `set_value` on a `receiver` passed to its `connect` operation with type `T`, and exists for exposition only.
+
 So in a work chain (using `|` to represent a chaining of work as in C++20's Ranges):
 ```cpp
-sender_to<vector<int>> doWork(sender_to<vector<int>> vec) {
+Sender<vector<int>> doWork(Sender<vector<int>> vec) {
   return std::move(vec) | on(DeferredExecutor{}) | range_transform([](int i) {return i+1;});
 }
 ```
@@ -188,7 +190,7 @@ At worst, this executor might also be deferred, but it is a requirement that at 
 Now let’s say we explicitly provide an executor with a strong guarantee.
 A concurrent executor like `NewThreadExecutor`:
 ```cpp
-sender_to<vector<int>> doWork(sender_to<vector<int>> vec) {
+Sender<vector<int>> doWork(Sender<vector<int>> vec) {
   return std::move(vec) |
     on(DeferredExecutor{}) |
     range_transform([](int i) {return i+1;}) | // c2
@@ -202,7 +204,7 @@ It is guaranteed to make concurrent progress, which is enough to ensure that the
 Note that this also provides an opportunity for an intermediate state. If instead of a `DeferredExecutor` we had a `BoundedQueueExecutor` with the obvious meaning and a queue size of 1:
 
 ```cpp
-sender_to<vector<int>> doWork(sender_to<vector<int>> vec) {
+Sender<vector<int>> doWork(Sender<vector<int>> vec) {
   return std::move(vec) |
     on(BoundedQueueExecutor{1}) |
     range_transform([](int i) {return i+1;}) | // c2
@@ -219,7 +221,7 @@ Any given executor should declare in its specification if it will delegate or no
 If no delegate executor is provided, for example we detach the work as below:
 
 ```cpp
-void doWork(sender_to<vector<int>> vec) {
+void doWork(Sender<vector<int>> vec) {
   std::move(vec) |
     on(BoundedQueueExecutor{1}) |
     range_transform([](int i) {return i+1;}) |
@@ -365,8 +367,8 @@ The expression `execution::on(S1, S2)` for some subexpressions `S1`, `S2` is exp
 
  * Otherwise constructs a `receiver` `r` such that when `on_value`, `on_error` or `on_done` is called on `r` the value(s) or error(s) are packaged, and a callback `c2` constructed such that when `execution::value(c2)` is called, the stored value or error is transmitted and `c2` is submitted to a `sender` obtained from `S2`.
  * `get_scheduler(r)` shall return `S2`.
- * The returned sender_to's value types match those of `S1`.
- * The returned sender_to's execution context is that of `S2`.
+ * The returned `sender`'s value types match those of `S1`.
+ * The returned `sender`'s execution context is that of `S2`.
 
 If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execution::is_noexcept_sender(S2)` returns true at compile-time and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(on(S1, S2))` should return `true` at compile time.
 
