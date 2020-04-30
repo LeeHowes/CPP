@@ -1,7 +1,7 @@
 ---
 title: "Towards C++23 executors: A proposal for an initial set of algorithms"
 document: P1897R3
-date: 2020-04-10
+date: 2020-04-30
 audience: SG1
 author:
   - name: Lee Howes
@@ -16,6 +16,8 @@ toc: false
  * Add `share`.
  * Add note on the feedback about `indexed_for` in Prague. Removed `indexed_for` from the paper of initial algorothms.
  * Add `let`.
+ * Tweaked `handle_error` wording to be more similar to `let`.
+ * Updated to use P0443R13 as a baseline.
 
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
@@ -32,35 +34,42 @@ toc: false
  * Removed confusing use of `on` in addition to `via` in the final example.
 
 # Introduction
-In [@P0443R11] we have included the fundamental principles described in [@P1660R0], and the fundamental requirement to customize algorithms.
-In recent discussions we have converged to an understanding of the `submit` operation on a `sender` acting as a fundamental interoperation primitive, and algorithm customization giving us full flexibility to optimize, to offload and to avoid synchronization in chains of mutually compatible algorithm customizations.
+In [@P0443R13] we have included the fundamental principles described in [@P1660R0], and the fundamental requirement to customize algorithms.
+In recent discussions we have converged to an understanding of the `submit` operation on a `sender` and its more fundamental primitives `connect` and `start` supporting general interoperation between algorithms, and algorithm customization giving us full flexibility to optimize, to offload and to avoid synchronization in chains of mutually compatible algorithm customizations.
 
-As a starting point, in [@P0443R11] we only include a `bulk_execute` algorithm, that satisfies the core requirement we planned with [@P0443R11] to provide scalar and bulk execution.
+As a starting point, in [@P0443R13] we only include a `bulk_execute` algorithm, that satisfies the core requirement we planned with [@P0443R11] to provide scalar and bulk execution.
 To make the C++23 solution completely practical, we should extend the set of algorithms, however.
 This paper suggests an expanded initial set that enables early useful work chains.
 This set is intended to act as a discussion focus for us to discuss one by one, and to analyze the finer constraints of the wording to make sure we do not over-constrain the design.
+
+This paper does not attempt to propose the mapping of the C++20 parallel algorithms into an asynchronous environment.
+Once we have basic primitives, we can describe default implementations of the parallel algorithms, as well as `std::async`, in terms of these.
 
 In the long run we expect to have a much wider set of algorithms, potentially covering the full set in the current C++20 parallel algorithms.
 The precise customization of these algorithms is open to discussion: they may be individually customized and individually defaulted, or they may be optionally individually customized but defaulted in a tree such that customizing one is known to accelerate dependencies.
 It is open to discussion how we achieve this and that is an independent topic, beyond the scope of this paper.
 
 ## Summary
-Starting with [@P0443R11] as a baseline we have the following customization points:
+Starting with [@P0443R13] as a baseline we have the following customization points:
 
- * `execute(executor, invocable) -> void`
+ * `connect(sender, receiver) -> operation_state`
+ * `start(operation_state) -> void`
  * `submit(sender, receiver) -> void`
  * `schedule(scheduler) -> sender`
+ * `execute(executor, invocable) -> void`
  * `set_done`
  * `set_error`
  * `set_value`
 
 and the following Concepts:
 
- * `executor`
  * `scheduler`
- * `callback_signal`
- * `callback`
+ * `receiver`
+ * `receiver-of`
  * `sender`
+ * `sender_to`
+ * `operation_state`
+ * `executor`
 
 We propose immediately discussing the addition of the following algorithms:
 
@@ -81,11 +90,11 @@ We propose immediately discussing the addition of the following algorithms:
  <!--* `bulk_transform(s, f)`
    * returns a sender that applies `f` to each element in a range sent by `s`, or propagates errors or cancellation-->
  * `handle_error(s, f)`
-   * returns a sender that applies `f` to an error passed by `s`, ignoring the values or cancellation
+   * Creates an async scope where an error propagated by `s` is available for the duration of another async operation `f`. Value and cancellation propagate unmodified.
  * `share(s)`
    * Eagerly submits `s` and returns a sender that may be used more than once, propagating the value by reference.
  * `let(s, f)`
-   * Creates an async scope where the result of one operation is available for the duration of another async operation.
+   * Creates an async scope where the value propagated by `s` is available for the duration of another async operation `f`. Error and cancellation signals proapgate unmodified.
 
 ## Examples
 
@@ -355,9 +364,9 @@ int r = sync_wait(just(3));
 The expression `execution::just(t...)` returns a sender, `s` wrapping the values `t...`.
 
  * If `t...` are nothrow movable then `execution::is_noexcept_sender(s)` shall be constexpr and return true.
- * When `execution::submit(s, r)` is called for some `r`, and r-value `s` will call `execution::set_value(r, std::move(t)...)`, inline with the caller.
- * When `execution::submit(s, r)` is called for some `r`, and l-value `s` will call `execution::set_value(r, t...)`, inline with the caller.
+ * When `execution::connect(s, r)` is called resulting in `operation_state` `o` and followed by `execution::start(o)` for some `r`, and r-value `s` will call `execution::set_value(r, std::move(t)...)`, inline with the caller.
  * If moving of `t` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`.
+
 
 ## execution::just_on
 
@@ -384,16 +393,14 @@ int r = sync_wait(just_on(s, 3));
 The name `execution::just_on` denotes a customization point object.
 The expression `execution::just_on(Sch, t...)` for some subexpression `Sch` is expression-equivalent to:
 
- * `Sch.just(t...)` if that expression is valid.
+ * `Sch.just_on(t...)` if that expression is valid.
  * Otherwise, `just_on(Sch, t...)`, if that expression is valid with overload resolution performed in a context that includes the declaration
  ```
          template<class Sch, class T...>
            void just_on(Sch, T...) = delete;
  ```
    and that does not include a declaration of `execution::just_on`.
-
- * Otherwise returns the result of the expression: `on(just(t...), Sch)`
- * For some returned sender `S` returned by `just_on(Sch, t...)`, `execution::get_scheduler(S)` will return `Sch`.
+ * Otherwise returns the result of the expression: `execution::on(execution::just(t...), Sch)`
 
 <!--
 ## execution::just_error
@@ -449,6 +456,7 @@ The expression `execution::sync_wait(S)` for some subexpression `S` is expressio
    * If `set_value` is called on `r`, returns the passed value (or simply returns for `void` sender).
    * If `set_error` is called on `r`, throws the error value as an exception.
    * If `set_done` is called on `r`, throws some TBD cancellation exception type.
+
 
 <!--
 If `execution::is_noexcept_sender(S)` returns true at compile-time, and the return type `T` is nothrow movable, then `sync_wait` is noexcept.
@@ -779,8 +787,6 @@ The expression `execution::share(S)` for some subexpression `S` is expression-eq
    * If `r` was satisfied with a call to `set_error`, call `set_error(output_receiver, e)`.
    * If `r` was satisfied with a call to `set_done`, call `execution::set_done(output_receiver)`.
 
-TODO: When is `shr` destroyed?
-
 ## execution::let
 
 ### Overview
@@ -870,6 +876,10 @@ This removes the ambiguity about which context it completes on.
 ## when_all for void types and mixed success
 We should add a when_all variant that returns tuples and variants in its result, or some similar mechanism for to allow parameter packs, including empty packs in the form of void-senders, and mixed success/error to propagate.
 
+## when_all and share both require cancellation and async cleanup to be fully flexible
+Under error circumstances, `when_all` should cancel the other incoming work. This will be described separately.
+
+`share` similarly needs to be updated to describe how it behaves in the presence of one downstream task being cancelled, and precisely when and where the shared state is destroyed.
 
 # Proposed question for the Prague 2020 meeting
 ## Replace `bulk_execute` in P0443 with `indexed_for` as described above.
@@ -931,6 +941,12 @@ references:
     issued:
       year: 2019
     URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0443r11.html
+  - id: P0443R13
+    citation-label: P0443R13
+    title: "A Unified Executors Proposal for C++"
+    issued:
+      year: 2019
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0443r13.html
   - id: P1660R0
     citation-label: P1660R0
     title: "A Compromise Executor Design Sketch"
