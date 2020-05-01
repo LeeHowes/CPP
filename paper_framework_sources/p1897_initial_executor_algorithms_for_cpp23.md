@@ -466,41 +466,30 @@ Note that `sync_wait` requires `S` to propagate a single value type.
 ## execution::on
 
 ### Overview
-`on` is a sender adapter that takes a `sender` and a `scheduler` and returns a `sender` that propagates the same value as the original, but does so on the `scheduler`'s execution context.
-
-Signature:
-```cpp
-S<T...> on(S<T...>, Scheduler);
-```
-
-where `S<T>` is an implementation-defined type that is a sender that sends a value of type `T` in its value channel.
-
-*[ Example:*
-```cpp
-static_thread_pool t{1};
-int r = sync_wait(just(3) | on(t.scheduler()));
-// r==3
-```
-
-### Wording
 The name `execution::on` denotes a customization point object.
-The expression `execution::on(S, sch)` for some subexpressions `S`, `Sch` is expression-equivalent to:
+For some subexpressions `s` and `sch`, let `S` be a type such that `decltype((s))` is `S` and `Sch` be a type such that `decltype((sch))` is `Sch`
+The expression `execution::on(s, sch)` is expression-equivalent to:
 
- * `S.on(Sch)` if that expression is valid.
- * Otherwise, `on(S, Sch)` if that expression is valid with overload resolution performed in a context that includes the declaration
+ * `s.on(sch)` if that expression is valid, if `S` satisfies `sender`
+ * Otherwise, `on(s, sch)` if that expression is valid, and if `S` satisfies `sender` and if `Sch` satisfies `scheduler`, with overload resolution performed in a context that includes the declaration
  ```
-         template<class S, class Sch>
-           void on(S, Sch) = delete;
+      void on() = delete;
  ```
+   and that does not include a declaration of `execution::on`.
+ * Otherwise:
+   * Constructs an operation such that when `connect` is called with a `receiver` `output_receiver`:
+     * Constructs a receiver, `r` such that when `set_value`, `set_error` or `set_done` is called on `r`, the parameter is wrapped in a receiver `r2`.
+      * `r2` is passed to `execution::connect(execution::schedule(sch), std::move(r2))`.
+       * `execution::start` is passed the resulting `operation_state`.
+       * When `set_value` is called on `r2`, the stored value is forwarded to `output_receiver`.
+       * When `set_error` or `set_done` is called on `r2` the parameters propagate to `output_receiver`.
+     * Passes `r` to `execution::connect(s, r)` resulting in an operation state `ros`.
+   * When `execution::start` is called on the resulting `operation_state`, call `execution::start(ros)`.
+     * Calls `execution::start` on the resulting `operation_state`.
+   * If `output_receiver` satisfies `scheduler_provider` then `execution::get_scheduler(r2)` returns the result of `execution::get_scheduler(output_receiver)`.
+   * `r` satisfies `scheduler_provider` and `execution::get_scheduler(r2)` returns sch.
+ * Otherwise, `execution::on(s, sch)` is ill-formed.
 
- * Otherwise constructs a receiver `r` such that:
-    * when `set_value`, `set_error` or `set_done` is called on `r` the value(s) or error(s) are packaged, and a receiver `r2` constructed such that when `execution::set_value(r2)` is called, the stored value or error is transmitted and `r2` is submitted to `Sch`. If `set_error` or `set_done` is called on `r2` the error or cancellation is propagated and the packaged values ignored.
- * The returned sender's value types match those of `S`.
- * The returned sender's execution context is that of `Sch`.
-
-<!--
-If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execution::is_noexcept_sender(S2)` returns true at compile-time and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(on(S1, S2))` should return `true` at compile time^[Should, shall, may?].
--->
 
 ## execution::when_all
 
