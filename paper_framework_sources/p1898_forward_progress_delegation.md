@@ -310,8 +310,8 @@ When applied to a `receiver`, if supported, will return a `scheduler` that the `
 
 ### Wording
 The name `execution::get_scheduler` denotes a customization point object.
-The name `execution::get_scheduler` denotes a customization point object. For some subexpression `r`, let `R` be a type such that `decltype((r))` is `R`
-The expression `execution::get_scheduler(s, r)` is expression-equivalent to:
+For some subexpression `r`, let `R` be a type such that `decltype((r))` is `R`
+The expression `execution::get_scheduler(r)` is expression-equivalent to:
 
  * `r.get_scheduler()` if that expression is valid, if `R` satisfies `receiver`
  * Otherwise, `get_scheduler(r)` if that expression is valid, and if `R` satisfies `receiver`, with overload resolution performed in a context that includes the declaration
@@ -325,52 +325,32 @@ The expression `execution::get_scheduler(s, r)` is expression-equivalent to:
 ### Summary
 Modifications to `sync_wait` as specified in [@P1897R3].
 Rather than simply passing a `receiver` to the passed `sender`, `sync_wait` constructs an execution context on the blocked thread, such that the blocked thread drives that executor and executed enqueued work.
-A `scheduler` representing that execution context will be made available from the `receiver` passed to `submit` on the `sender`, thus making that `receiver` a `scheduler_provider`.
+A `scheduler` representing that execution context will be made available from the `receiver` passed to `connect` on the `sender`, thus making that `receiver` a `scheduler_provider`.
 
-
-### Wording
+### Wording to modify final otherwise clause
  * Otherwise:
    * Constructs an execution context owned by the calling thread such that tasks enqueued into that context will be processed by the calling thread.
-   * Constructs a `scheduler`, `s` representing that execution context.
-   * Constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes that callback to `execution::submit(S, r)`.
-   * `execution::get_scheduler(r)` will return `s`.
-   * Waits on the synchronization primitive to block on completion of `S`.
+   * Constructs a `scheduler`, `sch` representing that execution context.
+   * Constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes that callback to `execution::connect(s, r)` such that:
+     * `r` satisfies `scheduler_provider`.
+     * `execution::get_scheduler(r)` will return `sch`.
+     * If `set_value` is called on `r`, the call to `sync_wait` will return the passed value.
+     * If `set_error` is called on `r`, the call to `sync_wait` will throw the passed value as an exception.
+     * If `set_done` is called on `r`, the call to `sync_wait` will throw a cancellation exception.
+   * Waits on the synchronization primitive to block on completion of `s`, driving the execution context as necessary until `set_value`, `set_error` or `set_done` is called on `r` .
 
 The thread that invokes `sync_wait` will block with forward progress delegation on completion of the work where supported by the implementation of `s`.
 
-
-## execution::on
+## execution::on modifications
 ### Summary
-Transitions execution from one executor to the context of a scheduler.
-Passes a `scheduler_provider` to the passed `sender`, such that it is valid to apply `on` to a sender that restricts its `submit` operation to `scheduler_provider`s.
-That is that:
-```
-sender1 | on(scheduler1) | bulk_execute(f)...
-```
+In addition to transitioning execution from one execution context to another, `on` also changes the `scheduler` that is propagated upstream through `scheduler_provider`s.
 
-will return a sender that runs in the context of `scheduler1` such that `f` will run on the context of `scheduler1`, potentially customized, but that is not triggered until the completion of `sender1`.
-If `sender1` calls `get_scheduler` on the `receiver` passed by `on` to `sender1`'s `submit` operation, then that shall return `scheduler1`.
+### Wording to modify otherwise clause
+Add the clauses:
+   * If `output_receiver` satisfies `scheduler_provider` then `execution::get_scheduler(r2)` returns the result of `execution::get_scheduler(output_receiver)`.
+   * `r` satisfies `scheduler_provider` and `execution::get_scheduler(r2)` returns sch.
 
-`on(S1, S2)` may be customized on either or both of `S1` and `S2`.
-`on` differs from `via` in that via does not provide the executor to the passed `sender`, thus not allowing the upstream work to be delegated downstream.
 
-### Wording
-The name `execution::on` denotes a customization point object.
-The expression `execution::on(S1, S2)` for some subexpressions `S1`, `S2` is expression-equivalent to:
-
-* `S1.on(S2)` if that expression is valid.
-* Otherwise, `on(S1, S2)` if that expression is valid with overload resolution performed in a context that includes the declaration
-```
-        template<class S1, class S2>
-          void on(S1, S2) = delete;
-```
-
- * Otherwise constructs a `receiver` `r` such that when `on_value`, `on_error` or `on_done` is called on `r` the value(s) or error(s) are packaged, and a callback `c2` constructed such that when `execution::value(c2)` is called, the stored value or error is transmitted and `c2` is submitted to a `sender` obtained from `S2`.
- * `get_scheduler(r)` shall return `S2`.
- * The returned `sender`'s value types match those of `S1`.
- * The returned `sender`'s execution context is that of `S2`.
-
-If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execution::is_noexcept_sender(S2)` returns true at compile-time and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(on(S1, S2))` should return `true` at compile time.
 
 ## Delegation through asynchronous algorithms
 ### Summary
