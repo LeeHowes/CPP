@@ -284,16 +284,15 @@ vector<int> doWork(Sender<vector<int>> vec) {
 # Impact on the Standard
  * Add `scheduler_provider` concept.
  * Add `get_scheduler` CPO.
- * Additional wording to the `sync_wait` CPO specifying that it will pass an `executor_provider` to the `submit` method of the passed `sender`.
- * Add `on` CPO to apply the `scheduler` both upstream and downstream.
- * Ensure that all asynchronous algorithms propagate the scheduler from the output to the input when this makes sense.
+ * Additional wording to the `sync_wait` CPO specifying that it will pass an `executor_provider` to the `connect` operation on the passed `sender`.
+ * Additional wording to the `on` CPO specifying that it will pass an `executor_provider` to the `connect` operation on the passed `sender`.
+ * Additional wording for other algorithms specifying that they pass through the `get_scheduler` CPO, making their own `receiver`s also `executor_provider`s.
 
 ## Concept scheduler_provider
 ### Summary
 A concept for receivers that may provide a scheduler upstream.
-May be used to overload submit methods to allow delegation in the presence of a downstream scheduler.
-May be used to restrict the submit method on a `sender` to require an `executor_provider`.
-This restriction would be important to implement folly's `SemiFuture` or `SemiAwaitable` concepts where all work is delegated.
+May be used to overload `connect` algorithm, to allow delegation in the presence of a downstream scheduler.
+May be used to restrict the `connect` operation on a `sender` to require an `executor_provider`.
 
 ### Wording
 ```
@@ -311,14 +310,15 @@ When applied to a `receiver`, if supported, will return a `scheduler` that the `
 
 ### Wording
 The name `execution::get_scheduler` denotes a customization point object.
-The expression `execution::get_scheduler(R)` for some subexpression `R` is expression-equivalent to:
+The name `execution::get_scheduler` denotes a customization point object. For some subexpression `r`, let `R` be a type such that `decltype((r))` is `R`
+The expression `execution::get_scheduler(s, r)` is expression-equivalent to:
 
- * `R.get_scheduler()` if that expression is valid.
- * Otherwise, `get_scheduler(R)` if that expression is valid with overload resolution performed in a context that includes the declaration
+ * `r.get_scheduler()` if that expression is valid, if `R` satisfies `receiver`
+ * Otherwise, `get_scheduler(r)` if that expression is valid, and if `R` satisfies `receiver`, with overload resolution performed in a context that includes the declaration
  ```
-         template<class R>
-           void get_scheduler(R) = delete;
+      void get_scheduler() = delete;
  ```
+   and that does not include a declaration of `execution::get_scheduler`.
 
 
 ## execution::sync_wait modifications
