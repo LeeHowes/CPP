@@ -358,9 +358,13 @@ Most algorithms do not provide executors.
 These algorithms should avoid breaking the forward progress delegation chain and should allow executors to propagate from `receiver` to `sender` in a chain.
 
 ### Wording
-To `execution::transform`, `execution::bulk_transform`, `execution::bulk_execute` and `execution::handle_error` add the text:
+To `execution::when_all` add the text:
+ * If `output_receiver` satisfies `scheduler_provider`, `execution::get_scheduler(ri)` for all `ri` returns the result of `execution::get_scheduler(output_receiver)`.
 
-If `r2` is the `receiver` passed to `submit(s, r2)` and `s` is the `sender` returned by ALGORITHM and `r` is the `receiver` provided to `submit(S, r)`. if `get_scheduler(r2)` is defined then `get_scheduler(r)` is equal to `get_scheduler(r2)`.
+To `execution::transform`, `execution::handle_error` and `execution::let` add the text:
+ * If `output_receiver` satisfies `scheduler_provider`, `execution::get_scheduler(r)` returns the result of `execution::get_scheduler(output_receiver)`.
+
+A similar modification should be applied to `bulk_execute` once the semantics of the returned `sender` are clear.
 
 
 # Future Work: adding algorithm-level forward progress definitions
