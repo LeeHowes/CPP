@@ -18,6 +18,7 @@ toc: false
  * Add `let`.
  * Tweaked `handle_error` wording to be more similar to `let`.
  * Updated to use P0443R13 as a baseline.
+ * Improves the wording to be closer to mergable wording and less pseudowording.
 
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
@@ -65,18 +66,20 @@ and the following Concepts:
 
  * `scheduler`
  * `receiver`
- * `receiver-of`
+ * `receiver_of`
  * `sender`
  * `sender_to`
+ * `typed_sender`
  * `operation_state`
  * `executor`
+ * `executor_of`
 
 We propose immediately discussing the addition of the following algorithms:
 
  * `just(v)`
    * returns a `sender` of the value `v`
  * `just_on(sch, v)`
-   * a variant of the above that embeds the `via` algorithm
+   * a variant of the above that embeds the `on` algorithm
  * `on(s, sch)`
    * returns a sender that propagates the value or error from `s` on `sch`'s execution context
  * `sync_wait(s)`
@@ -90,11 +93,13 @@ We propose immediately discussing the addition of the following algorithms:
  <!--* `bulk_transform(s, f)`
    * returns a sender that applies `f` to each element in a range sent by `s`, or propagates errors or cancellation-->
  * `handle_error(s, f)`
-   * Creates an async scope where an error propagated by `s` is available for the duration of another async operation `f`. Value and cancellation propagate unmodified.
+   * Creates an async scope where an error propagated by `s` is available for the duration of another async operation `f`.
+     Value and cancellation propagate unmodified.
  * `share(s)`
    * Eagerly submits `s` and returns a sender that may be used more than once, propagating the value by reference.
  * `let(s, f)`
-   * Creates an async scope where the value propagated by `s` is available for the duration of another async operation `f`. Error and cancellation signals proapgate unmodified.
+   * Creates an async scope where the value propagated by `s` is available for the duration of another async operation `f`.
+     Error and cancellation signals propagate unmodified.
 
 ## Examples
 
@@ -348,10 +353,14 @@ If `execution::is_noexcept_sender(s)` returns true for a `sender` `s` then it is
 
 Signature:
 ```cpp
-S<T...> just(T...);
-```
+template <typename T>
+concept moveable-value = // exposition only
+  move_constructible<remove_cvref_t<T>> &&
+  constructible_from<remove_cvref_t<T>, T>;
 
-where `S<T...>` is an implementation-defined `typed_sender` that that sends a set of values of type `T...` in its value channel.
+template <movable-value... Ts>
+see-below just(Ts&&... ts) noexcept(see-below);
+```
 
 *[ Example:*
 ```cpp
@@ -363,8 +372,9 @@ int r = sync_wait(just(3));
 ### Wording
 The expression `execution::just(t...)` returns a sender, `s` wrapping the values `t...`.
 
- * If `t...` are nothrow movable then `execution::is_noexcept_sender(s)` shall be constexpr and return true.
- * When `execution::connect(s, r)` is called resulting in `operation_state` `o` and followed by `execution::start(o)` for some `r`, and r-value `s` will call `execution::set_value(r, std::move(t)...)`, inline with the caller.
+
+<!-- * If `t...` are nothrow movable then `execution::is_noexcept_sender(s)` shall be constexpr and return true.-->
+ * When `execution::connect(s, r)` is called resulting in `operation_state` `o` and followed by `execution::start(o)` for some `r`, will call `execution::set_value(r, std::move(t)...)`, inline with the caller.
  * If moving of `t` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`.
 
 
@@ -376,10 +386,14 @@ Semantically equivalent to `just(t) | via(s)` if `just_on` is not customized on 
 
 Signature:
 ```cpp
-S<T...> just_on(Scheduler, T...);
-```
+template <typename T>
+concept moveable-value = // exposition only
+  move_constructible<remove_cvref_t<T>> &&
+  constructible_from<remove_cvref_t<T>, T>;
 
-where `S<T...>` is an implementation-defined `typed_sender` that that sends a set of values of type `T...` in its value channel in the context of the passed `Scheduler`.
+template <execution::scheduler Sch, movable-value... Ts>
+see-below just_on(Sch sch, Ts&&... ts) noexcept(see-below);
+```
 
 *[ Example:*
 ```cpp
@@ -391,16 +405,16 @@ int r = sync_wait(just_on(s, 3));
 
 ### Wording
 The name `execution::just_on` denotes a customization point object.
-The expression `execution::just_on(Sch, t...)` for some subexpression `Sch` is expression-equivalent to:
+For some subexpressions `sch` and `ts...` let `Sch` be a type such that `decltype((sch))` is `Sch` and let `Ts...` be a pack of types such that `decltype((ts))...` is `Ts...`.
+ The expression `execution::just_on(s, ts...)` is expression-equivalent to:
 
- * `Sch.just_on(t...)` if that expression is valid.
- * Otherwise, `just_on(Sch, t...)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+  * `sch.just_on(ts...)` if that expression is valid and if `sch` satisfies `scheduler`.
+  * Otherwise, `just_on(sch, ts...)`, if that expression is valid, if `sch` satisfies `scheduler` with overload resolution performed in a context that includes the declaration
  ```
-         template<class Sch, class T...>
-           void just_on(Sch, T...) = delete;
+    void just_on() = delete;
  ```
    and that does not include a declaration of `execution::just_on`.
- * Otherwise returns the result of the expression: `execution::on(execution::just(t...), Sch)`
+ * Otherwise returns the result of the expression: `execution::on(execution::just(ts...), sch)`
 
 <!--
 ## execution::just_error
@@ -425,10 +439,10 @@ Blocks the calling thread to wait for the passed sender to complete.
 Returns the value (or void if the sender carries no value), throws if an exception is propagated and throws a TBD exception type on cancellation.^[Other options include an optional return type.]
 On propagation of the `set_done()` signal, returns an empty optional.
 
-`T... sync_wait(S<T...>)`
-
-where `S<T...>` is a sender that sends zero or one values of type `T...` in its value channel.
-The existence of, and if existing the type `T` must be known statically and cannot be part of an overload set.
+```cpp
+template <execution::typed_sender S>
+see-below sync_wait(S s);
+```
 
 *[ Example:*
 ```cpp
@@ -439,21 +453,22 @@ int r = sync_wait(just(3));
 
 
 ### Wording
-The name `execution::sync_wait` denotes a customization point object.
-The expression `execution::sync_wait(S)` for some subexpression `S` is expression-equivalent to:
 
- * `S.sync_wait()` if that expression is valid.
- * Otherwise, `sync_wait(S)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+The name `execution::sync_wait` denotes a customization point object.
+For some subexpression `s` let `S` be a type such that `decltype((s))` is `S`.
+The expression `execution::sync_wait(s)` is expression-equivalent to:
+
+ * `s.sync_wait()` if that expression is valid and if `S` satisfies `typed_sender` and `S::value_types` is of length 0 or 1.
+ * Otherwise, `sync_wait(s)`, if that expression is valid, if `S` satisfies `typed_sender` and `S::value_types` is of length 0 or 1, with overload resolution performed in a context that includes the declaration
  ```
-         template<class S>
-           void sync_wait(S) = delete;
+      void sync_wait() = delete;
  ```
    and that does not include a declaration of `execution::sync_wait`.
 
- * Otherwise constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes that `receiver` to `execution::submit(S, r)`.
-   Waits on the synchronization primitive to block on completion of `S`.
+ * Otherwise constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes `r` to `execution::connect(s, r)` returning some `operation_state` `os`.
+   Waits on the synchronization primitive to block on completion of `s`.
 
-   * If `set_value` is called on `r`, returns the passed value (or simply returns for `void` sender).
+   * If `set_value(t)` is called on `r`, returns from `sync_wait` with value `t` and where `decltype((t))` matches `S::value_types`
    * If `set_error` is called on `r`, throws the error value as an exception.
    * If `set_done` is called on `r`, throws some TBD cancellation exception type.
 
@@ -466,6 +481,22 @@ Note that `sync_wait` requires `S` to propagate a single value type.
 ## execution::on
 
 ### Overview
+Takes a `sender` that completes on one execution context and on completion submits that work onto another execution context, giving the programmer control over where work runs.
+
+```cpp
+template <execution::sender S, execution::scheduler Sch>
+see-below on(S s, Sch sch);
+```
+
+*[ Example:*
+```cpp
+int r = sync_wait(just(3) | on(my_scheduler{}) | transform([](int v){return v+1;}));
+// r==3
+```
+*- end example]*
+
+
+### Wording
 The name `execution::on` denotes a customization point object.
 For some subexpressions `s` and `sch`, let `S` be a type such that `decltype((s))` is `S` and `Sch` be a type such that `decltype((sch))` is `Sch`
 The expression `execution::on(s, sch)` is expression-equivalent to:
@@ -476,7 +507,9 @@ The expression `execution::on(s, sch)` is expression-equivalent to:
       void on() = delete;
  ```
    and that does not include a declaration of `execution::on`.
+
  * Otherwise:
+
    * Constructs an operation such that when `connect` is called with a `receiver` `output_receiver`:
      * Constructs a receiver, `r` such that when `set_value`, `set_error` or `set_done` is called on `r`, the parameter is wrapped in a receiver `r2`.
       * `r2` is passed to `execution::connect(execution::schedule(sch), std::move(r2))`.
