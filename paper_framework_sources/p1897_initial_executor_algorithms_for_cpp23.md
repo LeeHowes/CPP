@@ -544,6 +544,7 @@ float r =
       [](int a, float b){return a + b;}));
 // r==4.2
 ```
+*- end example]*
 
 ### Wording
 The name `execution::when_all` denotes a customization point object.
@@ -557,10 +558,13 @@ The expression `execution::when_all(ss...)` is expression-equivalent to:
    and that does not include a declaration of `execution::when_all`.
 
  * Otherwise constructs a receiver, `ri` for each passed `sender` `si` in `ss` and passes that receiver to `execution::connect(si, ri)`, resulting in an `operation_state` `osi` such that:
+
    When some `output_receiver` has been passed to `connect` on the returned `sender`.
+
     * if `set_value(t...)` is called on all `ri`, will concatenate the list of values and call `set_value(output_receiver, t0..., t1..., tn...)` on the received passed to `submit` on the returned `sender`.
     * if `set_done()` is called on any `ri`, will call `set_done(output_receiver)`, discarding other results.
     * if `set_error(e)` is called on any `ri` will call `set_error(output_receiver, e)` for some `e`, discarding other results.
+
   When `start` is called on the returned `sender`'s `operation_state`, call `execution::start(osi)` for each `operation_state` `osi`.
 
 **Notes:**
@@ -637,37 +641,41 @@ The expression `execution::indexed_for(S, P, R, F)` for some subexpressions `S`,
 
 Signature:
 ```cpp
-S<T2> transform(S<T...>, invocable<T2(T...));
+template <execution::sender S, std::invocable F>
+see-below transform(S s, F f);
 ```
-
-where `S<T...>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T2` respectively in their value channels.
-Note that in the general case there may be many types `T...` for a given `sender`, in which case the invocable may have to represent an overload set.
 
 *[ Example:*
 ```cpp
 int r = sync_wait(just(3) | transform([](int v){return v+1;}));
 // r==4
 ```
+*- end example]*
 
 ### Wording
-The name `execution::transform` denotes a customization point object.
-The expression `execution::transform(S, F)` for some subexpressions `S` and `F` is expression-equivalent to:
 
- * `S.transform(F)` if that expression is valid.
- * Otherwise, `transform(S, F)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+The name `execution::transform` denotes a customization point object.
+For some subexpressions `s` and `f`, let `S` be a type such that `decltype((s))` is `S` and `decltype((f))` is `F`.
+The expression `execution::transform(s, f)` is expression-equivalent to:
+
+ * `s.transform(f)` if that expression is valid, `s` satisfies `sender` and `f` satisfies `invocable`.
+ * Otherwise, `transform(S, F)`, if that expression is valid, `s` satisfies `sender` and `f` satisfies `invocable` with overload resolution performed in a context that includes the declaration
  ```
-         template<class S, class F>
-           void transform(S, F) = delete;
+    void transform() = delete;
  ```
    and that does not include a declaration of `execution::transform`.
 
- * Otherwise constructs a receiver, `r`  and passes that receiver to `execution::submit(S, r)`.
-   When some `output_receiver` has been passed to `submit` on the returned `sender`.
+ * Otherwise constructs a `receiver`, `r` and passes that receiver to `execution::connect(s, r)` to return an `operation_state` `os` such that:
 
+   When some `output_receiver` has been passed to `connect` on the returned `sender` to return some `operation_state` `os2`:
    * If `set_value(r, Ts... ts)` is called, calls `std::invoke(F, ts...)` and passes the result `v` to `execution::set_value(output_receiver, v)`.
-   * If `F` throws, catches the exception and passes it to `execution::set_error(output_receiver, e)`.
-   * If `set_error(c, e)` is called, passes `e` to `execution::set_error(output_receiver, e)`.
-   * If `set_done(c)` is called, calls `execution::set_done(output_receiver)`.
+   * If `f` throws, catches the exception and passes it to `execution::set_error(output_receiver, e)`.
+   * If `set_error(r, e)` is called, passes `e` to `execution::set_error(output_receiver, e)`.
+   * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
+
+  When `start()` is called on `os2` calls `execution::start(os)`.
+
+ * Otherwise the expression `execution::transform(s, f)` is ill-formed.
 
 <!--
 If `execution::is_noexcept_sender(S)` returns true at compile-time, and `F(S1::value_types)` is marked `noexcept` and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(transform(S1, F))` should return `true` at compile time.
@@ -693,6 +701,7 @@ Note that in the general case there may be many types `T` for a given `sender`, 
 std::vector<int> r = sync_wait(just(std::vector<int>{3, 4, 5}) | bulk_transform([](int v){return v+1;}));
 // r=={4, 5, 6}
 ```
+*- end example]*
 
 Note: it is TBD how precisely we should represent the intermediate data types here. Intermediate vectors would require allocator support. Purely lazy ranges may be inadequate.
 
@@ -724,13 +733,9 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 
 Signature:
 ```cpp
-S<T2..., E2...> handle_error(S<T..., E...>, invocable<sender<T2..., E2...>(E...));
+template <execution::sender S, std::invocable F>
+see-below handle_error(S s, F f);
 ```
-
-where `S<T..., E...>` and `S<T2..., E2...>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T2...` respectively in their value channels and error type lists `E...` and `E2...` in their error channels.
-The invocable takes the error types `E...` and returns a `sender` over some potentially new set of types.
-By returning a `sender` the algorithm has control of error recovery as well as use cases such as logging and propagation.
-Note that in the general case there may be many types `E...` for a given `sender`, in which case the invocable may have to represent an overload set.
 
 *[ Example:*
 ```cpp
@@ -743,22 +748,27 @@ float r = sync_wait(
 
 ### Wording
 The name `execution::handle_error` denotes a customization point object.
-The expression `execution::handle_error(S, F)` for some subexpressions S and F is expression-equivalent to:
+For some subexpressions `s` and `f`, let `S` be a type such that `decltype((s))` is `S` and `decltype((f))` is `F`.
+The expression `execution::handle_error(s, f)` is expression-equivalent to:
 
- * S.handle_error(F), if that expression is valid.
- * Otherwise, `handle_error(S, F)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+ * s.handle_error(f), if that expression is valid, if `s` satisfies `sender` and `f` satisfies `invocable`.
+ * Otherwise, `handle_error(s, f)`, if that expression is valid,, if `s` satisfies `sender` and `f` satisfies `invocable` with overload resolution performed in a context that includes the declaration
 ```
-        template<class S, class F>
-          void handle_error(S, F) = delete;
+    void handle_error() = delete;
 ```
   and that does not include a declaration of `execution::handle_error`.
- * Otherwise constructs a receiver, `r` and passes that receiver to `execution::submit(S, r)`.
-   When some `output_receiver` has been passed to `submit` on the returned `sender`:
+ * Otherwise constructs a receiver, `r` and passes that receiver to `execution::connect(S, r)` returning an `operation_state` `os` such that
+   When some `output_receiver` has been passed to `connect` on the returned `sender` returning some `operation_state` `os2`:
 
-   * If `set_value(c, ts...)` is called, passes `ts...` to `set_value(output_receiver, ts...)`.
+   * If `set_value(r, ts...)` is called, passes `ts...` to `set_value(output_receiver, ts...)`.
    * If `F` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
-   * If `set_error(r, e)` is called, calls `std::invoke(F, ts...)` to return some `invoke_result`, and calls `submit(invoke_result, output_receiver)`.
-   * If `set_done(c)` is called, calls `set_done(output_receiver)`.
+   * If `set_error(r, e)` is called, calls `std::invoke(f, ts...)` to return some `invoke_result`, and calls `execution::start(execution::connect(invoke_result, output_receiver))`.
+   * If `set_done(r)` is called, calls `set_done(output_receiver)`.
+
+   When `start` is called on `os2`, call `execution::start(os)`.
+
+ * Otherwise the expression `execution::handle_error(s, f)` is ill-formed.
+
 
 ## execution::share
 
