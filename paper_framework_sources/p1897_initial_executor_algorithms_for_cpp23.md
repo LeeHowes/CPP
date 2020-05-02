@@ -777,17 +777,15 @@ The expression `execution::handle_error(s, f)` is expression-equivalent to:
 
 Signature:
 ```cpp
-S<T& const...> share(S<T...>);
+template <execution::sender S>
+see-below share(S s);
 ```
-
-where `S<T...>` and `S<T& const...>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T& const...` respectively in their value channels.
-Note that in the general case there may be many types `T...` for a given `sender`, in which case the invocable may have to represent an overload set.
 
 *[ Example:*
 ```cpp
 auto s1 = just(3) | share();
-auto s2 = r | transform([](const int& v){return v+1;}))
-auto s3 = r | transform([](const int& v){return v+2;}))
+auto s2 = s1 | transform([](const int& v){return v+1;}))
+auto s3 = s1 | transform([](const int& v){return v+2;}))
 int r = sync_wait(
   transform(
     when_all(s2, s3),
@@ -797,27 +795,29 @@ int r = sync_wait(
 
 ### Wording
 The name `execution::share` denotes a customization point object.
-The expression `execution::share(S)` for some subexpression `S` is expression-equivalent to:
+For some subexpressions `s`, let `S` be a type such that `decltype((s))` is `S`.
+The expression `execution::share(s, f)` is expression-equivalent to:
 
- * `S.share()` if that expression is valid.
- * Otherwise, `share(S)`, if that expression is valid with overload resolution performed in a context that includes the declaration
+ * `s.share()` if that expression is valid and if `s` satisfies `sender`.
+ * Otherwise, `share(s)`, if that expression is valid, if `s` satisfies `sender` with overload resolution performed in a context that includes the declaration
  ```
-         template<class S>
-           void share(S) = delete;
+    void share() = delete;
  ```
    and that does not include a declaration of `execution::share`.
 
- * Otherwise constructs a receiver, `r` and passes that receiver to `execution::submit(S, r)`.
-   Constructs some shared state, `shr` to store the completion result(s) of `S`.
+ * Otherwise constructs a receiver, `r` and passes that receiver to `execution::connect(s, r)` resulting in an `operation_state` `os`.
+   Constructs some shared state, `shr` to store the completion result(s) of `s`.
 
-   * If `set_value(r, Ts... ts)` is called stores `ts` in `shr`.
+   * If `set_value(r, ts)` is called stores `ts` in `shr`.
    * If `set_error(r, e)` is called, stores `e` in `shr`.
    * If `set_done(r)` is called stores the done result in `shr`.
 
-   When some `output_receiver` has been passed to `submit` on the returned `sender` and one of the above has been called on `r`:
+   When some `output_receiver` has been passed to `connect` on the returned `sender`, resulting in an `operation_state` `os2` and one of the above has been called on `r`:
    * If `r` was satisfied with a call to `set_value`, call `set_value(output_receiver, ts...)`
    * If `r` was satisfied with a call to `set_error`, call `set_error(output_receiver, e)`.
    * If `r` was satisfied with a call to `set_done`, call `execution::set_done(output_receiver)`.
+
+ * When `start` is called on `os2`, call `execution::start(os)`.
 
 ## execution::let
 
@@ -874,10 +874,10 @@ For example, in the following simple work chain:
 
 ```
 auto s = just(3) |                                        // s1
-         on(scheduler1) |                                // s2
+         on(scheduler1) |                                 // s2
          transform([](int a){return a+1;}) |              // s3
          transform([](int a){return a*2;}) |              // s4
-         on(scheduler2) |                                // s5
+         on(scheduler2) |                                 // s5
          handle_error([](auto e){return just(3);});       // s6
 int r = sync_wait(s);
 ```
