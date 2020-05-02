@@ -12,6 +12,7 @@ toc: false
 # Changelog
 ## Differences between R0 and R1
  * Tidying of introduction.
+ * Updated wording to more clearly make changes necessary to P1898R3.
 
 # Introduction
 
