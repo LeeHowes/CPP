@@ -531,10 +531,9 @@ The expression `execution::on(s, sch)` is expression-equivalent to:
 
 Signature:
 ```cpp
-S<T0..., T1..., Tn...> when_all(S<Tn...>);
+template <execution::sender Ss...>
+see-below when_all(Ss... ss);
 ```
-
-where `S<T>` is an implementation-defined type that is a sender that sends a value of type `T` in its value channel.
 
 *[ Example:*
 ```cpp
@@ -547,21 +546,22 @@ float r =
 ```
 
 ### Wording
-
 The name `execution::when_all` denotes a customization point object.
-The expression `execution::when_all(S)` for some subexpression `S` is expression-equivalent to:
+For some subexpression `ss`, let `Ss` be a list of types such that `decltype((ss))...` is `Ss...`.
+The expression `execution::when_all(ss...)` is expression-equivalent to:
 
- * Otherwise, `when_all(S)` if that expression is valid with overload resolution performed in a context that includes the declaration
+ * `when_all(ss...)` if that expression is valid, and if `S` satisfies `sender` and if `Sch` satisfies `scheduler`, with overload resolution performed in a context that includes the declaration
  ```
-         template<class S>
-           void when_all(S) = delete;
+      void when_all() = delete;
  ```
+   and that does not include a declaration of `execution::when_all`.
 
- * Otherwise constructs a receiver, `ri` for each passed `sender` `Si` in `S` and passes that receiver to `execution::submit(Si, ri)`.
-   When some `output_receiver` has been passed to `submit` on the returned `sender`.
+ * Otherwise constructs a receiver, `ri` for each passed `sender` `si` in `ss` and passes that receiver to `execution::connect(si, ri)`, resulting in an `operation_state` `osi` such that:
+   When some `output_receiver` has been passed to `connect` on the returned `sender`.
     * if `set_value(t...)` is called on all `ri`, will concatenate the list of values and call `set_value(output_receiver, t0..., t1..., tn...)` on the received passed to `submit` on the returned `sender`.
     * if `set_done()` is called on any `ri`, will call `set_done(output_receiver)`, discarding other results.
     * if `set_error(e)` is called on any `ri` will call `set_error(output_receiver, e)` for some `e`, discarding other results.
+  When `start` is called on the returned `sender`'s `operation_state`, call `execution::start(osi)` for each `operation_state` `osi`.
 
 **Notes:**
  * Efficient execution here under exceptional conditions requires cancellation support. This will be detailed separately.
