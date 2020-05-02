@@ -38,7 +38,7 @@ toc: false
 In [@P0443R13] we have included the fundamental principles described in [@P1660R0], and the fundamental requirement to customize algorithms.
 In recent discussions we have converged to an understanding of the `submit` operation on a `sender` and its more fundamental primitives `connect` and `start` supporting general interoperation between algorithms, and algorithm customization giving us full flexibility to optimize, to offload and to avoid synchronization in chains of mutually compatible algorithm customizations.
 
-As a starting point, in [@P0443R13] we only include a `bulk_execute` algorithm, that satisfies the core requirement we planned with [@P0443R11] to provide scalar and bulk execution.
+As a starting point, in [@P0443R13] we only include a `bulk_execute` algorithm, that satisfies the core requirement to provide scalar and bulk execution.
 To make the C++23 solution completely practical, we should extend the set of algorithms, however.
 This paper suggests an expanded initial set that enables early useful work chains.
 This set is intended to act as a discussion focus for us to discuss one by one, and to analyze the finer constraints of the wording to make sure we do not over-constrain the design.
@@ -906,7 +906,7 @@ If there were to be a scheduling error, then that error would propagate to `hand
 # Potential future changes
 
 ## when_all's context
-Based on experience in Facebook's codebase, I believe that `when_all` should return a sender that requires an executor-provider and uses forward progress delegation as discussed in [@P1898R0].
+Based on experience in Facebook's codebase, we believe that `when_all` should return a sender that requires an executor-provider and uses forward progress delegation as discussed in [@P1898R1].
 The returned sender should complete on the delegated context.
 This removes the ambiguity about which context it completes on.
 
@@ -982,20 +982,20 @@ references:
     citation-label: P0443R13
     title: "A Unified Executors Proposal for C++"
     issued:
-      year: 2019
-    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0443r13.html
+      year: 2020
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p0443r13.html
   - id: P1660R0
     citation-label: P1660R0
     title: "A Compromise Executor Design Sketch"
     issued:
       year: 2019
     URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1660r0.pdf
-  - id: P1898R0
-    citation-label: P1898R0
+  - id: P1898R1
+    citation-label: P1898R1
     title: "Forward progress delegation for executors"
     issued:
-      year: 2019
-    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1898r0.html
+      year: 2020
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p1898r1.html
   - id: P1993R0
     citation-label: P1993R0
     title: "Restore factories to bulk_execute"
