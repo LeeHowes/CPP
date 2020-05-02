@@ -761,8 +761,8 @@ The expression `execution::handle_error(s, f)` is expression-equivalent to:
    When some `output_receiver` has been passed to `connect` on the returned `sender` returning some `operation_state` `os2`:
 
    * If `set_value(r, ts...)` is called, passes `ts...` to `set_value(output_receiver, ts...)`.
-   * If `F` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
    * If `set_error(r, e)` is called, calls `std::invoke(f, ts...)` to return some `invoke_result`, and calls `execution::start(execution::connect(invoke_result, output_receiver))`.
+   * If `f` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
    * If `set_done(r)` is called, calls `set_done(output_receiver)`.
 
    When `start` is called on `os2`, call `execution::start(os)`.
@@ -826,7 +826,8 @@ The expression `execution::share(S)` for some subexpression `S` is expression-eq
 
 Signature:
 ```cpp
-S<T2> let(S<T...>, invocable<S<T2>(T&...));
+template <execution::sender S, std::invocable F>
+see-below let(S s, F f);
 ```
 
 where `S<T...>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T2` respectively in their value channels.
@@ -843,23 +844,27 @@ int r = sync_wait(
 
 ### Wording
 The name `execution::let` denotes a customization point object.
-The expression `execution::let(S, F)` for some subexpressions `S` and `F` is expression-equivalent to:
+For some subexpressions `s` and `f`, let `S` be a type such that `decltype((s))` is `S` and `decltype((f))` is `F`.
+The expression `execution::let(s, f)` is expression-equivalent to:
 
- * `S.let(F)` if that expression is valid.
- * Otherwise, `let(S, F)`, if that expression is valid with overload resolution performed in a context that includes the declaration
- ```
-         template<class S, class F>
-           void let(S, F) = delete;
- ```
-   and that does not include a declaration of `execution::let`.
+ * s.let(f), if that expression is valid, if `s` satisfies `sender` and `f` satisfies `invocable`.
+ * Otherwise, `let(s, f)`, if that expression is valid,, if `s` satisfies `sender` and `f` satisfies `invocable` with overload resolution performed in a context that includes the declaration
+```
+    void let() = delete;
+```
+  and that does not include a declaration of `execution::let`.
+ * Otherwise constructs a receiver, `r` and passes that receiver to `execution::connect(S, r)` returning an `operation_state` `os` such that
+   When some `output_receiver` has been passed to `connect` on the returned `sender` returning some `operation_state` `os2`:
 
- * Otherwise constructs a receiver, `r`  and passes that receiver to `execution::submit(S, r)`.
-   When some `output_receiver` has been passed to `submit` on the returned `sender`:
+   * If `set_value(r, e)` is called, calls `std::invoke(f, ts...)` to return some `invoke_result`, and calls `execution::start(execution::connect(invoke_result, output_receiver))`.
+   * If `f` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
+   * If `set_error(r, ts...)` is called, passes `ts...` to `set_error(output_receiver, ts...)`.
+   * If `set_done(r)` is called, calls `set_done(output_receiver)`.
 
-   * If `set_value(r, Ts... ts)` is called, calls `std::invoke(F, ts...)` to return some `invoke_result`, and calls `submit(invoke_result, output_receiver)`.
-   * If `F` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
-   * If `set_error(c, e)` is called, passes `e` to `set_error(output_receiver, e)`.
-   * If `set_done(c)` is called, calls `set_done(output_receiver)`.
+   When `start` is called on `os2`, call `execution::start(os)`.
+
+ * Otherwise the expression `execution::let(s, f)` is ill-formed.
+
 
 
 # Customization and example
