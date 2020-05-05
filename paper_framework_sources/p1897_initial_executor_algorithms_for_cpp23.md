@@ -14,7 +14,7 @@ toc: false
  * Rename `just_via` to `just_on`.
  * Rename `via` to `on`.
  * Add `share`.
- * Add note on the feedback about `indexed_for` in Prague. Removed `indexed_for` from the paper of initial algorothms.
+ * Add note on the feedback about `indexed_for` in Prague. Removed `indexed_for` from the paper of initial algorithms.
  * Add `let`.
  * Tweaked `handle_error` wording to be more similar to `let`.
  * Updated to use P0443R13 as a baseline.
@@ -76,14 +76,14 @@ and the following Concepts:
 
 We propose immediately discussing the addition of the following algorithms:
 
- * `just(v)`
-   * returns a `sender` of the value `v`
- * `just_on(sch, v)`
+ * `just(v...)`
+   * returns a `sender` of the value(s) `v...`
+ * `just_on(sch, v...)`
    * a variant of the above that embeds the `on` algorithm
  * `on(s, sch)`
    * returns a sender that propagates the value or error from `s` on `sch`'s execution context
  * `sync_wait(s)`
-   * blocks and returns the value type of the sender, throwing on error
+   * blocks and returns a `std::optional` of the value type of the sender, throwing on error, and an empty `std::optional` on done.
  * `when_all(s...)`
    * returns a sender that completes when all Senders `s...` complete, propagating all values
  <!--* `indexed_for(s, policy, rng, f)`
@@ -93,12 +93,12 @@ We propose immediately discussing the addition of the following algorithms:
  <!--* `bulk_transform(s, f)`
    * returns a sender that applies `f` to each element in a range sent by `s`, or propagates errors or cancellation-->
  * `handle_error(s, f)`
-   * Creates an async scope where an error propagated by `s` is available for the duration of another async operation `f`.
+   * Creates an async scope where an error propagated by `s` is available for the duration of another async operation produced by `f`.
      Value and cancellation propagate unmodified.
  * `share(s)`
    * Eagerly submits `s` and returns a sender that may be used more than once, propagating the value by reference.
  * `let(s, f)`
-   * Creates an async scope where the value propagated by `s` is available for the duration of another async operation `f`.
+   * Creates an async scope where the value propagated by `s` is available for the duration of another async operation produced by `f`.
      Error and cancellation signals propagate unmodified.
 
 ## Examples
@@ -374,7 +374,7 @@ The expression `execution::just(t...)` returns a sender, `s` wrapping the values
 
 
 <!-- * If `t...` are nothrow movable then `execution::is_noexcept_sender(s)` shall be constexpr and return true.-->
- * When `execution::connect(s, r)` is called resulting in `operation_state` `o` and followed by `execution::start(o)` for some `r`, will call `execution::set_value(r, std::move(t)...)`, inline with the caller.
+ * When `execution::connect(s, r)` is called resulting in `operation_state` `o` containing `rCopy` with type `remove_cvref_t<decltype(r)>` and initialized with `r` and followed by `execution::start(o)` for some `r`, will call `execution::set_value(r, std::move(t)...)`, inline with the caller.
  * If moving of `t` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`.
 
 
@@ -382,7 +382,8 @@ The expression `execution::just(t...)` returns a sender, `s` wrapping the values
 
 ### Overview
 `just_on` creates a `sender` that propagates a value to a submitted receiver on the execution context of a passed `scheduler`.
-Semantically equivalent to `just(t) | via(s)` if `just_on` is not customized on `s`.
+Semantically equivalent to `on(just(t), s)` if `just_on` is not customized on `s`.
+Providing `just_on` offers an opportunity to directly customise the algorithm to control allocation of the value `t` at the head of a custom pipeline.
 
 Signature:
 ```cpp
@@ -431,14 +432,14 @@ The expression `execution::just_error(e)` returns a sender, `s` wrapping the err
 
 ### Overview
 Blocks the calling thread to wait for the passed sender to complete.
-Returns the value (or void if the sender carries no value), throws if an exception is propagated and throws a TBD exception type on cancellation.^[Other options include an optional return type.]
+Returns a `std::optional` of the value (or of `std::monostate` if the sender carries no value), throws if an exception is propagated and returns an empty `std::optional` on cancellation.
 On propagation of the `set_done()` signal, returns an empty optional.
 
 ```cpp
 template <execution::typed_sender S>
-see-below sync_wait(S s);
+see-below sync_wait(S&& s);
 template <class ReturnType, execution::sender S>
-ReturnType sync_wait_r(S s);
+ReturnType sync_wait_r(S&& s);
 ```
 
 *[ Example:*
@@ -465,9 +466,10 @@ The expression `execution::sync_wait(s)` is expression-equivalent to:
  * Otherwise constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes `r` to `execution::connect(s, r)` returning some `operation_state` `os`.
    Waits on the synchronization primitive to block on completion of `s`.
 
-   * If `set_value(t)` is called on `r`, returns from `sync_wait` with value `t` and where `decltype((t))` matches `S::value_types`
-   * If `set_error` is called on `r`, throws the error value as an exception.
-   * If `set_done` is called on `r`, throws some TBD cancellation exception type.
+   * If the operation completes by calling `set_value(r, t)` then `sync_wait()` will return a value, `x`, of type `std::optional<remove_cvref_t<decltype(t)>>`, `X`, that is initialised as if by `X x; x.emplace(t);`.
+   * If the operation completes by calling `set_value(r)` then `sync_wait()` will return a value `x`, of type `std::optional<std::monostate>` that is initialised as if by `std::optional<std::monostate> x{std::in_place};`.
+   * If the operation completes by calling `set_error(r, e)` then `sync_wait()` calls `std::rethrow_exception(e)` if `decltype(e)` is `std::exception_ptr` or `throw e;` otherwise.
+   * If the operation completes by calling `set_done(r)` then `sync_wait()` will return a value `x`, of type `std::optional<T>` where `T` is consistent with the return type when the operation completes with `set_value` and that is initialised as if by `std::optional<T> x{};`.
 
 
 <!--
