@@ -481,7 +481,7 @@ Note that `sync_wait` requires `S` to propagate a single value type.
 ## execution::on
 
 ### Overview
-Takes a `sender` that completes on one execution context and on completion submits that work onto another execution context, giving the programmer control over where work runs.
+Takes a `sender` and a `scheduler` and ensures that the `sender` operation is `connect`ed and `start`ed on the execution context associated with the `scheduler`, giving the programmer control over where the work encapsulated by `sender` is started.
 
 ```cpp
 template <execution::sender S, execution::scheduler Sch>
@@ -503,7 +503,7 @@ The expression `execution::on(s, sch)` is expression-equivalent to:
 
  * `s.on(sch)` if that expression is valid, if `S` satisfies `sender`
  * Otherwise, `on(s, sch)` if that expression is valid, and if `S` satisfies `sender` and if `Sch` satisfies `scheduler`, with overload resolution performed in a context that includes the declaration
- ```
+ ```cpp
       void on() = delete;
  ```
    and that does not include a declaration of `execution::on`.
@@ -529,7 +529,7 @@ The expression `execution::on(s, sch)` is expression-equivalent to:
 
 Signature:
 ```cpp
-template <execution::sender Ss...>
+template <execution::typed_sender Ss...>
 see-below when_all(Ss... ss);
 ```
 
@@ -546,12 +546,15 @@ auto r =
 
 ### Wording
 The name `execution::when_all` denotes a customization point object.
-For some subexpression `ss`, let `Ss` be a list of types such that `decltype((ss))...` is `Ss...`.
+For some subexpression `ss...`, let `Ss...` be a list of types such that `decltype((ss))...` is `Ss...`.
 The expression `execution::when_all(ss...)` is expression-equivalent to:
 
- * Constructs a receiver, `ri` for each passed `sender` `si` in `ss` and passes that receiver to `execution::connect(si, ri)`, resulting in an `operation_state` `osi` such that:
-
-   When some `output_receiver` has been passed to `connect` on the returned `sender`.
+ * `when_all(ss...)` if that expression is valid, and if each `Ss` satisfies `typed_sender`, with overload resolution performed in a context that includes the declaration
+   ```cpp
+      void when_all() = delete;
+   ```
+   and that does not include a declaration of `execution::on`.
+ * Otherwise, returns a `sender`, `s`, that, when `connect(s, output_receiver)` is called on the returned `sender`, for some `output_receiver`, constructs a `receiver` `ri` for each passed `sender`, `si` and calls `connect(si, ri)`, returning `operation_state` object `osi`. The `operation_state`s, `osi`, are stored as subobjects within the operation-state object returned from `connect(s, output_receiver)` such that:
 
     * if `set_value(t...)` is called on all `ri`, will concatenate the list of values and call `set_value(output_receiver, t0..., t1..., tn...)` on the received passed to `submit` on the returned `sender`.
     * if `set_done()` is called on any `ri`, will call `set_done(output_receiver)`, discarding other results.
@@ -749,7 +752,7 @@ The expression `execution::handle_error(s, f)` is expression-equivalent to:
     void handle_error() = delete;
 ```
   and that does not include a declaration of `execution::handle_error`.
- * Otherwise constructs a receiver, `r` and passes that receiver to `execution::connect(S, r)` returning an `operation_state` `os` such that
+ * Otherwise returns a sender that when `connect()` is called on it constructs a `receiver`, `r`, and passes that receiver to `execution::connect(S, r)` returning an `operation_state` `os` such that
    When some `output_receiver` has been passed to `connect` on the returned `sender` returning some `operation_state` `os2`:
 
    * If `set_value(r, ts...)` is called, for some potentially empty list of values `ts...`, passes `ts...` to `set_value(output_receiver, ts...)`.
@@ -848,9 +851,9 @@ The expression `execution::let(s, f)` is expression-equivalent to:
  * Otherwise constructs a receiver, `r` and passes that receiver to `execution::connect(S, r)` returning an `operation_state` `os` such that
    When some `output_receiver` has been passed to `connect` on the returned `sender` returning some `operation_state` `os2`:
 
-   * If `set_value(r, e)` is called, calls `std::invoke(f, ts...)` to return some `invoke_result`, and calls `execution::start(execution::connect(invoke_result, output_receiver))`.
-   * If `f` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
-   * If `set_error(r, ts...)` is called, passes `ts...` to `set_error(output_receiver, ts...)`.
+   * If `set_value(r, ts...)` is called, calls `std::invoke(f, ts...)` to return some `invoke_result`, and calls `execution::start(execution::connect(invoke_result, output_receiver))`.
+   * If `f` of `connect()` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
+   * If `set_error(r, e)` is called, passes `e` to `set_error(output_receiver, e)`.
    * If `set_done(r)` is called, calls `set_done(output_receiver)`.
 
    When `start` is called on `os2`, call `execution::start(os)`.
