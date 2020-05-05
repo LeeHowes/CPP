@@ -386,11 +386,6 @@ Semantically equivalent to `just(t) | via(s)` if `just_on` is not customized on 
 
 Signature:
 ```cpp
-template <typename T>
-concept moveable-value = // exposition only
-  move_constructible<remove_cvref_t<T>> &&
-  constructible_from<remove_cvref_t<T>, T>;
-
 template <execution::scheduler Sch, movable-value... Ts>
 see-below just_on(Sch sch, Ts&&... ts) noexcept(see-below);
 ```
@@ -442,6 +437,8 @@ On propagation of the `set_done()` signal, returns an empty optional.
 ```cpp
 template <execution::typed_sender S>
 see-below sync_wait(S s);
+template <class ReturnType, execution::sender S>
+ReturnType sync_wait_r(S s);
 ```
 
 *[ Example:*
@@ -458,8 +455,8 @@ The name `execution::sync_wait` denotes a customization point object.
 For some subexpression `s` let `S` be a type such that `decltype((s))` is `S`.
 The expression `execution::sync_wait(s)` is expression-equivalent to:
 
- * `s.sync_wait()` if that expression is valid and if `S` satisfies `typed_sender` and `S::value_types` is of length 0 or 1.
- * Otherwise, `sync_wait(s)`, if that expression is valid, if `S` satisfies `typed_sender` and `S::value_types` is of length 0 or 1, with overload resolution performed in a context that includes the declaration
+ * `s.sync_wait()` if that expression is valid and if `S` satisfies `sender`.
+ * Otherwise, `sync_wait(s)`, if that expression is valid, if `S` satisfies `sender`, with overload resolution performed in a context that includes the declaration
  ```
       void sync_wait() = delete;
  ```
@@ -551,13 +548,7 @@ The name `execution::when_all` denotes a customization point object.
 For some subexpression `ss`, let `Ss` be a list of types such that `decltype((ss))...` is `Ss...`.
 The expression `execution::when_all(ss...)` is expression-equivalent to:
 
- * `when_all(ss...)` if that expression is valid, and if `S` satisfies `sender` and if `Sch` satisfies `scheduler`, with overload resolution performed in a context that includes the declaration
- ```
-      void when_all() = delete;
- ```
-   and that does not include a declaration of `execution::when_all`.
-
- * Otherwise constructs a receiver, `ri` for each passed `sender` `si` in `ss` and passes that receiver to `execution::connect(si, ri)`, resulting in an `operation_state` `osi` such that:
+ * Constructs a receiver, `ri` for each passed `sender` `si` in `ss` and passes that receiver to `execution::connect(si, ri)`, resulting in an `operation_state` `osi` such that:
 
    When some `output_receiver` has been passed to `connect` on the returned `sender`.
 
@@ -658,8 +649,8 @@ The name `execution::transform` denotes a customization point object.
 For some subexpressions `s` and `f`, let `S` be a type such that `decltype((s))` is `S` and `decltype((f))` is `F`.
 The expression `execution::transform(s, f)` is expression-equivalent to:
 
- * `s.transform(f)` if that expression is valid, `s` satisfies `sender` and `f` satisfies `invocable`.
- * Otherwise, `transform(S, F)`, if that expression is valid, `s` satisfies `sender` and `f` satisfies `invocable` with overload resolution performed in a context that includes the declaration
+ * `s.transform(f)` if that expression is valid, `s` satisfies `sender`.
+ * Otherwise, `transform(S, F)`, if that expression is valid, `s` satisfies `sender` with overload resolution performed in a context that includes the declaration
  ```
     void transform() = delete;
  ```
@@ -751,8 +742,8 @@ The name `execution::handle_error` denotes a customization point object.
 For some subexpressions `s` and `f`, let `S` be a type such that `decltype((s))` is `S` and `decltype((f))` is `F`.
 The expression `execution::handle_error(s, f)` is expression-equivalent to:
 
- * s.handle_error(f), if that expression is valid, if `s` satisfies `sender` and `f` satisfies `invocable`.
- * Otherwise, `handle_error(s, f)`, if that expression is valid,, if `s` satisfies `sender` and `f` satisfies `invocable` with overload resolution performed in a context that includes the declaration
+ * s.handle_error(f), if that expression is valid, if `s` satisfies `sender`.
+ * Otherwise, `handle_error(s, f)`, if that expression is valid,, if `s` satisfies `sender` with overload resolution performed in a context that includes the declaration
 ```
     void handle_error() = delete;
 ```
@@ -760,8 +751,8 @@ The expression `execution::handle_error(s, f)` is expression-equivalent to:
  * Otherwise constructs a receiver, `r` and passes that receiver to `execution::connect(S, r)` returning an `operation_state` `os` such that
    When some `output_receiver` has been passed to `connect` on the returned `sender` returning some `operation_state` `os2`:
 
-   * If `set_value(r, ts...)` is called, passes `ts...` to `set_value(output_receiver, ts...)`.
-   * If `set_error(r, e)` is called, calls `std::invoke(f, ts...)` to return some `invoke_result`, and calls `execution::start(execution::connect(invoke_result, output_receiver))`.
+   * If `set_value(r, ts...)` is called, for some potentially empty list of values `ts...`, passes `ts...` to `set_value(output_receiver, ts...)`.
+   * If `set_error(r, e)` is called, calls `std::invoke(f, e)` to return some `invoke_result`, and calls `execution::start(execution::connect(invoke_result, output_receiver))`.
    * If `f` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
    * If `set_done(r)` is called, calls `set_done(output_receiver)`.
 
