@@ -115,7 +115,7 @@ auto transform_sender =  // sender_to<float>
     std::move(just_sender),
     [](int a){return a+0.5f;});
 
-int result =              // value: 3.5
+std::optional<int> result =              // value: 3.5
   sync_wait(std::move(transform_sender));
 ```
 
@@ -127,7 +127,7 @@ In this very simple example we:
 
 Using `operator|` as in ranges to remove the need to pass arguments around, we can represent this as:
 ```cpp
-float f = sync_wait(
+std::optional<float> f = sync_wait(
   just(3) | transform([](int a){return a+0.5f;}));
 ```
 
@@ -193,7 +193,7 @@ auto transform_sender(
     return vec;
   })
 
-vector<int> result =       // value: {3, 4, 5}
+std::optional<vector<int>> result =       // value: {3, 4, 5}
   sync_wait(std::move(transform_sender));
 ```
 
@@ -207,7 +207,7 @@ This demonstrates simple joining of senders:
 
 Using `operator|` as in ranges to remove the need to pass arguments around, we can represent this as:
 ```cpp
-vector<int> result_vec = sync_wait(
+std::optional<vector<int>> result_vec = sync_wait(
   when_all(just(std::vector<int>{3, 4, 5}, 10), just(20.0f)) |
   transform([](vector<int> vec, int /*i*/, float /*f*/){return vec;}));
 ```
@@ -216,7 +216,7 @@ vector<int> result_vec = sync_wait(
 A simple example showing how an exception that leaks out of a transform may propagate and be thrown from sync_wait.
 
 ```cpp
-int result = 0;
+std::optional<int> result = 0;
 try {
   auto just_sender = just(3);
   auto via_sender = via(std::move(just_sender), scheduler1);
@@ -245,7 +245,7 @@ In this example we:
 As before, using `operator|` as in ranges to remove the need to pass arguments around, we can represent this more cleanly:
 
 ```cpp
-int result = 0;
+std::optional<int> result = 0;
 try {
  result = sync_wait(
     just(3) |
@@ -290,7 +290,7 @@ In this example we:
  As before, using `operator|` as in ranges to remove the need to pass arguments around, we can represent this more cleanly:
 ```cpp
 auto s = ;
-int result = sync_wait(
+std::optional<int> result = sync_wait(
   just(3) |
   via(scheduler1) |
   transform([](float a){throw 2;}) |
@@ -364,7 +364,7 @@ see-below just(Ts&&... ts) noexcept(see-below);
 
 *[ Example:*
 ```cpp
-int r = sync_wait(just(3));
+std::optional<int> r = sync_wait(just(3));
 // r==3
 ```
 *- end example]*
@@ -394,7 +394,7 @@ see-below just_on(Sch sch, Ts&&... ts) noexcept(see-below);
 *[ Example:*
 ```cpp
 MyScheduler s;
-int r = sync_wait(just_on(s, 3));
+std::optional<int> r = sync_wait(just_on(s, 3));
 // r==3
 ```
 *- end example]*
@@ -438,13 +438,14 @@ On propagation of the `set_done()` signal, returns an empty optional.
 ```cpp
 template <execution::typed_sender S>
 see-below sync_wait(S&& s);
-template <class ReturnType, execution::sender S>
-ReturnType sync_wait_r(S&& s);
+template <class ValueType, execution::sender S>
+std::optional<ValueType> sync_wait_r(S&& s);
 ```
 
 *[ Example:*
 ```cpp
-int r = sync_wait(just(3));
+std::optional<int> r = sync_wait(just(3));
+std::optional<float> r = sync_wait<float>(just(3.5f));
 // r==3
 ```
 *- end example]*
@@ -489,7 +490,7 @@ see-below on(S s, Sch sch);
 
 *[ Example:*
 ```cpp
-int r = sync_wait(just(3) | on(my_scheduler{}) | transform([](int v){return v+1;}));
+auto r = sync_wait(just(3) | on(my_scheduler{}) | transform([](int v){return v+1;}));
 // r==3
 ```
 *- end example]*
@@ -534,7 +535,7 @@ see-below when_all(Ss... ss);
 
 *[ Example:*
 ```cpp
-float r =
+auto r =
   sync_wait(
     transform(
       when_all(just(3) | just(1.2f)),
@@ -638,7 +639,7 @@ see-below transform(S s, F f);
 
 *[ Example:*
 ```cpp
-int r = sync_wait(just(3) | transform([](int v){return v+1;}));
+std::optional<int> r = sync_wait(just(3) | transform([](int v){return v+1;}));
 // r==4
 ```
 *- end example]*
@@ -730,7 +731,7 @@ see-below handle_error(S s, F f);
 
 *[ Example:*
 ```cpp
-float r = sync_wait(
+std::optional<float> r = sync_wait(
   just(3) |
   transform([](int v){throw 2.0f;}) |
   handle_error([](float e){return just(e+1);}));
@@ -777,7 +778,7 @@ see-below share(S s);
 auto s1 = just(3) | share();
 auto s2 = s1 | transform([](const int& v){return v+1;}))
 auto s3 = s1 | transform([](const int& v){return v+2;}))
-int r = sync_wait(
+std::optional<int> r = sync_wait(
   transform(
     when_all(s2, s3),
     [](int a, int b){return a+b;}));
@@ -826,7 +827,7 @@ Note that in the general case there may be many types `T...` for a given `sender
 
 *[ Example:*
 ```cpp
-int r = sync_wait(
+std::optional<int> r = sync_wait(
   just(3) |
   let([](int& let_v){
     return just(4) | transform([&](int v){return let_v + v;})));
@@ -870,7 +871,7 @@ auto s = just(3) |                                        // s1
          transform([](int a){return a*2;}) |              // s4
          on(scheduler2) |                                 // s5
          handle_error([](auto e){return just(3);});       // s6
-int r = sync_wait(s);
+std::optional<int> r = sync_wait(s);
 ```
 
 The result of `s1` might be a `just_sender<int>` implemented by the standard library vendor.
