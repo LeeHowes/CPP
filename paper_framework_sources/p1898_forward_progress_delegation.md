@@ -20,11 +20,11 @@ This design enables delegation of forward progress in asynchronous algorithms an
 This work is based in part on a discussion of the `DeferredExecutor` that works with [folly's](https://github.com/facebook/folly/) [SemiFuture](https://github.com/facebook/folly/blob/master/folly/futures/Future.h) and how folly's coroutines propagate executors as well to ensure that work runs on predictable underlying execution resources.
 
 In this paper `executor` refers to the general concept as expressed in the title of [@P0443R13] and the long standing executors effort.
-The concrete concepts used may be `executor`, `scheduler` or `sender` depending on the context.
+The concrete concepts used may satisfy `executor`, `scheduler` or `sender` depending on the context.
 
 Building on the definitions in [@P0443R13] and [@P1897R3], we start with the definition of a `receiver` we propose adding a concept `scheduler_provider` that allows a `sender` to require that a `receiver` passed to it is able to provide an executor, or more accurately a `scheduler` in the language of [@P0443R13].
 This concept offers a `get_scheduler` customization point that allows a `scheduler` to be propagated from downstream to upstream asynchronous tasks, or alternatively from upstream to downstream.
-A given `scheduler`, and therefore any `sender` created off that scheduler may require the availability of such a customization on `recivers`s passed to the `submit` operation.
+A given `scheduler`, and therefore any `sender` created off that scheduler may require the availability of such a customization on `receivers`s passed to the `submit` operation.
 
 A given `sender` may delegate any tasks it is unable to perform to the scheduler it acquires from the downstream `Callback`.
 A given `sender` alternatively might always reschedule work to an underlying `scheduler`, and in situations where the chosen `scheduler` is ambiguous, for example where the output work runs from a `when_all` operation, that `sender` might require that downstream work provide a `scheduler` for it to reschedule onto to remove nondeterminism in where work runs.
@@ -76,7 +76,7 @@ awaitable<vector<int>> doWork(vector<int> vec) {
 
 Or a declarative formulation as in [@P1897R3]:
 ```cpp
-Sender<vector<int>> doWork(Sender<vector<int>> vec) {
+sender-of<vector<int>> doWork(sender-of<vector<int>> vec) {
   return std::move(vec) | range_transform([](int i) {return i+1;});
 }
 ```
@@ -166,11 +166,11 @@ Therefore the most appropriate solution is to make available a valid downstream 
 # Generalising
 Let us say that a given asynchronous algorithm promises some forward progress guarantee that depends on its executor/scheduler^[Potentially also on the execution property passed but we leave that out here for simplicity.].
 
-Note that in the examples below `Sender<T>` refers to a `sender` that will call `set_value` on a `receiver` passed to its `connect` operation with type `T`, and exists for exposition only.
+Note that in the examples below *sender-of<T>* refers to a `sender` that will call `set_value` on a `receiver` passed to its `connect` operation with type `T`, and exists for exposition only.
 
 So in a work chain (using `|` to represent a chaining of work as in C++20's Ranges):
 ```cpp
-Sender<vector<int>> doWork(Sender<vector<int>> vec) {
+sender-of<vector<int>> doWork(sender-of<vector<int>> vec) {
   return std::move(vec) | on(DeferredExecutor{}) | range_transform([](int i) {return i+1;});
 }
 ```
@@ -191,7 +191,7 @@ At worst, this executor might also be deferred, but it is a requirement that at 
 Now let’s say we explicitly provide an executor with a strong guarantee.
 A concurrent executor like `NewThreadExecutor`:
 ```cpp
-Sender<vector<int>> doWork(Sender<vector<int>> vec) {
+sender-of<vector<int>> doWork(sender-of<vector<int>> vec) {
   return std::move(vec) |
     on(DeferredExecutor{}) |
     range_transform([](int i) {return i+1;}) | // c2
@@ -205,7 +205,7 @@ It is guaranteed to make concurrent progress, which is enough to ensure that the
 Note that this also provides an opportunity for an intermediate state. If instead of a `DeferredExecutor` we had a `BoundedQueueExecutor` with the obvious meaning and a queue size of 1:
 
 ```cpp
-Sender<vector<int>> doWork(Sender<vector<int>> vec) {
+sender-of<vector<int>> doWork(sender-of<vector<int>> vec) {
   return std::move(vec) |
     on(BoundedQueueExecutor{1}) |
     range_transform([](int i) {return i+1;}) | // c2
@@ -222,7 +222,7 @@ Any given executor should declare in its specification if it will delegate or no
 If no delegate executor is provided, for example we detach the work as below:
 
 ```cpp
-void doWork(Sender<vector<int>> vec) {
+void doWork(sender-of<vector<int>> vec) {
   std::move(vec) |
     on(BoundedQueueExecutor{1}) |
     range_transform([](int i) {return i+1;}) |
@@ -255,7 +255,7 @@ std::transform(
 
 May be achieved by something like:
 ```cpp
-vector<int> doWork(Sender<vector<int>> vec) {
+vector<int> doWork(sender-of<vector<int>> vec) {
   vector<int> output;
   ManualExecutor m;
   std::move(vec) |
@@ -273,7 +273,7 @@ So we support the delegation of work onto the calling thread by providing an exe
 
 This would of course be wrapped in a wait algorithm in practice, as proposed in [@P1897R3]:
 ```cpp
-vector<int> doWork(Sender<vector<int>> vec) {
+vector<int> doWork(sender-of<vector<int>> vec) {
   return sync_wait(std::move(vec) |
     bulk_transform(std::execution::par, [](int i) {return i+1;}));
 }
@@ -285,15 +285,15 @@ vector<int> doWork(Sender<vector<int>> vec) {
 # Impact on the Standard
  * Add `scheduler_provider` concept.
  * Add `get_scheduler` CPO.
- * Additional wording to the `sync_wait` CPO specifying that it will pass an `executor_provider` to the `connect` operation on the passed `sender`.
- * Additional wording to the `on` CPO specifying that it will pass an `executor_provider` to the `connect` operation on the passed `sender`.
- * Additional wording for other algorithms specifying that they pass through the `get_scheduler` CPO, making their own `receiver`s also `executor_provider`s.
+ * Additional wording to the `sync_wait` CPO specifying that it will pass an `scheduler_provider` to the `connect` operation on the passed `sender`.
+ * Additional wording to the `on` CPO specifying that it will pass an `scheduler_provider` to the `connect` operation on the passed `sender`.
+ * Additional wording for other algorithms specifying that they pass through the `get_scheduler` CPO, making their own `receiver`s also `scheduler_provider`s.
 
 ## Concept scheduler_provider
 ### Summary
 A concept for receivers that may provide a scheduler upstream.
 May be used to overload `connect` algorithm, to allow delegation in the presence of a downstream scheduler.
-May be used to restrict the `connect` operation on a `sender` to require an `executor_provider`.
+May be used to restrict the `connect` operation on a `sender` to require an `scheduler_provider`.
 
 ### Wording
 ```
@@ -307,15 +307,15 @@ concept scheduler_provider =
 
 ## execution::get_scheduler
 ### Summary
-When applied to a `receiver`, if supported, will return a `scheduler` that the `receiver` expects to be able to run delegated work safely, and that callers may assume they are able to delegate work to.
+When applied to a `scheduler_provider`, if supported, will return a `scheduler` that the `scheduler_provider` expects to be able to run delegated work safely, and that callers may assume they are able to delegate work to.
 
 ### Wording
 The name `execution::get_scheduler` denotes a customization point object.
-For some subexpression `r`, let `R` be a type such that `decltype((r))` is `R`
+For some subexpression `sp`, let `SP` be a type such that `decltype((sp))` is `SP`
 The expression `execution::get_scheduler(r)` is expression-equivalent to:
 
- * `r.get_scheduler()` if that expression is valid, if `R` satisfies `receiver`
- * Otherwise, `get_scheduler(r)` if that expression is valid, and if `R` satisfies `receiver`, with overload resolution performed in a context that includes the declaration
+ * `sp.get_scheduler()` if that expression is valid, if `SP` satisfies `scheduler_provider`
+ * Otherwise, `get_scheduler(sp)` if that expression is valid, and if `SP` satisfies `scheduler_provider`, with overload resolution performed in a context that includes the declaration
  ```
       void get_scheduler() = delete;
  ```
