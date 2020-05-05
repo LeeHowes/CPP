@@ -511,7 +511,7 @@ The expression `execution::on(s, sch)` is expression-equivalent to:
      * Constructs a receiver, `r` such that when `set_value`, `set_error` or `set_done` is called on `r`, the parameter is wrapped in a receiver `r2`.
       * `r2` is passed to `execution::connect(execution::schedule(sch), std::move(r2))`.
        * `execution::start` is passed the resulting `operation_state`.
-       * When `set_value` is called on `r2`, the stored value is forwarded to `output_receiver`.
+       * When `set_value` is called on `r2`, the stored value is forwarded to `output_receiver` on the appropriate choice of `set_value`, `set_error` or `set_done` to match the operation performed on `r`.
        * When `set_error` or `set_done` is called on `r2` the parameters propagate to `output_receiver`.
      * Passes `r` to `execution::connect(s, r)` resulting in an operation state `ros`.
    * When `execution::start` is called on the resulting `operation_state`, call `execution::start(ros)`.
