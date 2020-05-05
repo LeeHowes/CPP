@@ -516,8 +516,6 @@ The expression `execution::on(s, sch)` is expression-equivalent to:
      * Passes `r` to `execution::connect(s, r)` resulting in an operation state `ros`.
    * When `execution::start` is called on the resulting `operation_state`, call `execution::start(ros)`.
      * Calls `execution::start` on the resulting `operation_state`.
-   * If `output_receiver` satisfies `scheduler_provider` then `execution::get_scheduler(r2)` returns the result of `execution::get_scheduler(output_receiver)`.
-   * `r` satisfies `scheduler_provider` and `execution::get_scheduler(r2)` returns sch.
  * Otherwise, `execution::on(s, sch)` is ill-formed.
 
 
