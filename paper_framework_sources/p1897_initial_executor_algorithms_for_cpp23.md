@@ -717,7 +717,7 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 ## execution::handle_error
 
 ### Overview
-`handle_error` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that, on error propagation, keeps the error result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.
+`handle_error` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that, on error propagation, keeps the error result of the incoming sender alive for the duration of the `sender` returned by the invocable and makes that value available to the invocable.
 
 
 Signature:
@@ -935,7 +935,7 @@ The changes this leads to:
    If an implementation needs to copy, then that implementation should implement a wrapper that is custom for the algorthmic structure it is using.
    For example, a forking tree of threads may allocate once on the first thread by move and reference back to it, knowing the lifetime is safe.
 
-## Result of discussion and vote
+## Result of discussion and Prague SG1 vote on P1897R2
 Poll: We should add a sender argument and sender result to bulk execution functions (providing an opportunity to build shared state, established dependencies in/out)
 
 SA: 17; F: 7; N: 0; A: 0; SA: 0
