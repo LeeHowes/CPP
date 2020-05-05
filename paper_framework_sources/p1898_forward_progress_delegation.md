@@ -349,7 +349,7 @@ In addition to transitioning execution from one execution context to another, `o
 ### Wording to modify otherwise clause
 Add the clauses:
    * If `output_receiver` satisfies `scheduler_provider` then `execution::get_scheduler(r2)` returns the result of `execution::get_scheduler(output_receiver)`.
-   * `r` satisfies `scheduler_provider` and `execution::get_scheduler(r2)` returns sch.
+   * `r` satisfies `scheduler_provider` and `execution::get_scheduler(r)` returns sch.
 
 
 
