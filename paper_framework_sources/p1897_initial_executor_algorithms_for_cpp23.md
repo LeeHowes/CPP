@@ -759,6 +759,15 @@ The expression `execution::handle_error(s, f)` is expression-equivalent to:
    * If `set_error(r, e)` is called, calls `std::invoke(f, e)` to return some `invoke_result`, and calls `execution::start(execution::connect(invoke_result, output_receiver))`.
    * If `f` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
    * If `set_done(r)` is called, calls `set_done(output_receiver)`.
+ * Otherwise, returns a `sender`, `s2`, that, when `connect(s, output_receiver)` is called on `s2`, for some `output_receiver`, returning an `operation_state` `os2`, constructs a `receiver` `r` and passes that receiver to `connect(s, r)`, returning `operation_state` object `os` and stores `os` as a subobject of `os2`:
+
+   * If `set_value(r, ts...)` is called, passes `ts...` to `set_valus(output_receiver, ts...)`.
+   * If `set_error(r, e)` is called:
+     * copies `e` into `os2` as `e2`, calls `std::invoke(f, e2)` to return some `invoke_result`
+     * calls `execution::connect(invoke_result, output_receiver)` resulting in some `operation_state` `os3`, stores `os3` as a subobject of `os2` and calls `execution::start(os3)`.
+     * the destructor of `os2` must be sequenced after the completion of the operation represented by `invoke_result`.
+     * If `f` or `connect()` throws, catches the exception as `e3` and passes it to `set_error(output_receiver, 3)`.
+   * If `set_done(r)` is called, calls `set_done(output_receiver)`.
 
    When `start` is called on `os2`, call `execution::start(os)`.
 
@@ -848,11 +857,13 @@ The expression `execution::let(s, f)` is expression-equivalent to:
     void let() = delete;
 ```
   and that does not include a declaration of `execution::let`.
- * Otherwise constructs a receiver, `r` and passes that receiver to `execution::connect(S, r)` returning an `operation_state` `os` such that
-   When some `output_receiver` has been passed to `connect` on the returned `sender` returning some `operation_state` `os2`:
+ * Otherwise, returns a `sender`, `s2`, that, when `connect(s, output_receiver)` is called on `s2`, for some `output_receiver`, returning an `operation_state` `os2`, constructs a `receiver` `r` and passes that receiver to `connect(s, r)`, returning `operation_state` object `os` and stores `os` as a subobject of `os2`:
 
-   * If `set_value(r, ts...)` is called, calls `std::invoke(f, ts...)` to return some `invoke_result`, and calls `execution::start(execution::connect(invoke_result, output_receiver))`.
-   * If `f` of `connect()` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
+   * If `set_value(r, ts...)` is called:
+     * copies `ts...` into `os2` as subobjects `t2s...`, calls `std::invoke(f, t2s...)` to return some `invoke_result`
+     * calls `execution::connect(invoke_result, output_receiver)` resulting in some `operation_state` `os3`, stores `os3` as a subobject of `os2` and calls `execution::start(os3)`.
+     * the destructor of `os2` must be sequenced after the completion of the operation represented by `invoke_result`.
+     * If `f` or `connect()` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
    * If `set_error(r, e)` is called, passes `e` to `set_error(output_receiver, e)`.
    * If `set_done(r)` is called, calls `set_done(output_receiver)`.
 

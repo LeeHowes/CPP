@@ -1057,14 +1057,24 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <div class="sourceCode" id="cb28"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb28-1"><a href="#cb28-1"></a>    void handle_error() = delete;</span></code></pre></div>
 <p>and that does not include a declaration of <code>execution::handle_error</code>. * Otherwise returns a sender that when <code>connect()</code> is called on it constructs a <code>receiver</code>, <code>r</code>, and passes that receiver to <code>execution::connect(S, r)</code> returning an <code>operation_state</code> <code>os</code> such that When some <code>output_receiver</code> has been passed to <code>connect</code> on the returned <code>sender</code> returning some <code>operation_state</code> <code>os2</code>:</p>
 <ul>
-<li>If <code>set_value(r, ts...)</code> is called, for some potentially empty list of values <code>ts...</code>, passes <code>ts...</code> to <code>set_value(output_receiver, ts...)</code>.</li>
-<li>If <code>set_error(r, e)</code> is called, calls <code>std::invoke(f, e)</code> to return some <code>invoke_result</code>, and calls <code>execution::start(execution::connect(invoke_result, output_receiver))</code>.</li>
-<li>If <code>f</code> throws, catches the exception and passes it to <code>set_error(output_receiver, e)</code>.</li>
+<li><p>If <code>set_value(r, ts...)</code> is called, for some potentially empty list of values <code>ts...</code>, passes <code>ts...</code> to <code>set_value(output_receiver, ts...)</code>.</p></li>
+<li><p>If <code>set_error(r, e)</code> is called, calls <code>std::invoke(f, e)</code> to return some <code>invoke_result</code>, and calls <code>execution::start(execution::connect(invoke_result, output_receiver))</code>.</p></li>
+<li><p>If <code>f</code> throws, catches the exception and passes it to <code>set_error(output_receiver, e)</code>.</p></li>
+<li><p>If <code>set_done(r)</code> is called, calls <code>set_done(output_receiver)</code>.</p></li>
+<li><p>Otherwise, returns a <code>sender</code>, <code>s2</code>, that, when <code>connect(s, output_receiver)</code> is called on <code>s2</code>, for some <code>output_receiver</code>, returning an <code>operation_state</code> <code>os2</code>, constructs a <code>receiver</code> <code>r</code> and passes that receiver to <code>connect(s, r)</code>, returning <code>operation_state</code> object <code>os</code> and stores <code>os</code> as a subobject of <code>os2</code>:</p>
+<ul>
+<li>If <code>set_value(r, ts...)</code> is called, passes <code>ts...</code> to <code>set_valus(output_receiver, ts...)</code>.</li>
+<li>If <code>set_error(r, e)</code> is called:
+<ul>
+<li>copies <code>e</code> into <code>os2</code> as <code>e2</code>, calls <code>std::invoke(f, e2)</code> to return some <code>invoke_result</code></li>
+<li>calls <code>execution::connect(invoke_result, output_receiver)</code> resulting in some <code>operation_state</code> <code>os3</code>, stores <code>os3</code> as a subobject of <code>os2</code> and calls <code>execution::start(os3)</code>.</li>
+<li>the destructor of <code>os2</code> must be sequenced after the completion of the operation represented by <code>invoke_result</code>.</li>
+<li>If <code>f</code> or <code>connect()</code> throws, catches the exception as <code>e3</code> and passes it to <code>set_error(output_receiver, 3)</code>.</li>
+</ul></li>
 <li>If <code>set_done(r)</code> is called, calls <code>set_done(output_receiver)</code>.</li>
 </ul>
-<p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p>
-<ul>
-<li>Otherwise the expression <code>execution::handle_error(s, f)</code> is ill-formed.</li>
+<p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p></li>
+<li><p>Otherwise the expression <code>execution::handle_error(s, f)</code> is ill-formed.</p></li>
 </ul>
 <h2 id="executionshare"><span class="header-section-number">3.9</span> execution::share<a href="#executionshare" class="self-link"></a></h2>
 <h3 id="overview-7"><span class="header-section-number">3.9.1</span> Overview<a href="#overview-7" class="self-link"></a></h3>
@@ -1124,10 +1134,15 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <li>Otherwise, <code>let(s, f)</code>, if that expression is valid,, if <code>s</code> satisfies <code>sender</code> and <code>f</code> satisfies <code>invocable</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
 <div class="sourceCode" id="cb34"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb34-1"><a href="#cb34-1"></a>    void let() = delete;</span></code></pre></div>
-<p>and that does not include a declaration of <code>execution::let</code>. * Otherwise constructs a receiver, <code>r</code> and passes that receiver to <code>execution::connect(S, r)</code> returning an <code>operation_state</code> <code>os</code> such that When some <code>output_receiver</code> has been passed to <code>connect</code> on the returned <code>sender</code> returning some <code>operation_state</code> <code>os2</code>:</p>
+<p>and that does not include a declaration of <code>execution::let</code>. * Otherwise, returns a <code>sender</code>, <code>s2</code>, that, when <code>connect(s, output_receiver)</code> is called on <code>s2</code>, for some <code>output_receiver</code>, returning an <code>operation_state</code> <code>os2</code>, constructs a <code>receiver</code> <code>r</code> and passes that receiver to <code>connect(s, r)</code>, returning <code>operation_state</code> object <code>os</code> and stores <code>os</code> as a subobject of <code>os2</code>:</p>
 <ul>
-<li>If <code>set_value(r, ts...)</code> is called, calls <code>std::invoke(f, ts...)</code> to return some <code>invoke_result</code>, and calls <code>execution::start(execution::connect(invoke_result, output_receiver))</code>.</li>
-<li>If <code>f</code> of <code>connect()</code> throws, catches the exception and passes it to <code>set_error(output_receiver, e)</code>.</li>
+<li>If <code>set_value(r, ts...)</code> is called:
+<ul>
+<li>copies <code>ts...</code> into <code>os2</code> as subobjects <code>t2s...</code>, calls <code>std::invoke(f, t2s...)</code> to return some <code>invoke_result</code></li>
+<li>calls <code>execution::connect(invoke_result, output_receiver)</code> resulting in some <code>operation_state</code> <code>os3</code>, stores <code>os3</code> as a subobject of <code>os2</code> and calls <code>execution::start(os3)</code>.</li>
+<li>the destructor of <code>os2</code> must be sequenced after the completion of the operation represented by <code>invoke_result</code>.</li>
+<li>If <code>f</code> or <code>connect()</code> throws, catches the exception and passes it to <code>set_error(output_receiver, e)</code>.</li>
+</ul></li>
 <li>If <code>set_error(r, e)</code> is called, passes <code>e</code> to <code>set_error(output_receiver, e)</code>.</li>
 <li>If <code>set_done(r)</code> is called, calls <code>set_done(output_receiver)</code>.</li>
 </ul>
