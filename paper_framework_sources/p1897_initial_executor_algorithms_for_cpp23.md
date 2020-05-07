@@ -16,7 +16,8 @@ toc: false
  * Add `share`.
  * Add note on the feedback about `indexed_for` in Prague. Removed `indexed_for` from the paper of initial algorithms.
  * Add `let`.
- * Tweaked `handle_error` wording to be more similar to `let`.
+ * Tweaked `handle_error` wording to be more similar to `let`, and renamed `let_error` for naming consistency.
+ * Renamed `let` to `let_value` for naming consistency.
  * Updated to use P0443R13 as a baseline.
  * Improves the wording to be closer to mergable wording and less pseudowording.
 
@@ -92,14 +93,14 @@ We propose immediately discussing the addition of the following algorithms:
    * returns a sender that applies `f` to the value passed by `s`, or propagates errors or cancellation
  <!--* `bulk_transform(s, f)`
    * returns a sender that applies `f` to each element in a range sent by `s`, or propagates errors or cancellation-->
- * `handle_error(s, f)`
+ * `let_value(s, f)`
+   * Creates an async scope where the value propagated by `s` is available for the duration of another async operation produced by `f`.
+     Error and cancellation signals propagate unmodified.
+ * `let_error(s, f)`
    * Creates an async scope where an error propagated by `s` is available for the duration of another async operation produced by `f`.
      Value and cancellation propagate unmodified.
  * `share(s)`
    * Eagerly submits `s` and returns a sender that may be used more than once, propagating the value by reference.
- * `let(s, f)`
-   * Creates an async scope where the value propagated by `s` is available for the duration of another async operation produced by `f`.
-     Error and cancellation signals propagate unmodified.
 
 ## Examples
 
@@ -269,7 +270,7 @@ auto transform_sender = transform(
 auto skipped_transform_sender = transform(
   std::move(transform_sender).
   [](){return 3;});
-auto error_handling_sender = handle_error(
+auto error_handling_sender = let_error(
   std::move(skipped_transform_sender),
   [](exception_ptr e){return just(5);});
 
@@ -295,7 +296,7 @@ std::optional<int> result = sync_wait(
   via(scheduler1) |
   transform([](float a){throw 2;}) |
   transform([](){return 3;}) |
-  handle_error([](auto e){
+  let_error([](auto e){
    return just(5);}));
 ```
 
@@ -720,16 +721,16 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
    * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
 -->
 
-## execution::handle_error
+## execution::let_error
 
 ### Overview
-`handle_error` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that, on error propagation, keeps the error result of the incoming sender alive for the duration of the `sender` returned by the invocable and makes that value available to the invocable.
+`let_error` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that, on error propagation, keeps the error result of the incoming sender alive for the duration of the `sender` returned by the invocable and makes that value available to the invocable.
 
 
 Signature:
 ```cpp
 template <execution::sender S, std::invocable F>
-see-below handle_error(S s, F f);
+see-below let_error(S s, F f);
 ```
 
 *[ Example:*
@@ -737,21 +738,21 @@ see-below handle_error(S s, F f);
 std::optional<float> r = sync_wait(
   just(3) |
   transform([](int v){throw 2.0f;}) |
-  handle_error([](float e){return just(e+1);}));
+  let_error([](float e){return just(e+1);}));
 // r==3.0f
 ```
 
 ### Wording
-The name `execution::handle_error` denotes a customization point object.
+The name `execution::let_error` denotes a customization point object.
 For some subexpressions `s` and `f`, let `S` be a type such that `decltype((s))` is `S` and `decltype((f))` is `F`.
-The expression `execution::handle_error(s, f)` is expression-equivalent to:
+The expression `execution::let_error(s, f)` is expression-equivalent to:
 
- * s.handle_error(f), if that expression is valid, if `s` satisfies `sender`.
- * Otherwise, `handle_error(s, f)`, if that expression is valid,, if `s` satisfies `sender` with overload resolution performed in a context that includes the declaration
+ * s.let_error(f), if that expression is valid, if `s` satisfies `sender`.
+ * Otherwise, `let_error(s, f)`, if that expression is valid,, if `s` satisfies `sender` with overload resolution performed in a context that includes the declaration
 ```
-    void handle_error() = delete;
+    void let_error() = delete;
 ```
-  and that does not include a declaration of `execution::handle_error`.
+  and that does not include a declaration of `execution::let_error`.
  * Otherwise returns a sender that when `connect()` is called on it constructs a `receiver`, `r`, and passes that receiver to `execution::connect(S, r)` returning an `operation_state` `os` such that
    When some `output_receiver` has been passed to `connect` on the returned `sender` returning some `operation_state` `os2`:
 
@@ -771,7 +772,7 @@ The expression `execution::handle_error(s, f)` is expression-equivalent to:
 
    When `start` is called on `os2`, call `execution::start(os)`.
 
- * Otherwise the expression `execution::handle_error(s, f)` is ill-formed.
+ * Otherwise the expression `execution::let_error(s, f)` is ill-formed.
 
 
 ## execution::share
@@ -823,15 +824,15 @@ The expression `execution::share(s, f)` is expression-equivalent to:
 
  * When `start` is called on `os2`, call `execution::start(os)`.
 
-## execution::let
+## execution::let_value
 
 ### Overview
-`let` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that keeps the completion result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.
+`let_value` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that keeps the completion result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.
 
 Signature:
 ```cpp
 template <execution::sender S, std::invocable F>
-see-below let(S s, F f);
+see-below let_value(S s, F f);
 ```
 
 where `S<T...>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T2` respectively in their value channels.
@@ -841,22 +842,22 @@ Note that in the general case there may be many types `T...` for a given `sender
 ```cpp
 std::optional<int> r = sync_wait(
   just(3) |
-  let([](int& let_v){
+  let_value([](int& let_v){
     return just(4) | transform([&](int v){return let_v + v;})));
 // r==7
 ```
 
 ### Wording
-The name `execution::let` denotes a customization point object.
+The name `execution::let_value` denotes a customization point object.
 For some subexpressions `s` and `f`, let `S` be a type such that `decltype((s))` is `S` and `decltype((f))` is `F`.
-The expression `execution::let(s, f)` is expression-equivalent to:
+The expression `execution::let_value(s, f)` is expression-equivalent to:
 
- * s.let(f), if that expression is valid, if `s` satisfies `sender` and `f` satisfies `invocable`.
- * Otherwise, `let(s, f)`, if that expression is valid,, if `s` satisfies `sender` and `f` satisfies `invocable` with overload resolution performed in a context that includes the declaration
+ * s.let_value(f), if that expression is valid, if `s` satisfies `sender` and `f` satisfies `invocable`.
+ * Otherwise, `let_value(s, f)`, if that expression is valid,, if `s` satisfies `sender` and `f` satisfies `invocable` with overload resolution performed in a context that includes the declaration
 ```
-    void let() = delete;
+    void let_value() = delete;
 ```
-  and that does not include a declaration of `execution::let`.
+  and that does not include a declaration of `execution::let_value`.
  * Otherwise, returns a `sender`, `s2`, that, when `connect(s, output_receiver)` is called on `s2`, for some `output_receiver`, returning an `operation_state` `os2`, constructs a `receiver` `r` and passes that receiver to `connect(s, r)`, returning `operation_state` object `os` and stores `os` as a subobject of `os2`:
 
    * If `set_value(r, ts...)` is called:
@@ -869,7 +870,7 @@ The expression `execution::let(s, f)` is expression-equivalent to:
 
    When `start` is called on `os2`, call `execution::start(os)`.
 
- * Otherwise the expression `execution::let(s, f)` is ill-formed.
+ * Otherwise the expression `execution::let_value(s, f)` is ill-formed.
 
 
 
@@ -884,7 +885,7 @@ auto s = just(3) |                                        // s1
          transform([](int a){return a+1;}) |              // s3
          transform([](int a){return a*2;}) |              // s4
          on(scheduler2) |                                 // s5
-         handle_error([](auto e){return just(3);});       // s6
+         let_error([](auto e){return just(3);});       // s6
 std::optional<int> r = sync_wait(s);
 ```
 
@@ -903,11 +904,11 @@ There need be no synchronization in this chain.
 At `s5`, however, the implementor of `scheduler2` does not know about the implementation of `scheduler1`.
 At this point it will call `submit` on the incoming `scheduler1_transform_sender`, forcing `scheduler1`'s sender to implement the necessary synchronization to map back from the behind-the-scenes optimal queue to something interoperable with another vendor's implementation.
 
-`handle_error` at `s6` will be generic in terms of `submit` and not do anything special, this uses the default implementation in terms of `submit`.
+`let_error` at `s6` will be generic in terms of `submit` and not do anything special, this uses the default implementation in terms of `submit`.
 `sync_wait` similarly constructs a `condition_variable` and a temporary `int`, submits a `receiver` to `s` and waits on the `condition_variable`, blocking the calling thread.
 
 `r` is of course the value 8 at this point assuming that neither scheduler triggered an error.
-If there were to be a scheduling error, then that error would propagate to `handle_error` and `r` would subsequently have the value `3`.
+If there were to be a scheduling error, then that error would propagate to `let_error` and `r` would subsequently have the value `3`.
 
 # Potential future changes
 

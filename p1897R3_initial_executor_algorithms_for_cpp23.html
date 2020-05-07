@@ -450,7 +450,8 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <li>Add <code>share</code>.</li>
 <li>Add note on the feedback about <code>indexed_for</code> in Prague. Removed <code>indexed_for</code> from the paper of initial algorithms.</li>
 <li>Add <code>let</code>.</li>
-<li>Tweaked <code>handle_error</code> wording to be more similar to <code>let</code>.</li>
+<li>Tweaked <code>handle_error</code> wording to be more similar to <code>let</code>, and renamed <code>let_error</code> for naming consistency.</li>
+<li>Renamed <code>let</code> to <code>let_value</code> for naming consistency.</li>
 <li>Updated to use P0443R13 as a baseline.</li>
 <li>Improves the wording to be closer to mergable wording and less pseudowording.</li>
 </ul>
@@ -527,17 +528,17 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <li>returns a sender that applies <code>f</code> to the value passed by <code>s</code>, or propagates errors or cancellation <!--* `bulk_transform(s, f)`
 * returns a sender that applies `f` to each element in a range sent by `s`, or propagates errors or cancellation--></li>
 </ul></li>
-<li><code>handle_error(s, f)</code>
+<li><code>let_value(s, f)</code>
+<ul>
+<li>Creates an async scope where the value propagated by <code>s</code> is available for the duration of another async operation produced by <code>f</code>. Error and cancellation signals propagate unmodified.</li>
+</ul></li>
+<li><code>let_error(s, f)</code>
 <ul>
 <li>Creates an async scope where an error propagated by <code>s</code> is available for the duration of another async operation produced by <code>f</code>. Value and cancellation propagate unmodified.</li>
 </ul></li>
 <li><code>share(s)</code>
 <ul>
 <li>Eagerly submits <code>s</code> and returns a sender that may be used more than once, propagating the value by reference.</li>
-</ul></li>
-<li><code>let(s, f)</code>
-<ul>
-<li>Creates an async scope where the value propagated by <code>s</code> is available for the duration of another async operation produced by <code>f</code>. Error and cancellation signals propagate unmodified.</li>
 </ul></li>
 </ul>
 <h2 id="examples"><span class="header-section-number">2.2</span> Examples<a href="#examples" class="self-link"></a></h2>
@@ -682,7 +683,7 @@ vector<int> result_vec = sync_wait(
 <span id="cb7-6"><a href="#cb7-6"></a><span class="kw">auto</span> skipped_transform_sender <span class="op">=</span> transform<span class="op">(</span></span>
 <span id="cb7-7"><a href="#cb7-7"></a>  std<span class="op">::</span>move<span class="op">(</span>transform_sender<span class="op">).</span></span>
 <span id="cb7-8"><a href="#cb7-8"></a>  <span class="op">[](){</span><span class="cf">return</span> <span class="dv">3</span>;<span class="op">})</span>;</span>
-<span id="cb7-9"><a href="#cb7-9"></a><span class="kw">auto</span> error_handling_sender <span class="op">=</span> handle_error<span class="op">(</span></span>
+<span id="cb7-9"><a href="#cb7-9"></a><span class="kw">auto</span> error_handling_sender <span class="op">=</span> let_error<span class="op">(</span></span>
 <span id="cb7-10"><a href="#cb7-10"></a>  std<span class="op">::</span>move<span class="op">(</span>skipped_transform_sender<span class="op">)</span>,</span>
 <span id="cb7-11"><a href="#cb7-11"></a>  <span class="op">[](</span>exception_ptr e<span class="op">){</span><span class="cf">return</span> just<span class="op">(</span><span class="dv">5</span><span class="op">)</span>;<span class="op">})</span>;</span>
 <span id="cb7-12"><a href="#cb7-12"></a></span>
@@ -704,7 +705,7 @@ vector<int> result_vec = sync_wait(
 <span id="cb8-4"><a href="#cb8-4"></a>  via<span class="op">(</span>scheduler1<span class="op">)</span> <span class="op">|</span></span>
 <span id="cb8-5"><a href="#cb8-5"></a>  transform<span class="op">([](</span><span class="dt">float</span> a<span class="op">){</span><span class="cf">throw</span> <span class="dv">2</span>;<span class="op">})</span> <span class="op">|</span></span>
 <span id="cb8-6"><a href="#cb8-6"></a>  transform<span class="op">([](){</span><span class="cf">return</span> <span class="dv">3</span>;<span class="op">})</span> <span class="op">|</span></span>
-<span id="cb8-7"><a href="#cb8-7"></a>  handle_error<span class="op">([](</span><span class="kw">auto</span> e<span class="op">){</span></span>
+<span id="cb8-7"><a href="#cb8-7"></a>  let_error<span class="op">([](</span><span class="kw">auto</span> e<span class="op">){</span></span>
 <span id="cb8-8"><a href="#cb8-8"></a>   <span class="cf">return</span> just<span class="op">(</span><span class="dv">5</span><span class="op">)</span>;<span class="op">}))</span>;</span></code></pre></div>
 <h1 id="impact-on-the-standard-library"><span class="header-section-number">3</span> Impact on the standard library<a href="#impact-on-the-standard-library" class="self-link"></a></h1>
 <h2 id="sender-adapter-objects"><span class="header-section-number">3.1</span> Sender adapter objects<a href="#sender-adapter-objects" class="self-link"></a></h2>
@@ -1036,26 +1037,26 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
    * If `set_error(r, e)` is called, passes `e` to `execution::set_error(output_receiver, e)`.
    * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
 -->
-<h2 id="executionhandle_error"><span class="header-section-number">3.8</span> execution::handle_error<a href="#executionhandle_error" class="self-link"></a></h2>
+<h2 id="executionlet_error"><span class="header-section-number">3.8</span> execution::let_error<a href="#executionlet_error" class="self-link"></a></h2>
 <h3 id="overview-6"><span class="header-section-number">3.8.1</span> Overview<a href="#overview-6" class="self-link"></a></h3>
-<p><code>handle_error</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that, on error propagation, keeps the error result of the incoming sender alive for the duration of the <code>sender</code> returned by the invocable and makes that value available to the invocable.</p>
+<p><code>let_error</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that, on error propagation, keeps the error result of the incoming sender alive for the duration of the <code>sender</code> returned by the invocable and makes that value available to the invocable.</p>
 <p>Signature:</p>
 <div class="sourceCode" id="cb26"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb26-1"><a href="#cb26-1"></a><span class="kw">template</span> <span class="op">&lt;</span>execution<span class="op">::</span>sender S, std<span class="op">::</span>invocable F<span class="op">&gt;</span></span>
-<span id="cb26-2"><a href="#cb26-2"></a>see<span class="op">-</span>below handle_error<span class="op">(</span>S s, F f<span class="op">)</span>;</span></code></pre></div>
+<span id="cb26-2"><a href="#cb26-2"></a>see<span class="op">-</span>below let_error<span class="op">(</span>S s, F f<span class="op">)</span>;</span></code></pre></div>
 <p><em>[ Example:</em></p>
 <div class="sourceCode" id="cb27"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb27-1"><a href="#cb27-1"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">float</span><span class="op">&gt;</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
 <span id="cb27-2"><a href="#cb27-2"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span></span>
 <span id="cb27-3"><a href="#cb27-3"></a>  transform<span class="op">([](</span><span class="dt">int</span> v<span class="op">){</span><span class="cf">throw</span> <span class="fl">2.0</span><span class="bu">f</span>;<span class="op">})</span> <span class="op">|</span></span>
-<span id="cb27-4"><a href="#cb27-4"></a>  handle_error<span class="op">([](</span><span class="dt">float</span> e<span class="op">){</span><span class="cf">return</span> just<span class="op">(</span>e<span class="op">+</span><span class="dv">1</span><span class="op">)</span>;<span class="op">}))</span>;</span>
+<span id="cb27-4"><a href="#cb27-4"></a>  let_error<span class="op">([](</span><span class="dt">float</span> e<span class="op">){</span><span class="cf">return</span> just<span class="op">(</span>e<span class="op">+</span><span class="dv">1</span><span class="op">)</span>;<span class="op">}))</span>;</span>
 <span id="cb27-5"><a href="#cb27-5"></a><span class="co">// r==3.0f</span></span></code></pre></div>
 <h3 id="wording-6"><span class="header-section-number">3.8.2</span> Wording<a href="#wording-6" class="self-link"></a></h3>
-<p>The name <code>execution::handle_error</code> denotes a customization point object. For some subexpressions <code>s</code> and <code>f</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code> and <code>decltype((f))</code> is <code>F</code>. The expression <code>execution::handle_error(s, f)</code> is expression-equivalent to:</p>
+<p>The name <code>execution::let_error</code> denotes a customization point object. For some subexpressions <code>s</code> and <code>f</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code> and <code>decltype((f))</code> is <code>F</code>. The expression <code>execution::let_error(s, f)</code> is expression-equivalent to:</p>
 <ul>
-<li>s.handle_error(f), if that expression is valid, if <code>s</code> satisfies <code>sender</code>.</li>
-<li>Otherwise, <code>handle_error(s, f)</code>, if that expression is valid,, if <code>s</code> satisfies <code>sender</code> with overload resolution performed in a context that includes the declaration</li>
+<li>s.let_error(f), if that expression is valid, if <code>s</code> satisfies <code>sender</code>.</li>
+<li>Otherwise, <code>let_error(s, f)</code>, if that expression is valid,, if <code>s</code> satisfies <code>sender</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
-<div class="sourceCode" id="cb28"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb28-1"><a href="#cb28-1"></a>    void handle_error() = delete;</span></code></pre></div>
-<p>and that does not include a declaration of <code>execution::handle_error</code>. * Otherwise returns a sender that when <code>connect()</code> is called on it constructs a <code>receiver</code>, <code>r</code>, and passes that receiver to <code>execution::connect(S, r)</code> returning an <code>operation_state</code> <code>os</code> such that When some <code>output_receiver</code> has been passed to <code>connect</code> on the returned <code>sender</code> returning some <code>operation_state</code> <code>os2</code>:</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb28-1"><a href="#cb28-1"></a>    void let_error() = delete;</span></code></pre></div>
+<p>and that does not include a declaration of <code>execution::let_error</code>. * Otherwise returns a sender that when <code>connect()</code> is called on it constructs a <code>receiver</code>, <code>r</code>, and passes that receiver to <code>execution::connect(S, r)</code> returning an <code>operation_state</code> <code>os</code> such that When some <code>output_receiver</code> has been passed to <code>connect</code> on the returned <code>sender</code> returning some <code>operation_state</code> <code>os2</code>:</p>
 <ul>
 <li><p>If <code>set_value(r, ts...)</code> is called, for some potentially empty list of values <code>ts...</code>, passes <code>ts...</code> to <code>set_value(output_receiver, ts...)</code>.</p></li>
 <li><p>If <code>set_error(r, e)</code> is called, calls <code>std::invoke(f, e)</code> to return some <code>invoke_result</code>, and calls <code>execution::start(execution::connect(invoke_result, output_receiver))</code>.</p></li>
@@ -1074,7 +1075,7 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <li>If <code>set_done(r)</code> is called, calls <code>set_done(output_receiver)</code>.</li>
 </ul>
 <p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p></li>
-<li><p>Otherwise the expression <code>execution::handle_error(s, f)</code> is ill-formed.</p></li>
+<li><p>Otherwise the expression <code>execution::let_error(s, f)</code> is ill-formed.</p></li>
 </ul>
 <h2 id="executionshare"><span class="header-section-number">3.9</span> execution::share<a href="#executionshare" class="self-link"></a></h2>
 <h3 id="overview-7"><span class="header-section-number">3.9.1</span> Overview<a href="#overview-7" class="self-link"></a></h3>
@@ -1114,27 +1115,27 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 </ul></li>
 <li><p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p></li>
 </ul>
-<h2 id="executionlet"><span class="header-section-number">3.10</span> execution::let<a href="#executionlet" class="self-link"></a></h2>
+<h2 id="executionlet_value"><span class="header-section-number">3.10</span> execution::let_value<a href="#executionlet_value" class="self-link"></a></h2>
 <h3 id="overview-8"><span class="header-section-number">3.10.1</span> Overview<a href="#overview-8" class="self-link"></a></h3>
-<p><code>let</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that keeps the completion result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.</p>
+<p><code>let_value</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that keeps the completion result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.</p>
 <p>Signature:</p>
 <div class="sourceCode" id="cb32"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb32-1"><a href="#cb32-1"></a><span class="kw">template</span> <span class="op">&lt;</span>execution<span class="op">::</span>sender S, std<span class="op">::</span>invocable F<span class="op">&gt;</span></span>
-<span id="cb32-2"><a href="#cb32-2"></a>see<span class="op">-</span>below let<span class="op">(</span>S s, F f<span class="op">)</span>;</span></code></pre></div>
+<span id="cb32-2"><a href="#cb32-2"></a>see<span class="op">-</span>below let_value<span class="op">(</span>S s, F f<span class="op">)</span>;</span></code></pre></div>
 <p>where <code>S&lt;T...&gt;</code> and <code>S&lt;T2&gt;</code> are implementation-defined types that is represent senders that send a value of type list <code>T...</code> or <code>T2</code> respectively in their value channels. Note that in the general case there may be many types <code>T...</code> for a given <code>sender</code>, in which case the invocable may have to represent an overload set.</p>
 <p><em>[ Example:</em></p>
 <div class="sourceCode" id="cb33"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb33-1"><a href="#cb33-1"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
 <span id="cb33-2"><a href="#cb33-2"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span></span>
-<span id="cb33-3"><a href="#cb33-3"></a>  let<span class="op">([](</span><span class="dt">int</span><span class="op">&amp;</span> let_v<span class="op">){</span></span>
+<span id="cb33-3"><a href="#cb33-3"></a>  let_value<span class="op">([](</span><span class="dt">int</span><span class="op">&amp;</span> let_v<span class="op">){</span></span>
 <span id="cb33-4"><a href="#cb33-4"></a>    <span class="cf">return</span> just<span class="op">(</span><span class="dv">4</span><span class="op">)</span> <span class="op">|</span> transform<span class="op">([&amp;](</span><span class="dt">int</span> v<span class="op">){</span><span class="cf">return</span> let_v <span class="op">+</span> v;<span class="op">})))</span>;</span>
 <span id="cb33-5"><a href="#cb33-5"></a><span class="co">// r==7</span></span></code></pre></div>
 <h3 id="wording-8"><span class="header-section-number">3.10.2</span> Wording<a href="#wording-8" class="self-link"></a></h3>
-<p>The name <code>execution::let</code> denotes a customization point object. For some subexpressions <code>s</code> and <code>f</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code> and <code>decltype((f))</code> is <code>F</code>. The expression <code>execution::let(s, f)</code> is expression-equivalent to:</p>
+<p>The name <code>execution::let_value</code> denotes a customization point object. For some subexpressions <code>s</code> and <code>f</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code> and <code>decltype((f))</code> is <code>F</code>. The expression <code>execution::let_value(s, f)</code> is expression-equivalent to:</p>
 <ul>
-<li>s.let(f), if that expression is valid, if <code>s</code> satisfies <code>sender</code> and <code>f</code> satisfies <code>invocable</code>.</li>
-<li>Otherwise, <code>let(s, f)</code>, if that expression is valid,, if <code>s</code> satisfies <code>sender</code> and <code>f</code> satisfies <code>invocable</code> with overload resolution performed in a context that includes the declaration</li>
+<li>s.let_value(f), if that expression is valid, if <code>s</code> satisfies <code>sender</code> and <code>f</code> satisfies <code>invocable</code>.</li>
+<li>Otherwise, <code>let_value(s, f)</code>, if that expression is valid,, if <code>s</code> satisfies <code>sender</code> and <code>f</code> satisfies <code>invocable</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
-<div class="sourceCode" id="cb34"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb34-1"><a href="#cb34-1"></a>    void let() = delete;</span></code></pre></div>
-<p>and that does not include a declaration of <code>execution::let</code>. * Otherwise, returns a <code>sender</code>, <code>s2</code>, that, when <code>connect(s, output_receiver)</code> is called on <code>s2</code>, for some <code>output_receiver</code>, returning an <code>operation_state</code> <code>os2</code>, constructs a <code>receiver</code> <code>r</code> and passes that receiver to <code>connect(s, r)</code>, returning <code>operation_state</code> object <code>os</code> and stores <code>os</code> as a subobject of <code>os2</code>:</p>
+<div class="sourceCode" id="cb34"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb34-1"><a href="#cb34-1"></a>    void let_value() = delete;</span></code></pre></div>
+<p>and that does not include a declaration of <code>execution::let_value</code>. * Otherwise, returns a <code>sender</code>, <code>s2</code>, that, when <code>connect(s, output_receiver)</code> is called on <code>s2</code>, for some <code>output_receiver</code>, returning an <code>operation_state</code> <code>os2</code>, constructs a <code>receiver</code> <code>r</code> and passes that receiver to <code>connect(s, r)</code>, returning <code>operation_state</code> object <code>os</code> and stores <code>os</code> as a subobject of <code>os2</code>:</p>
 <ul>
 <li>If <code>set_value(r, ts...)</code> is called:
 <ul>
@@ -1148,7 +1149,7 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 </ul>
 <p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p>
 <ul>
-<li>Otherwise the expression <code>execution::let(s, f)</code> is ill-formed.</li>
+<li>Otherwise the expression <code>execution::let_value(s, f)</code> is ill-formed.</li>
 </ul>
 <h1 id="customization-and-example"><span class="header-section-number">4</span> Customization and example<a href="#customization-and-example" class="self-link"></a></h1>
 <p>Each of these algorithms, apart from <code>just</code>, is customizable on one or more <code>sender</code> implementations. This allows full optimization. For example, in the following simple work chain:</p>
@@ -1157,15 +1158,15 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <span id="cb35-3"><a href="#cb35-3"></a>         transform([](int a){return a+1;}) |              // s3</span>
 <span id="cb35-4"><a href="#cb35-4"></a>         transform([](int a){return a*2;}) |              // s4</span>
 <span id="cb35-5"><a href="#cb35-5"></a>         on(scheduler2) |                                 // s5</span>
-<span id="cb35-6"><a href="#cb35-6"></a>         handle_error([](auto e){return just(3);});       // s6</span>
+<span id="cb35-6"><a href="#cb35-6"></a>         let_error([](auto e){return just(3);});       // s6</span>
 <span id="cb35-7"><a href="#cb35-7"></a>std::optional&lt;int&gt; r = sync_wait(s);</span></code></pre></div>
 <p>The result of <code>s1</code> might be a <code>just_sender&lt;int&gt;</code> implemented by the standard library vendor.</p>
 <p><code>on(just_sender&lt;int&gt;, scheduler1)</code> has no customization defined, and this expression returns an <code>scheduler1_on_sender&lt;int&gt;</code> that is a custom type from the author of <code>scheduler1</code>, it will call <code>submit</code> on the result of <code>s1</code>.</p>
 <p><code>s3</code> calls <code>transform(scheduler1_on_sender&lt;int&gt;, [](int a){return a+1;})</code> for which the author of <code>scheduler1</code> may have written a customization. The <code>scheduler1_on_sender</code> has stashed the value somewhere and build some work queue in the background. We do not see <code>submit</code> called at this point, it uses a behind-the-scenes implementation to schedule the work on the work queue. An <code>scheduler1_transform_sender&lt;int&gt;</code> is returned.</p>
 <p><code>s4</code> implements a very similar customization, and again does not call <code>submit</code>. There need be no synchronization in this chain.</p>
 <p>At <code>s5</code>, however, the implementor of <code>scheduler2</code> does not know about the implementation of <code>scheduler1</code>. At this point it will call <code>submit</code> on the incoming <code>scheduler1_transform_sender</code>, forcing <code>scheduler1</code>’s sender to implement the necessary synchronization to map back from the behind-the-scenes optimal queue to something interoperable with another vendor’s implementation.</p>
-<p><code>handle_error</code> at <code>s6</code> will be generic in terms of <code>submit</code> and not do anything special, this uses the default implementation in terms of <code>submit</code>. <code>sync_wait</code> similarly constructs a <code>condition_variable</code> and a temporary <code>int</code>, submits a <code>receiver</code> to <code>s</code> and waits on the <code>condition_variable</code>, blocking the calling thread.</p>
-<p><code>r</code> is of course the value 8 at this point assuming that neither scheduler triggered an error. If there were to be a scheduling error, then that error would propagate to <code>handle_error</code> and <code>r</code> would subsequently have the value <code>3</code>.</p>
+<p><code>let_error</code> at <code>s6</code> will be generic in terms of <code>submit</code> and not do anything special, this uses the default implementation in terms of <code>submit</code>. <code>sync_wait</code> similarly constructs a <code>condition_variable</code> and a temporary <code>int</code>, submits a <code>receiver</code> to <code>s</code> and waits on the <code>condition_variable</code>, blocking the calling thread.</p>
+<p><code>r</code> is of course the value 8 at this point assuming that neither scheduler triggered an error. If there were to be a scheduling error, then that error would propagate to <code>let_error</code> and <code>r</code> would subsequently have the value <code>3</code>.</p>
 <h1 id="potential-future-changes"><span class="header-section-number">5</span> Potential future changes<a href="#potential-future-changes" class="self-link"></a></h1>
 <h2 id="when_alls-context"><span class="header-section-number">5.1</span> when_all’s context<a href="#when_alls-context" class="self-link"></a></h2>
 <p>Based on experience in Facebook’s codebase, we believe that <code>when_all</code> should return a sender that requires an executor-provider and uses forward progress delegation as discussed in <span class="citation" data-cites="P1898R1">[<a href="#ref-P1898R1" role="doc-biblioref">P1898R1</a>]</span>. The returned sender should complete on the delegated context. This removes the ambiguity about which context it completes on.</p>
