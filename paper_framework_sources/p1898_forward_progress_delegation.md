@@ -299,9 +299,8 @@ May be used to restrict the `connect` operation on a `sender` to require an `sch
 ```
 template<class R>
 concept scheduler_provider =
-  receiver<R> &&
-  requires(R&& r) {
-    { execution::get_scheduler((R&&) r) } noexcept;
+  requires(SP&& sp) {
+    { execution::get_scheduler((SP&&) sp) -> scheduler } noexcept;
   };
 ```
 
@@ -312,10 +311,10 @@ When applied to a `scheduler_provider`, if supported, will return a `scheduler` 
 ### Wording
 The name `execution::get_scheduler` denotes a customization point object.
 For some subexpression `sp`, let `SP` be a type such that `decltype((sp))` is `SP`
-The expression `execution::get_scheduler(r)` is expression-equivalent to:
+The expression `execution::get_scheduler(sp)` is expression-equivalent to:
 
- * `sp.get_scheduler()` if that expression is valid, if `SP` satisfies `scheduler_provider`
- * Otherwise, `get_scheduler(sp)` if that expression is valid, and if `SP` satisfies `scheduler_provider`, with overload resolution performed in a context that includes the declaration
+ * `sp.get_scheduler()` if that expression is valid and if the expression return type satisfies `scheduler`
+ * Otherwise, `get_scheduler(sp)` if that expression is valid, if the expression return type satisfies `scheduler` with overload resolution performed in a context that includes the declaration
  ```
       void get_scheduler() = delete;
  ```
@@ -332,15 +331,18 @@ A `scheduler` representing that execution context will be made available from th
  * Otherwise:
    * Constructs an execution context owned by the calling thread such that tasks enqueued into that context will be processed by the calling thread.
    * Constructs a `scheduler`, `sch` representing that execution context.
-   * Constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes that callback to `execution::connect(s, r)` such that:
+   * Constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes that callback to `execution::connect(s, r)` returning an `operation_state` `os` such that:
      * `r` satisfies `scheduler_provider`.
      * `execution::get_scheduler(r)` will return `sch`.
-     * If `set_value` is called on `r`, the call to `sync_wait` will return the passed value.
-     * If `set_error` is called on `r`, the call to `sync_wait` will throw the passed value as an exception.
-     * If `set_done` is called on `r`, the call to `sync_wait` will throw a cancellation exception.
+     * If the operation completes by calling `set_value(r, t)` then `sync_wait()` will return a value, `x`, of type `remove_cvref_t<decltype(t)>`.
+     * If the operation completes by calling `set_value(r)` then `sync_wait()` will return `void`.
+     * If the operation completes by calling `set_error(r, e)` then `sync_wait()` calls `std::rethrow_exception(e)` if `decltype(e)` is `std::exception_ptr` or `throw e;` otherwise.
+     * If the operation completes by calling `set_done(r)` then `sync_wait()` will call `std::terminate`.
+   * Calls `execution::start(os)`.
    * Waits on the synchronization primitive to block on completion of `s`, driving the execution context as necessary until `set_value`, `set_error` or `set_done` is called on `r` .
 
 The thread that invokes `sync_wait` will block with forward progress delegation on completion of the work where supported by the implementation of `s`.
+
 
 ## execution::on modifications
 ### Summary
