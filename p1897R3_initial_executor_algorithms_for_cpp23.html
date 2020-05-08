@@ -454,6 +454,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <li>Renamed <code>let</code> to <code>let_value</code> for naming consistency.</li>
 <li>Updated to use P0443R13 as a baseline.</li>
 <li>Improves the wording to be closer to mergable wording and less pseudowording.</li>
+<li>Modified <code>sync_wait</code> to terminate on done rather than throwing.</li>
 </ul>
 <h2 id="differences-between-r1-and-r2"><span class="header-section-number">1.2</span> Differences between R1 and R2<a href="#differences-between-r1-and-r2" class="self-link"></a></h2>
 <ul>
@@ -516,7 +517,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 </ul></li>
 <li><code>sync_wait(s)</code>
 <ul>
-<li>blocks and returns a <code>std::optional</code> of the value type of the sender, throwing on error, and an empty <code>std::optional</code> on done.</li>
+<li>blocks and returns a <code>T</code> of the value type of the sender, throwing on error, and terminates on done.</li>
 </ul></li>
 <li><code>when_all(s...)</code>
 <ul>
@@ -552,7 +553,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <span id="cb1-6"><a href="#cb1-6"></a>    std<span class="op">::</span>move<span class="op">(</span>just_sender<span class="op">)</span>,</span>
 <span id="cb1-7"><a href="#cb1-7"></a>    <span class="op">[](</span><span class="dt">int</span> a<span class="op">){</span><span class="cf">return</span> a<span class="op">+</span><span class="fl">0.5</span><span class="bu">f</span>;<span class="op">})</span>;</span>
 <span id="cb1-8"><a href="#cb1-8"></a></span>
-<span id="cb1-9"><a href="#cb1-9"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> result <span class="op">=</span>              <span class="co">// value: 3.5</span></span>
+<span id="cb1-9"><a href="#cb1-9"></a><span class="dt">int</span> result <span class="op">=</span>              <span class="co">// value: 3.5</span></span>
 <span id="cb1-10"><a href="#cb1-10"></a>  sync_wait<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>transform_sender<span class="op">))</span>;</span></code></pre></div>
 <p>In this very simple example we:</p>
 <ul>
@@ -561,7 +562,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <li>block for the resulting value and assign the <code>float</code> value <code>3.5</code> to <code>result</code>.</li>
 </ul>
 <p>Using <code>operator|</code> as in ranges to remove the need to pass arguments around, we can represent this as:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb2-1"><a href="#cb2-1"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">float</span><span class="op">&gt;</span> f <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<div class="sourceCode" id="cb2"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb2-1"><a href="#cb2-1"></a><span class="dt">float</span> f <span class="op">=</span> sync_wait<span class="op">(</span></span>
 <span id="cb2-2"><a href="#cb2-2"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span> transform<span class="op">([](</span><span class="dt">int</span> a<span class="op">){</span><span class="cf">return</span> a<span class="op">+</span><span class="fl">0.5</span><span class="bu">f</span>;<span class="op">}))</span>;</span></code></pre></div>
 <!--
 #### Using indexed_for
@@ -622,7 +623,7 @@ vector<int> result_vec = sync_wait(
 <span id="cb3-12"><a href="#cb3-12"></a>    <span class="cf">return</span> vec;</span>
 <span id="cb3-13"><a href="#cb3-13"></a>  <span class="op">})</span></span>
 <span id="cb3-14"><a href="#cb3-14"></a></span>
-<span id="cb3-15"><a href="#cb3-15"></a>std<span class="op">::</span>optional<span class="op">&lt;</span>vector<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;&gt;</span> result <span class="op">=</span>       <span class="co">// value: {3, 4, 5}</span></span>
+<span id="cb3-15"><a href="#cb3-15"></a>vector<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> result <span class="op">=</span>       <span class="co">// value: {3, 4, 5}</span></span>
 <span id="cb3-16"><a href="#cb3-16"></a>  sync_wait<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>transform_sender<span class="op">))</span>;</span></code></pre></div>
 <p>This demonstrates simple joining of senders:</p>
 <ul>
@@ -633,12 +634,12 @@ vector<int> result_vec = sync_wait(
 <li>block for the resulting value and assign vector {3, 4, 5} to <code>result</code></li>
 </ul>
 <p>Using <code>operator|</code> as in ranges to remove the need to pass arguments around, we can represent this as:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb4-1"><a href="#cb4-1"></a>std<span class="op">::</span>optional<span class="op">&lt;</span>vector<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;&gt;</span> result_vec <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<div class="sourceCode" id="cb4"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb4-1"><a href="#cb4-1"></a>vector<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> result_vec <span class="op">=</span> sync_wait<span class="op">(</span></span>
 <span id="cb4-2"><a href="#cb4-2"></a>  when_all<span class="op">(</span>just<span class="op">(</span>std<span class="op">::</span>vector<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;{</span><span class="dv">3</span>, <span class="dv">4</span>, <span class="dv">5</span><span class="op">}</span>, <span class="dv">10</span><span class="op">)</span>, just<span class="op">(</span><span class="fl">20.0</span><span class="bu">f</span><span class="op">))</span> <span class="op">|</span></span>
 <span id="cb4-3"><a href="#cb4-3"></a>  transform<span class="op">([](</span>vector<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> vec, <span class="dt">int</span> <span class="co">/*i*/</span>, <span class="dt">float</span> <span class="co">/*f*/</span><span class="op">){</span><span class="cf">return</span> vec;<span class="op">}))</span>;</span></code></pre></div>
 <h4 id="with-exception"><span class="header-section-number">2.2.0.3</span> With exception<a href="#with-exception" class="self-link"></a></h4>
 <p>A simple example showing how an exception that leaks out of a transform may propagate and be thrown from sync_wait.</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb5-1"><a href="#cb5-1"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> result <span class="op">=</span> <span class="dv">0</span>;</span>
+<div class="sourceCode" id="cb5"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb5-1"><a href="#cb5-1"></a><span class="dt">int</span> result <span class="op">=</span> <span class="dv">0</span>;</span>
 <span id="cb5-2"><a href="#cb5-2"></a><span class="cf">try</span> <span class="op">{</span></span>
 <span id="cb5-3"><a href="#cb5-3"></a>  <span class="kw">auto</span> just_sender <span class="op">=</span> just<span class="op">(</span><span class="dv">3</span><span class="op">)</span>;</span>
 <span id="cb5-4"><a href="#cb5-4"></a>  <span class="kw">auto</span> via_sender <span class="op">=</span> via<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>just_sender<span class="op">)</span>, scheduler1<span class="op">)</span>;</span>
@@ -663,7 +664,7 @@ vector<int> result_vec = sync_wait(
 <li>handle the exception</li>
 </ul>
 <p>As before, using <code>operator|</code> as in ranges to remove the need to pass arguments around, we can represent this more cleanly:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb6-1"><a href="#cb6-1"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> result <span class="op">=</span> <span class="dv">0</span>;</span>
+<div class="sourceCode" id="cb6"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb6-1"><a href="#cb6-1"></a><span class="dt">int</span> result <span class="op">=</span> <span class="dv">0</span>;</span>
 <span id="cb6-2"><a href="#cb6-2"></a><span class="cf">try</span> <span class="op">{</span></span>
 <span id="cb6-3"><a href="#cb6-3"></a> result <span class="op">=</span> sync_wait<span class="op">(</span></span>
 <span id="cb6-4"><a href="#cb6-4"></a>    just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span></span>
@@ -700,7 +701,7 @@ vector<int> result_vec = sync_wait(
 </ul>
 <p>As before, using <code>operator|</code> as in ranges to remove the need to pass arguments around, we can represent this more cleanly:</p>
 <div class="sourceCode" id="cb8"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb8-1"><a href="#cb8-1"></a><span class="kw">auto</span> s <span class="op">=</span> ;</span>
-<span id="cb8-2"><a href="#cb8-2"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> result <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<span id="cb8-2"><a href="#cb8-2"></a><span class="dt">int</span> result <span class="op">=</span> sync_wait<span class="op">(</span></span>
 <span id="cb8-3"><a href="#cb8-3"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span></span>
 <span id="cb8-4"><a href="#cb8-4"></a>  via<span class="op">(</span>scheduler1<span class="op">)</span> <span class="op">|</span></span>
 <span id="cb8-5"><a href="#cb8-5"></a>  transform<span class="op">([](</span><span class="dt">float</span> a<span class="op">){</span><span class="cf">throw</span> <span class="dv">2</span>;<span class="op">})</span> <span class="op">|</span></span>
@@ -758,7 +759,7 @@ If `execution::is_noexcept_sender(s)` returns true for a `sender` `s` then it is
 <span id="cb9-6"><a href="#cb9-6"></a><span class="kw">template</span> <span class="op">&lt;</span>movable<span class="op">-</span>value<span class="op">...</span> Ts<span class="op">&gt;</span></span>
 <span id="cb9-7"><a href="#cb9-7"></a>see<span class="op">-</span>below just<span class="op">(</span>Ts<span class="op">&amp;&amp;...</span> ts<span class="op">)</span> <span class="kw">noexcept</span><span class="op">(</span>see<span class="op">-</span>below<span class="op">)</span>;</span></code></pre></div>
 <p><em>[ Example:</em></p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb10-1"><a href="#cb10-1"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just<span class="op">(</span><span class="dv">3</span><span class="op">))</span>;</span>
+<div class="sourceCode" id="cb10"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb10-1"><a href="#cb10-1"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just<span class="op">(</span><span class="dv">3</span><span class="op">))</span>;</span>
 <span id="cb10-2"><a href="#cb10-2"></a><span class="co">// r==3</span></span></code></pre></div>
 <p><em>- end example]</em></p>
 <h3 id="wording"><span class="header-section-number">3.2.2</span> Wording<a href="#wording" class="self-link"></a></h3>
@@ -776,7 +777,7 @@ If `execution::is_noexcept_sender(s)` returns true for a `sender` `s` then it is
 <span id="cb11-2"><a href="#cb11-2"></a>see<span class="op">-</span>below just_on<span class="op">(</span>Sch sch, Ts<span class="op">&amp;&amp;...</span> ts<span class="op">)</span> <span class="kw">noexcept</span><span class="op">(</span>see<span class="op">-</span>below<span class="op">)</span>;</span></code></pre></div>
 <p><em>[ Example:</em></p>
 <div class="sourceCode" id="cb12"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb12-1"><a href="#cb12-1"></a>MyScheduler s;</span>
-<span id="cb12-2"><a href="#cb12-2"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just_on<span class="op">(</span>s, <span class="dv">3</span><span class="op">))</span>;</span>
+<span id="cb12-2"><a href="#cb12-2"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just_on<span class="op">(</span>s, <span class="dv">3</span><span class="op">))</span>;</span>
 <span id="cb12-3"><a href="#cb12-3"></a><span class="co">// r==3</span></span></code></pre></div>
 <p><em>- end example]</em></p>
 <h3 id="wording-1"><span class="header-section-number">3.3.2</span> Wording<a href="#wording-1" class="self-link"></a></h3>
@@ -803,14 +804,14 @@ The expression `execution::just_error(e)` returns a sender, `s` wrapping the err
  * If moving of `e` throws, then will catch the exception and call `execution::set_error(r, e)` with the caught `exception_ptr`. -->
 <h2 id="executionsync_wait"><span class="header-section-number">3.4</span> execution::sync_wait<a href="#executionsync_wait" class="self-link"></a></h2>
 <h3 id="overview-2"><span class="header-section-number">3.4.1</span> Overview<a href="#overview-2" class="self-link"></a></h3>
-<p>Blocks the calling thread to wait for the passed sender to complete. Returns a <code>std::optional</code> of the value (or of <code>std::monostate</code> if the sender carries no value), throws if an exception is propagated and returns an empty <code>std::optional</code> on cancellation. On propagation of the <code>set_done()</code> signal, returns an empty optional.</p>
+<p>Blocks the calling thread to wait for the passed sender to complete. Returns <code>T</code> when passed a <code>typed_sender</code> that sends a <code>T</code> on the value channel, where <code>T</code> may be <code>void</code>, throws if an exception is propagated and calls <code>std::terminate</code> on propagation of the <code>set_done()</code> signal.</p>
 <div class="sourceCode" id="cb14"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb14-1"><a href="#cb14-1"></a><span class="kw">template</span> <span class="op">&lt;</span>execution<span class="op">::</span>typed_sender S<span class="op">&gt;</span></span>
 <span id="cb14-2"><a href="#cb14-2"></a>see<span class="op">-</span>below sync_wait<span class="op">(</span>S<span class="op">&amp;&amp;</span> s<span class="op">)</span>;</span>
 <span id="cb14-3"><a href="#cb14-3"></a><span class="kw">template</span> <span class="op">&lt;</span><span class="kw">class</span> ValueType, execution<span class="op">::</span>sender S<span class="op">&gt;</span></span>
-<span id="cb14-4"><a href="#cb14-4"></a>std<span class="op">::</span>optional<span class="op">&lt;</span>ValueType<span class="op">&gt;</span> sync_wait_r<span class="op">(</span>S<span class="op">&amp;&amp;</span> s<span class="op">)</span>;</span></code></pre></div>
+<span id="cb14-4"><a href="#cb14-4"></a>ValueType sync_wait_r<span class="op">(</span>S<span class="op">&amp;&amp;</span> s<span class="op">)</span>;</span></code></pre></div>
 <p><em>[ Example:</em></p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb15-1"><a href="#cb15-1"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">int</span><span class="op">&gt;</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just<span class="op">(</span><span class="dv">3</span><span class="op">))</span>;</span>
-<span id="cb15-2"><a href="#cb15-2"></a>std<span class="op">::</span>optional<span class="op">&lt;</span><span class="dt">float</span><span class="op">&gt;</span> r <span class="op">=</span> sync_wait<span class="op">&lt;</span><span class="dt">float</span><span class="op">&gt;(</span>just<span class="op">(</span><span class="fl">3.5</span><span class="bu">f</span><span class="op">))</span>;</span>
+<div class="sourceCode" id="cb15"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb15-1"><a href="#cb15-1"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span>just<span class="op">(</span><span class="dv">3</span><span class="op">))</span>;</span>
+<span id="cb15-2"><a href="#cb15-2"></a><span class="dt">float</span> r <span class="op">=</span> sync_wait<span class="op">&lt;</span><span class="dt">float</span><span class="op">&gt;(</span>just<span class="op">(</span><span class="fl">3.5</span><span class="bu">f</span><span class="op">))</span>;</span>
 <span id="cb15-3"><a href="#cb15-3"></a><span class="co">// r==3</span></span></code></pre></div>
 <p><em>- end example]</em></p>
 <h3 id="wording-2"><span class="header-section-number">3.4.2</span> Wording<a href="#wording-2" class="self-link"></a></h3>
@@ -824,10 +825,10 @@ The expression `execution::just_error(e)` returns a sender, `s` wrapping the err
 <ul>
 <li><p>Otherwise constructs a <code>receiver</code>, <code>r</code> over an implementation-defined synchronization primitive and passes <code>r</code> to <code>execution::connect(s, r)</code> returning some <code>operation_state</code> <code>os</code>. Waits on the synchronization primitive to block on completion of <code>s</code>.</p>
 <ul>
-<li>If the operation completes by calling <code>set_value(r, t)</code> then <code>sync_wait()</code> will return a value, <code>x</code>, of type <code>std::optional&lt;remove_cvref_t&lt;decltype(t)&gt;&gt;</code>, <code>X</code>, that is initialised as if by <code>X x; x.emplace(t);</code>.</li>
-<li>If the operation completes by calling <code>set_value(r)</code> then <code>sync_wait()</code> will return a value <code>x</code>, of type <code>std::optional&lt;std::monostate&gt;</code> that is initialised as if by <code>std::optional&lt;std::monostate&gt; x{std::in_place};</code>.</li>
+<li>If the operation completes by calling <code>set_value(r, t)</code> then <code>sync_wait()</code> will return a value, <code>x</code>, of type <code>remove_cvref_t&lt;decltype(t)&gt;</code>.</li>
+<li>If the operation completes by calling <code>set_value(r)</code> then <code>sync_wait()</code> will return <code>void</code>.</li>
 <li>If the operation completes by calling <code>set_error(r, e)</code> then <code>sync_wait()</code> calls <code>std::rethrow_exception(e)</code> if <code>decltype(e)</code> is <code>std::exception_ptr</code> or <code>throw e;</code> otherwise.</li>
-<li>If the operation completes by calling <code>set_done(r)</code> then <code>sync_wait()</code> will return a value <code>x</code>, of type <code>std::optional&lt;T&gt;</code> where <code>T</code> is consistent with the return type when the operation completes with <code>set_value</code> and that is initialised as if by <code>std::optional&lt;T&gt; x{};</code>.</li>
+<li>If the operation completes by calling <code>set_done(r)</code> then <code>sync_wait()</code> will call <code>std::terminate</code>.</li>
 </ul></li>
 </ul>
 <!--

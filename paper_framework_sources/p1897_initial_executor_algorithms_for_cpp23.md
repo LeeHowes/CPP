@@ -20,6 +20,7 @@ toc: false
  * Renamed `let` to `let_value` for naming consistency.
  * Updated to use P0443R13 as a baseline.
  * Improves the wording to be closer to mergable wording and less pseudowording.
+ * Modified `sync_wait` to terminate on done rather than throwing.
 
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
@@ -84,7 +85,7 @@ We propose immediately discussing the addition of the following algorithms:
  * `on(s, sch)`
    * returns a sender that propagates the value or error from `s` on `sch`'s execution context
  * `sync_wait(s)`
-   * blocks and returns a `std::optional` of the value type of the sender, throwing on error, and an empty `std::optional` on done.
+   * blocks and returns a `T` of the value type of the sender, throwing on error, and terminates on done.
  * `when_all(s...)`
    * returns a sender that completes when all Senders `s...` complete, propagating all values
  <!--* `indexed_for(s, policy, rng, f)`
@@ -116,7 +117,7 @@ auto transform_sender =  // sender_to<float>
     std::move(just_sender),
     [](int a){return a+0.5f;});
 
-std::optional<int> result =              // value: 3.5
+int result =              // value: 3.5
   sync_wait(std::move(transform_sender));
 ```
 
@@ -128,7 +129,7 @@ In this very simple example we:
 
 Using `operator|` as in ranges to remove the need to pass arguments around, we can represent this as:
 ```cpp
-std::optional<float> f = sync_wait(
+float f = sync_wait(
   just(3) | transform([](int a){return a+0.5f;}));
 ```
 
@@ -194,7 +195,7 @@ auto transform_sender(
     return vec;
   })
 
-std::optional<vector<int>> result =       // value: {3, 4, 5}
+vector<int> result =       // value: {3, 4, 5}
   sync_wait(std::move(transform_sender));
 ```
 
@@ -208,7 +209,7 @@ This demonstrates simple joining of senders:
 
 Using `operator|` as in ranges to remove the need to pass arguments around, we can represent this as:
 ```cpp
-std::optional<vector<int>> result_vec = sync_wait(
+vector<int> result_vec = sync_wait(
   when_all(just(std::vector<int>{3, 4, 5}, 10), just(20.0f)) |
   transform([](vector<int> vec, int /*i*/, float /*f*/){return vec;}));
 ```
@@ -217,7 +218,7 @@ std::optional<vector<int>> result_vec = sync_wait(
 A simple example showing how an exception that leaks out of a transform may propagate and be thrown from sync_wait.
 
 ```cpp
-std::optional<int> result = 0;
+int result = 0;
 try {
   auto just_sender = just(3);
   auto via_sender = via(std::move(just_sender), scheduler1);
@@ -246,7 +247,7 @@ In this example we:
 As before, using `operator|` as in ranges to remove the need to pass arguments around, we can represent this more cleanly:
 
 ```cpp
-std::optional<int> result = 0;
+int result = 0;
 try {
  result = sync_wait(
     just(3) |
@@ -291,7 +292,7 @@ In this example we:
  As before, using `operator|` as in ranges to remove the need to pass arguments around, we can represent this more cleanly:
 ```cpp
 auto s = ;
-std::optional<int> result = sync_wait(
+int result = sync_wait(
   just(3) |
   via(scheduler1) |
   transform([](float a){throw 2;}) |
@@ -365,7 +366,7 @@ see-below just(Ts&&... ts) noexcept(see-below);
 
 *[ Example:*
 ```cpp
-std::optional<int> r = sync_wait(just(3));
+int r = sync_wait(just(3));
 // r==3
 ```
 *- end example]*
@@ -395,7 +396,7 @@ see-below just_on(Sch sch, Ts&&... ts) noexcept(see-below);
 *[ Example:*
 ```cpp
 MyScheduler s;
-std::optional<int> r = sync_wait(just_on(s, 3));
+int r = sync_wait(just_on(s, 3));
 // r==3
 ```
 *- end example]*
@@ -433,20 +434,19 @@ The expression `execution::just_error(e)` returns a sender, `s` wrapping the err
 
 ### Overview
 Blocks the calling thread to wait for the passed sender to complete.
-Returns a `std::optional` of the value (or of `std::monostate` if the sender carries no value), throws if an exception is propagated and returns an empty `std::optional` on cancellation.
-On propagation of the `set_done()` signal, returns an empty optional.
+Returns `T` when passed a `typed_sender` that sends a `T` on the value channel, where `T` may be `void`, throws if an exception is propagated and calls `std::terminate` on propagation of the `set_done()` signal.
 
 ```cpp
 template <execution::typed_sender S>
 see-below sync_wait(S&& s);
 template <class ValueType, execution::sender S>
-std::optional<ValueType> sync_wait_r(S&& s);
+ValueType sync_wait_r(S&& s);
 ```
 
 *[ Example:*
 ```cpp
-std::optional<int> r = sync_wait(just(3));
-std::optional<float> r = sync_wait<float>(just(3.5f));
+int r = sync_wait(just(3));
+float r = sync_wait<float>(just(3.5f));
 // r==3
 ```
 *- end example]*
@@ -468,10 +468,10 @@ The expression `execution::sync_wait(s)` is expression-equivalent to:
  * Otherwise constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes `r` to `execution::connect(s, r)` returning some `operation_state` `os`.
    Waits on the synchronization primitive to block on completion of `s`.
 
-   * If the operation completes by calling `set_value(r, t)` then `sync_wait()` will return a value, `x`, of type `std::optional<remove_cvref_t<decltype(t)>>`, `X`, that is initialised as if by `X x; x.emplace(t);`.
-   * If the operation completes by calling `set_value(r)` then `sync_wait()` will return a value `x`, of type `std::optional<std::monostate>` that is initialised as if by `std::optional<std::monostate> x{std::in_place};`.
+   * If the operation completes by calling `set_value(r, t)` then `sync_wait()` will return a value, `x`, of type `remove_cvref_t<decltype(t)>`.
+   * If the operation completes by calling `set_value(r)` then `sync_wait()` will return `void`.
    * If the operation completes by calling `set_error(r, e)` then `sync_wait()` calls `std::rethrow_exception(e)` if `decltype(e)` is `std::exception_ptr` or `throw e;` otherwise.
-   * If the operation completes by calling `set_done(r)` then `sync_wait()` will return a value `x`, of type `std::optional<T>` where `T` is consistent with the return type when the operation completes with `set_value` and that is initialised as if by `std::optional<T> x{};`.
+   * If the operation completes by calling `set_done(r)` then `sync_wait()` will call `std::terminate`.
 
 
 <!--
