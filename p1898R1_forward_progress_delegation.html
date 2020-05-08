@@ -596,18 +596,17 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <h3 id="wording"><span class="header-section-number">6.1.2</span> Wording<a href="#wording" class="self-link"></a></h3>
 <div class="sourceCode" id="cb15"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb15-1"><a href="#cb15-1"></a>template&lt;class R&gt;</span>
 <span id="cb15-2"><a href="#cb15-2"></a>concept scheduler_provider =</span>
-<span id="cb15-3"><a href="#cb15-3"></a>  receiver&lt;R&gt; &amp;&amp;</span>
-<span id="cb15-4"><a href="#cb15-4"></a>  requires(R&amp;&amp; r) {</span>
-<span id="cb15-5"><a href="#cb15-5"></a>    { execution::get_scheduler((R&amp;&amp;) r) } noexcept;</span>
-<span id="cb15-6"><a href="#cb15-6"></a>  };</span></code></pre></div>
+<span id="cb15-3"><a href="#cb15-3"></a>  requires(SP&amp;&amp; sp) {</span>
+<span id="cb15-4"><a href="#cb15-4"></a>    { execution::get_scheduler((SP&amp;&amp;) sp) -&gt; scheduler } noexcept;</span>
+<span id="cb15-5"><a href="#cb15-5"></a>  };</span></code></pre></div>
 <h2 id="executionget_scheduler"><span class="header-section-number">6.2</span> execution::get_scheduler<a href="#executionget_scheduler" class="self-link"></a></h2>
 <h3 id="summary-1"><span class="header-section-number">6.2.1</span> Summary<a href="#summary-1" class="self-link"></a></h3>
 <p>When applied to a <code>scheduler_provider</code>, if supported, will return a <code>scheduler</code> that the <code>scheduler_provider</code> expects to be able to run delegated work safely, and that callers may assume they are able to delegate work to.</p>
 <h3 id="wording-1"><span class="header-section-number">6.2.2</span> Wording<a href="#wording-1" class="self-link"></a></h3>
-<p>The name <code>execution::get_scheduler</code> denotes a customization point object. For some subexpression <code>sp</code>, let <code>SP</code> be a type such that <code>decltype((sp))</code> is <code>SP</code> The expression <code>execution::get_scheduler(r)</code> is expression-equivalent to:</p>
+<p>The name <code>execution::get_scheduler</code> denotes a customization point object. For some subexpression <code>sp</code>, let <code>SP</code> be a type such that <code>decltype((sp))</code> is <code>SP</code> The expression <code>execution::get_scheduler(sp)</code> is expression-equivalent to:</p>
 <ul>
-<li><code>sp.get_scheduler()</code> if that expression is valid, if <code>SP</code> satisfies <code>scheduler_provider</code></li>
-<li>Otherwise, <code>get_scheduler(sp)</code> if that expression is valid, and if <code>SP</code> satisfies <code>scheduler_provider</code>, with overload resolution performed in a context that includes the declaration</li>
+<li><code>sp.get_scheduler()</code> if that expression is valid and if the expression return type satisfies <code>scheduler</code></li>
+<li>Otherwise, <code>get_scheduler(sp)</code> if that expression is valid, if the expression return type satisfies <code>scheduler</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
 <div class="sourceCode" id="cb16"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb16-1"><a href="#cb16-1"></a>     void get_scheduler() = delete;</span></code></pre></div>
 <p>and that does not include a declaration of <code>execution::get_scheduler</code>.</p>
