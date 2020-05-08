@@ -854,19 +854,20 @@ Note that `sync_wait` requires `S` to propagate a single value type.
 <ul>
 <li><p>Otherwise:</p>
 <ul>
-<li>Constructs an operation such that when <code>connect</code> is called with a <code>receiver</code> <code>output_receiver</code>:
+<li>Constructs a <code>sender</code> <code>s2</code> such that when <code>connect</code> is called with some <code>receiver</code> <code>output_receiver</code> as <code>execution::connect(s2, output_receiver)</code> resulting in an <code>operation_state</code> <code>os</code> which is stored as a subobject of the parent <code>operation_state</code>:
 <ul>
-<li>Constructs a receiver, <code>r</code> such that when <code>set_value</code>, <code>set_error</code> or <code>set_done</code> is called on <code>r</code>, the parameter is wrapped in a receiver <code>r2</code>.</li>
-<li><code>r2</code> is passed to <code>execution::connect(execution::schedule(sch), std::move(r2))</code>.</li>
-<li><code>execution::start</code> is passed the resulting <code>operation_state</code>.</li>
-<li>When <code>set_value</code> is called on <code>r2</code>, the stored value is forwarded to <code>output_receiver</code> on the appropriate choice of <code>set_value</code>, <code>set_error</code> or <code>set_done</code> to match the operation performed on <code>r</code>.</li>
+<li>Constructs a receiver, <code>r</code> and passes <code>r</code> to <code>execution::connect(s, r)</code> resulting in an operation state <code>ros</code>, which is stored as a subobject of <code>os</code> such that:</li>
+<li>When <code>set_value</code>, <code>set_error</code> or <code>set_done</code> is called on <code>r</code>, the parameter is copied and stored as a subobject of a receiver <code>r2</code> and <code>execution::connect(execution::schedule(sch), std::move(r2))</code> results in an <code>operation_state</code> <code>os2</code> which is stored as a subobject of <code>os</code> such that:
+<ul>
+<li>When <code>set_value</code> is called on <code>r2</code>, <code>os2</code>’s destructor will be called, the stored value is forwarded to <code>output_receiver</code> on the appropriate choice of <code>set_value</code>, <code>set_error</code> or <code>set_done</code> to match the operation performed on <code>r</code>.</li>
 <li>When <code>set_error</code> or <code>set_done</code> is called on <code>r2</code> the parameters propagate to <code>output_receiver</code>.</li>
-<li>Passes <code>r</code> to <code>execution::connect(s, r)</code> resulting in an operation state <code>ros</code>.</li>
 </ul></li>
-<li>When <code>execution::start</code> is called on the resulting <code>operation_state</code>, call <code>execution::start(ros)</code>.
-<ul>
-<li>Calls <code>execution::start</code> on the resulting <code>operation_state</code>.</li>
+<li>If <code>connect</code> throws, the resulting exception is forwarded to <code>execution::set_error(output_receiver)</code>.</li>
+<li>The destructor of <code>ros</code> is called.</li>
+<li>If <code>connect</code> throws, the resulting exception is forwarded to <code>execution::set_error(output_receiver)</code>.</li>
+<li>Calls <code>execution::start(os2)</code>.</li>
 </ul></li>
+<li>When <code>execution::start</code> is called on <code>os</code>, call <code>execution::start(ros)</code>.</li>
 </ul></li>
 <li><p>Otherwise, <code>execution::on(s, sch)</code> is ill-formed.</p></li>
 </ul>
@@ -1135,7 +1136,7 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <li>Otherwise, <code>let_value(s, f)</code>, if that expression is valid,, if <code>s</code> satisfies <code>sender</code> and <code>f</code> satisfies <code>invocable</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
 <div class="sourceCode" id="cb34"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb34-1"><a href="#cb34-1"></a>    void let_value() = delete;</span></code></pre></div>
-<p>and that does not include a declaration of <code>execution::let_value</code>. * Otherwise, returns a <code>sender</code>, <code>s2</code>, that, when <code>connect(s, output_receiver)</code> is called on <code>s2</code>, for some <code>output_receiver</code>, returning an <code>operation_state</code> <code>os2</code>, constructs a <code>receiver</code> <code>r</code> and passes that receiver to <code>connect(s, r)</code>, returning <code>operation_state</code> object <code>os</code> and stores <code>os</code> as a subobject of <code>os2</code>:</p>
+<p>and that does not include a declaration of <code>execution::let_value</code>. * Otherwise, returns a <code>sender</code>, <code>s2</code>, that, when <code>connect(s, output_receiver)</code> is called on <code>s2</code>, for some <code>output_receiver</code>, returning an <code>operation_state</code> <code>os2</code> which will be stored as a subobject of the parent <code>operation_state</code>, constructs a <code>receiver</code> <code>r</code> and passes that receiver to <code>connect(s, r)</code>, returning <code>operation_state</code> object <code>os</code> and stores <code>os</code> as a subobject of <code>os2</code>:</p>
 <ul>
 <li>If <code>set_value(r, ts...)</code> is called:
 <ul>

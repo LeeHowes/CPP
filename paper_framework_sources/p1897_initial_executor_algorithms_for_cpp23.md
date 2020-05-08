@@ -511,15 +511,16 @@ The expression `execution::on(s, sch)` is expression-equivalent to:
 
  * Otherwise:
 
-   * Constructs an operation such that when `connect` is called with a `receiver` `output_receiver`:
-     * Constructs a receiver, `r` such that when `set_value`, `set_error` or `set_done` is called on `r`, the parameter is wrapped in a receiver `r2`.
-      * `r2` is passed to `execution::connect(execution::schedule(sch), std::move(r2))`.
-       * `execution::start` is passed the resulting `operation_state`.
-       * When `set_value` is called on `r2`, the stored value is forwarded to `output_receiver` on the appropriate choice of `set_value`, `set_error` or `set_done` to match the operation performed on `r`.
-       * When `set_error` or `set_done` is called on `r2` the parameters propagate to `output_receiver`.
-     * Passes `r` to `execution::connect(s, r)` resulting in an operation state `ros`.
-   * When `execution::start` is called on the resulting `operation_state`, call `execution::start(ros)`.
-     * Calls `execution::start` on the resulting `operation_state`.
+   * Constructs a `sender` `s2` such that when `connect` is called with some `receiver` `output_receiver` as `execution::connect(s2, output_receiver)` resulting in an `operation_state` `os` which is stored as a subobject of the parent `operation_state`:
+     * Constructs a receiver, `r` and passes `r` to `execution::connect(s, r)` resulting in an operation state `ros`, which is stored as a subobject of `os` such that:
+      * When `set_value`, `set_error` or `set_done` is called on `r`, the parameter is copied and stored as a subobject of a receiver `r2` and `execution::connect(execution::schedule(sch), std::move(r2))` results in an `operation_state` `os2` which is stored as a subobject of `os` such that:
+        * When `set_value` is called on `r2`, `os2`'s destructor will be called, the stored value is forwarded to `output_receiver` on the appropriate choice of `set_value`, `set_error` or `set_done` to match the operation performed on `r`.
+        * When `set_error` or `set_done` is called on `r2` the parameters propagate to `output_receiver`.
+      * If `connect` throws, the resulting exception is forwarded to `execution::set_error(output_receiver)`.
+      * The destructor of `ros` is called.
+     * If `connect` throws, the resulting exception is forwarded to `execution::set_error(output_receiver)`.
+     * Calls `execution::start(os2)`.
+   * When `execution::start` is called on `os`, call `execution::start(ros)`.
  * Otherwise, `execution::on(s, sch)` is ill-formed.
 
 
@@ -858,7 +859,7 @@ The expression `execution::let_value(s, f)` is expression-equivalent to:
     void let_value() = delete;
 ```
   and that does not include a declaration of `execution::let_value`.
- * Otherwise, returns a `sender`, `s2`, that, when `connect(s, output_receiver)` is called on `s2`, for some `output_receiver`, returning an `operation_state` `os2`, constructs a `receiver` `r` and passes that receiver to `connect(s, r)`, returning `operation_state` object `os` and stores `os` as a subobject of `os2`:
+ * Otherwise, returns a `sender`, `s2`, that, when `connect(s, output_receiver)` is called on `s2`, for some `output_receiver`, returning an `operation_state` `os2` which will be stored as a subobject of the parent `operation_state`, constructs a `receiver` `r` and passes that receiver to `connect(s, r)`, returning `operation_state` object `os` and stores `os` as a subobject of `os2`:
 
    * If `set_value(r, ts...)` is called:
      * copies `ts...` into `os2` as subobjects `t2s...`, calls `std::invoke(f, t2s...)` to return some `invoke_result`
