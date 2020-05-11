@@ -874,7 +874,7 @@ Note that `sync_wait` requires `S` to propagate a single value type.
 </ul>
 <h2 id="executionwhen_all"><span class="header-section-number">3.6</span> execution::when_all<a href="#executionwhen_all" class="self-link"></a></h2>
 <h3 id="overview-4"><span class="header-section-number">3.6.1</span> Overview<a href="#overview-4" class="self-link"></a></h3>
-<p><code>when_all</code> combines a set of <em>non-void</em> <code>senders</code>, returning a <code>sender</code> that, on success, completes with the combined values of all incoming <code>sender</code>s.</p>
+<p><code>when_all</code> combines a set of <em>non-void</em> <code>senders</code>, returning a <code>sender</code> that, on success, completes with the combined values of all incoming <code>sender</code>s. To make usage simpler, <code>when_all</code> is restricted to <code>typed_sender</code>s that each send only a single possible value type.</p>
 <p>Signature:</p>
 <div class="sourceCode" id="cb20"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb20-1"><a href="#cb20-1"></a><span class="kw">template</span> <span class="op">&lt;</span>execution<span class="op">::</span>typed_sender Ss<span class="op">...&gt;</span></span>
 <span id="cb20-2"><a href="#cb20-2"></a>see<span class="op">-</span>below when_all<span class="op">(</span>Ss<span class="op">...</span> ss<span class="op">)</span>;</span></code></pre></div>
@@ -889,12 +889,12 @@ Note that `sync_wait` requires `S` to propagate a single value type.
 <h3 id="wording-4"><span class="header-section-number">3.6.2</span> Wording<a href="#wording-4" class="self-link"></a></h3>
 <p>The name <code>execution::when_all</code> denotes a customization point object. For some subexpression <code>ss...</code>, let <code>Ss...</code> be a list of types such that <code>decltype((ss))...</code> is <code>Ss...</code>. The expression <code>execution::when_all(ss...)</code> is expression-equivalent to:</p>
 <ul>
-<li><p><code>when_all(ss...)</code> if that expression is valid, and if each <code>Ss</code> satisfies <code>typed_sender</code>, with overload resolution performed in a context that includes the declaration</p>
+<li><p><code>when_all(ss...)</code> if that expression is valid, and if each <code>Si</code> in <code>Ss</code> satisfies <code>typed_sender</code>, <code>sender_traits&lt;Si&gt;::value_types&lt;T&gt;</code> for some type <code>T</code> with overload resolution performed in a context that includes the declaration</p>
 <div class="sourceCode" id="cb22"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb22-1"><a href="#cb22-1"></a>   <span class="dt">void</span> when_all<span class="op">()</span> <span class="op">=</span> <span class="kw">delete</span>;</span></code></pre></div>
-<p>and that does not include a declaration of <code>execution::on</code>.</p></li>
+<p>and that does not include a declaration of <code>execution::when_all</code>.</p></li>
 <li><p>Otherwise, returns a <code>sender</code>, <code>s</code>, that, when <code>connect(s, output_receiver)</code> is called on the returned <code>sender</code>, for some <code>output_receiver</code>, constructs a <code>receiver</code> <code>ri</code> for each passed <code>sender</code>, <code>si</code> and calls <code>connect(si, ri)</code>, returning <code>operation_state</code> object <code>osi</code>. The <code>operation_state</code>s, <code>osi</code>, are stored as subobjects within the operation-state object returned from <code>connect(s, output_receiver)</code> such that:</p>
 <ul>
-<li>if <code>set_value(t...)</code> is called on all <code>ri</code>, will concatenate the list of values and call <code>set_value(output_receiver, t0..., t1..., tn...)</code> on the received passed to <code>submit</code> on the returned <code>sender</code>.</li>
+<li>if <code>set_value(ti)</code> is called on all <code>ri</code>, for some single value <code>ti</code> for each <code>ri</code> will concatenate the list of values and call <code>set_value(output_receiver, t0..., t1..., tn...)</code>.</li>
 <li>if <code>set_done()</code> is called on any <code>ri</code>, will call <code>set_done(output_receiver)</code>, discarding other results.</li>
 <li>if <code>set_error(e)</code> is called on any <code>ri</code> will call <code>set_error(output_receiver, e)</code> for some <code>e</code>, discarding other results.</li>
 </ul></li>

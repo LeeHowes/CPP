@@ -528,6 +528,7 @@ The expression `execution::on(s, sch)` is expression-equivalent to:
 
 ### Overview
 `when_all` combines a set of *non-void* `senders`, returning a `sender` that, on success, completes with the combined values of all incoming `sender`s.
+To make usage simpler, `when_all` is restricted to `typed_sender`s that each send only a single possible value type.
 
 Signature:
 ```cpp
@@ -551,14 +552,14 @@ The name `execution::when_all` denotes a customization point object.
 For some subexpression `ss...`, let `Ss...` be a list of types such that `decltype((ss))...` is `Ss...`.
 The expression `execution::when_all(ss...)` is expression-equivalent to:
 
- * `when_all(ss...)` if that expression is valid, and if each `Ss` satisfies `typed_sender`, with overload resolution performed in a context that includes the declaration
+ * `when_all(ss...)` if that expression is valid, and if each `Si` in `Ss` satisfies `typed_sender`, `sender_traits<Si>::value_types<T>` for some type `T` with overload resolution performed in a context that includes the declaration
    ```cpp
       void when_all() = delete;
    ```
-   and that does not include a declaration of `execution::on`.
+   and that does not include a declaration of `execution::when_all`.
  * Otherwise, returns a `sender`, `s`, that, when `connect(s, output_receiver)` is called on the returned `sender`, for some `output_receiver`, constructs a `receiver` `ri` for each passed `sender`, `si` and calls `connect(si, ri)`, returning `operation_state` object `osi`. The `operation_state`s, `osi`, are stored as subobjects within the operation-state object returned from `connect(s, output_receiver)` such that:
 
-    * if `set_value(t...)` is called on all `ri`, will concatenate the list of values and call `set_value(output_receiver, t0..., t1..., tn...)` on the received passed to `submit` on the returned `sender`.
+    * if `set_value(ti)` is called on all `ri`, for some single value `ti` for each `ri` will concatenate the list of values and call `set_value(output_receiver, t0..., t1..., tn...)`.
     * if `set_done()` is called on any `ri`, will call `set_done(output_receiver)`, discarding other results.
     * if `set_error(e)` is called on any `ri` will call `set_error(output_receiver, e)` for some `e`, discarding other results.
 
