@@ -438,7 +438,7 @@ Returns `T` when passed a `typed_sender` that sends a `T` on the value channel, 
 
 ```cpp
 template <execution::typed_sender S>
-see-below sync_wait(S&& s);
+auto sync_wait(S&& s) -> std::sender_traits<S>::value_types;
 template <class ValueType, execution::sender S>
 ValueType sync_wait_r(S&& s);
 ```
@@ -639,13 +639,14 @@ The expression `execution::indexed_for(S, P, R, F)` for some subexpressions `S`,
 
 Signature:
 ```cpp
-template <execution::sender S, std::invocable F>
+template <execution::sender S, moveable-value F>
+  requires std::invocable<F, sender_traits<S>::template value_types>
 see-below transform(S s, F f);
 ```
 
 *[ Example:*
 ```cpp
-std::optional<int> r = sync_wait(just(3) | transform([](int v){return v+1;}));
+int r = sync_wait(just(3) | transform([](int v){return v+1;}));
 // r==4
 ```
 *- end example]*
@@ -731,13 +732,21 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 
 Signature:
 ```cpp
-template <execution::sender S, std::invocable F>
+template<typename F>
+struct is-invocable-with {
+  template<typename... Args>
+  using apply = std::bool_constant<(std::invocable<F, Args...> && ...)>;
+};
+
+template<execution::sender S, moveable-value F>
+  requires sender_traits<S>::template error_types<
+    is-invocable-with<F>::template apply>::value
 see-below let_error(S s, F f);
 ```
 
 *[ Example:*
 ```cpp
-std::optional<float> r = sync_wait(
+float r = sync_wait(
   just(3) |
   transform([](int v){throw 2.0f;}) |
   let_error([](float e){return just(e+1);}));
@@ -793,7 +802,7 @@ see-below share(S s);
 auto s1 = just(3) | share();
 auto s2 = s1 | transform([](const int& v){return v+1;}))
 auto s3 = s1 | transform([](const int& v){return v+2;}))
-std::optional<int> r = sync_wait(
+int r = sync_wait(
   transform(
     when_all(s2, s3),
     [](int a, int b){return a+b;}));
@@ -833,7 +842,15 @@ The expression `execution::share(s, f)` is expression-equivalent to:
 
 Signature:
 ```cpp
-template <execution::sender S, std::invocable F>
+template<typename F>
+struct is-invocable-with {
+  template<typename... Args>
+  using apply = std::bool_constant<(std::invocable<F, Args...> && ...)>;
+};
+
+template<execution::sender S, moveable-value F>
+  requires sender_traits<S>::template value_types<
+    is-invocable-with<F>::template apply>::value
 see-below let_value(S s, F f);
 ```
 
@@ -842,7 +859,7 @@ Note that in the general case there may be many types `T...` for a given `sender
 
 *[ Example:*
 ```cpp
-std::optional<int> r = sync_wait(
+int r = sync_wait(
   just(3) |
   let_value([](int& let_v){
     return just(4) | transform([&](int v){return let_v + v;})));
@@ -888,7 +905,7 @@ auto s = just(3) |                                        // s1
          transform([](int a){return a*2;}) |              // s4
          on(scheduler2) |                                 // s5
          let_error([](auto e){return just(3);});       // s6
-std::optional<int> r = sync_wait(s);
+int r = sync_wait(s);
 ```
 
 The result of `s1` might be a `just_sender<int>` implemented by the standard library vendor.
