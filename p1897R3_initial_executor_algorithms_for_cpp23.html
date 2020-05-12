@@ -1040,9 +1040,9 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
    * If `set_error(r, e)` is called, passes `e` to `execution::set_error(output_receiver, e)`.
    * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
 -->
-<h2 id="executionlet_error"><span class="header-section-number">3.8</span> execution::let_error<a href="#executionlet_error" class="self-link"></a></h2>
+<h2 id="executionlet_value"><span class="header-section-number">3.8</span> execution::let_value<a href="#executionlet_value" class="self-link"></a></h2>
 <h3 id="overview-6"><span class="header-section-number">3.8.1</span> Overview<a href="#overview-6" class="self-link"></a></h3>
-<p><code>let_error</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that, on error propagation, keeps the error result of the incoming sender alive for the duration of the <code>sender</code> returned by the invocable and makes that value available to the invocable.</p>
+<p><code>let_value</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that keeps the completion result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.</p>
 <p>Signature:</p>
 <div class="sourceCode" id="cb26"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb26-1"><a href="#cb26-1"></a><span class="kw">template</span><span class="op">&lt;</span><span class="kw">typename</span> F<span class="op">&gt;</span></span>
 <span id="cb26-2"><a href="#cb26-2"></a><span class="kw">struct</span> is<span class="op">-</span>invocable<span class="op">-</span>with <span class="op">{</span></span>
@@ -1051,22 +1051,66 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <span id="cb26-5"><a href="#cb26-5"></a><span class="op">}</span>;</span>
 <span id="cb26-6"><a href="#cb26-6"></a></span>
 <span id="cb26-7"><a href="#cb26-7"></a><span class="kw">template</span><span class="op">&lt;</span>execution<span class="op">::</span>sender S, moveable<span class="op">-</span>value F<span class="op">&gt;</span></span>
-<span id="cb26-8"><a href="#cb26-8"></a>  <span class="kw">requires</span> sender_traits<span class="op">&lt;</span>S<span class="op">&gt;::</span><span class="kw">template</span> error_types<span class="op">&lt;</span></span>
+<span id="cb26-8"><a href="#cb26-8"></a>  <span class="kw">requires</span> sender_traits<span class="op">&lt;</span>S<span class="op">&gt;::</span><span class="kw">template</span> value_types<span class="op">&lt;</span></span>
 <span id="cb26-9"><a href="#cb26-9"></a>    is<span class="op">-</span>invocable<span class="op">-</span>with<span class="op">&lt;</span>F<span class="op">&gt;::</span><span class="kw">template</span> apply<span class="op">&gt;::</span>value</span>
-<span id="cb26-10"><a href="#cb26-10"></a>see<span class="op">-</span>below let_error<span class="op">(</span>S s, F f<span class="op">)</span>;</span></code></pre></div>
+<span id="cb26-10"><a href="#cb26-10"></a>see<span class="op">-</span>below let_value<span class="op">(</span>S s, F f<span class="op">)</span>;</span></code></pre></div>
+<p>where <code>S&lt;T...&gt;</code> and <code>S&lt;T2&gt;</code> are implementation-defined types that is represent senders that send a value of type list <code>T...</code> or <code>T2</code> respectively in their value channels. Note that in the general case there may be many types <code>T...</code> for a given <code>sender</code>, in which case the invocable may have to represent an overload set.</p>
 <p><em>[ Example:</em></p>
-<div class="sourceCode" id="cb27"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb27-1"><a href="#cb27-1"></a><span class="dt">float</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<div class="sourceCode" id="cb27"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb27-1"><a href="#cb27-1"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
 <span id="cb27-2"><a href="#cb27-2"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span></span>
-<span id="cb27-3"><a href="#cb27-3"></a>  transform<span class="op">([](</span><span class="dt">int</span> v<span class="op">){</span><span class="cf">throw</span> <span class="fl">2.0</span><span class="bu">f</span>;<span class="op">})</span> <span class="op">|</span></span>
-<span id="cb27-4"><a href="#cb27-4"></a>  let_error<span class="op">([](</span><span class="dt">float</span> e<span class="op">){</span><span class="cf">return</span> just<span class="op">(</span>e<span class="op">+</span><span class="dv">1</span><span class="op">)</span>;<span class="op">}))</span>;</span>
-<span id="cb27-5"><a href="#cb27-5"></a><span class="co">// r==3.0f</span></span></code></pre></div>
+<span id="cb27-3"><a href="#cb27-3"></a>  let_value<span class="op">([](</span><span class="dt">int</span><span class="op">&amp;</span> let_v<span class="op">){</span></span>
+<span id="cb27-4"><a href="#cb27-4"></a>    <span class="cf">return</span> just<span class="op">(</span><span class="dv">4</span><span class="op">)</span> <span class="op">|</span> transform<span class="op">([&amp;](</span><span class="dt">int</span> v<span class="op">){</span><span class="cf">return</span> let_v <span class="op">+</span> v;<span class="op">})))</span>;</span>
+<span id="cb27-5"><a href="#cb27-5"></a><span class="co">// r==7</span></span></code></pre></div>
 <h3 id="wording-6"><span class="header-section-number">3.8.2</span> Wording<a href="#wording-6" class="self-link"></a></h3>
+<p>The name <code>execution::let_value</code> denotes a customization point object. For some subexpressions <code>s</code> and <code>f</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code> and <code>decltype((f))</code> is <code>F</code>. The expression <code>execution::let_value(s, f)</code> is expression-equivalent to:</p>
+<ul>
+<li>s.let_value(f), if that expression is valid, if <code>s</code> satisfies <code>sender</code> and <code>f</code> satisfies <code>invocable</code>.</li>
+<li>Otherwise, <code>let_value(s, f)</code>, if that expression is valid,, if <code>s</code> satisfies <code>sender</code> and <code>f</code> satisfies <code>invocable</code> with overload resolution performed in a context that includes the declaration</li>
+</ul>
+<div class="sourceCode" id="cb28"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb28-1"><a href="#cb28-1"></a>    void let_value() = delete;</span></code></pre></div>
+<p>and that does not include a declaration of <code>execution::let_value</code>. * Otherwise, returns a <code>sender</code>, <code>s2</code>, that, when <code>connect(s, output_receiver)</code> is called on <code>s2</code>, for some <code>output_receiver</code>, returning an <code>operation_state</code> <code>os2</code> which will be stored as a subobject of the parent <code>operation_state</code>, constructs a <code>receiver</code> <code>r</code> and passes that receiver to <code>connect(s, r)</code>, returning <code>operation_state</code> object <code>os</code> and stores <code>os</code> as a subobject of <code>os2</code>:</p>
+<ul>
+<li>If <code>set_value(r, ts...)</code> is called:
+<ul>
+<li>copies <code>ts...</code> into <code>os2</code> as subobjects <code>t2s...</code>, calls <code>std::invoke(f, t2s...)</code> to return some <code>invoke_result</code></li>
+<li>calls <code>execution::connect(invoke_result, output_receiver)</code> resulting in some <code>operation_state</code> <code>os3</code>, stores <code>os3</code> as a subobject of <code>os2</code> and calls <code>execution::start(os3)</code>.</li>
+<li>the destructor of <code>os2</code> must be sequenced after the completion of the operation represented by <code>invoke_result</code>.</li>
+<li>If <code>f</code> or <code>connect()</code> throws, catches the exception and passes it to <code>set_error(output_receiver, e)</code>.</li>
+</ul></li>
+<li>If <code>set_error(r, e)</code> is called, passes <code>e</code> to <code>set_error(output_receiver, e)</code>.</li>
+<li>If <code>set_done(r)</code> is called, calls <code>set_done(output_receiver)</code>.</li>
+</ul>
+<p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p>
+<ul>
+<li>Otherwise the expression <code>execution::let_value(s, f)</code> is ill-formed.</li>
+</ul>
+<h2 id="executionlet_error"><span class="header-section-number">3.9</span> execution::let_error<a href="#executionlet_error" class="self-link"></a></h2>
+<h3 id="overview-7"><span class="header-section-number">3.9.1</span> Overview<a href="#overview-7" class="self-link"></a></h3>
+<p><code>let_error</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that, on error propagation, keeps the error result of the incoming sender alive for the duration of the <code>sender</code> returned by the invocable and makes that value available to the invocable.</p>
+<p>Signature:</p>
+<div class="sourceCode" id="cb29"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb29-1"><a href="#cb29-1"></a><span class="kw">template</span><span class="op">&lt;</span><span class="kw">typename</span> F<span class="op">&gt;</span></span>
+<span id="cb29-2"><a href="#cb29-2"></a><span class="kw">struct</span> is<span class="op">-</span>invocable<span class="op">-</span>with <span class="op">{</span></span>
+<span id="cb29-3"><a href="#cb29-3"></a>  <span class="kw">template</span><span class="op">&lt;</span><span class="kw">typename</span><span class="op">...</span> Args<span class="op">&gt;</span></span>
+<span id="cb29-4"><a href="#cb29-4"></a>  <span class="kw">using</span> apply <span class="op">=</span> std<span class="op">::</span>bool_constant<span class="op">&lt;(</span>std<span class="op">::</span>invocable<span class="op">&lt;</span>F, Args<span class="op">...&gt;</span> <span class="op">&amp;&amp;</span> <span class="op">...)&gt;</span>;</span>
+<span id="cb29-5"><a href="#cb29-5"></a><span class="op">}</span>;</span>
+<span id="cb29-6"><a href="#cb29-6"></a></span>
+<span id="cb29-7"><a href="#cb29-7"></a><span class="kw">template</span><span class="op">&lt;</span>execution<span class="op">::</span>sender S, moveable<span class="op">-</span>value F<span class="op">&gt;</span></span>
+<span id="cb29-8"><a href="#cb29-8"></a>  <span class="kw">requires</span> sender_traits<span class="op">&lt;</span>S<span class="op">&gt;::</span><span class="kw">template</span> error_types<span class="op">&lt;</span></span>
+<span id="cb29-9"><a href="#cb29-9"></a>    is<span class="op">-</span>invocable<span class="op">-</span>with<span class="op">&lt;</span>F<span class="op">&gt;::</span><span class="kw">template</span> apply<span class="op">&gt;::</span>value</span>
+<span id="cb29-10"><a href="#cb29-10"></a>see<span class="op">-</span>below let_error<span class="op">(</span>S s, F f<span class="op">)</span>;</span></code></pre></div>
+<p><em>[ Example:</em></p>
+<div class="sourceCode" id="cb30"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb30-1"><a href="#cb30-1"></a><span class="dt">float</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<span id="cb30-2"><a href="#cb30-2"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span></span>
+<span id="cb30-3"><a href="#cb30-3"></a>  transform<span class="op">([](</span><span class="dt">int</span> v<span class="op">){</span><span class="cf">throw</span> <span class="fl">2.0</span><span class="bu">f</span>;<span class="op">})</span> <span class="op">|</span></span>
+<span id="cb30-4"><a href="#cb30-4"></a>  let_error<span class="op">([](</span><span class="dt">float</span> e<span class="op">){</span><span class="cf">return</span> just<span class="op">(</span>e<span class="op">+</span><span class="dv">1</span><span class="op">)</span>;<span class="op">}))</span>;</span>
+<span id="cb30-5"><a href="#cb30-5"></a><span class="co">// r==3.0f</span></span></code></pre></div>
+<h3 id="wording-7"><span class="header-section-number">3.9.2</span> Wording<a href="#wording-7" class="self-link"></a></h3>
 <p>The name <code>execution::let_error</code> denotes a customization point object. For some subexpressions <code>s</code> and <code>f</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code> and <code>decltype((f))</code> is <code>F</code>. The expression <code>execution::let_error(s, f)</code> is expression-equivalent to:</p>
 <ul>
 <li>s.let_error(f), if that expression is valid, if <code>s</code> satisfies <code>sender</code>.</li>
 <li>Otherwise, <code>let_error(s, f)</code>, if that expression is valid,, if <code>s</code> satisfies <code>sender</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
-<div class="sourceCode" id="cb28"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb28-1"><a href="#cb28-1"></a>    void let_error() = delete;</span></code></pre></div>
+<div class="sourceCode" id="cb31"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb31-1"><a href="#cb31-1"></a>    void let_error() = delete;</span></code></pre></div>
 <p>and that does not include a declaration of <code>execution::let_error</code>.</p>
 <ul>
 <li><p>Otherwise, returns a <code>sender</code>, <code>s2</code>, that, when <code>connect(s, output_receiver)</code> is called on <code>s2</code>, for some <code>output_receiver</code>, returning an <code>operation_state</code> <code>os2</code>, constructs a <code>receiver</code> <code>r</code> and passes that receiver to <code>connect(s, r)</code>, returning <code>operation_state</code> object <code>os</code> and stores <code>os</code> as a subobject of <code>os2</code>:</p>
@@ -1084,28 +1128,28 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p></li>
 <li><p>Otherwise the expression <code>execution::let_error(s, f)</code> is ill-formed.</p></li>
 </ul>
-<h2 id="executionshare"><span class="header-section-number">3.9</span> execution::share<a href="#executionshare" class="self-link"></a></h2>
-<h3 id="overview-7"><span class="header-section-number">3.9.1</span> Overview<a href="#overview-7" class="self-link"></a></h3>
+<h2 id="executionshare"><span class="header-section-number">3.10</span> execution::share<a href="#executionshare" class="self-link"></a></h2>
+<h3 id="overview-8"><span class="header-section-number">3.10.1</span> Overview<a href="#overview-8" class="self-link"></a></h3>
 <p><code>share</code> is a sender adapter that takes a <code>sender</code>, eagerly submits it and returns a <code>sender</code> that propagates the value by reference and can be used as an l-value.</p>
 <p>Signature:</p>
-<div class="sourceCode" id="cb29"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb29-1"><a href="#cb29-1"></a><span class="kw">template</span> <span class="op">&lt;</span>execution<span class="op">::</span>sender S<span class="op">&gt;</span></span>
-<span id="cb29-2"><a href="#cb29-2"></a>see<span class="op">-</span>below share<span class="op">(</span>S s<span class="op">)</span>;</span></code></pre></div>
+<div class="sourceCode" id="cb32"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb32-1"><a href="#cb32-1"></a><span class="kw">template</span> <span class="op">&lt;</span>execution<span class="op">::</span>sender S<span class="op">&gt;</span></span>
+<span id="cb32-2"><a href="#cb32-2"></a>see<span class="op">-</span>below share<span class="op">(</span>S s<span class="op">)</span>;</span></code></pre></div>
 <p><em>[ Example:</em></p>
-<div class="sourceCode" id="cb30"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb30-1"><a href="#cb30-1"></a><span class="kw">auto</span> s1 <span class="op">=</span> just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span> share<span class="op">()</span>;</span>
-<span id="cb30-2"><a href="#cb30-2"></a><span class="kw">auto</span> s2 <span class="op">=</span> s1 <span class="op">|</span> transform<span class="op">([](</span><span class="kw">const</span> <span class="dt">int</span><span class="op">&amp;</span> v<span class="op">){</span><span class="cf">return</span> v<span class="op">+</span><span class="dv">1</span>;<span class="op">}))</span></span>
-<span id="cb30-3"><a href="#cb30-3"></a><span class="kw">auto</span> s3 <span class="op">=</span> s1 <span class="op">|</span> transform<span class="op">([](</span><span class="kw">const</span> <span class="dt">int</span><span class="op">&amp;</span> v<span class="op">){</span><span class="cf">return</span> v<span class="op">+</span><span class="dv">2</span>;<span class="op">}))</span></span>
-<span id="cb30-4"><a href="#cb30-4"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
-<span id="cb30-5"><a href="#cb30-5"></a>  transform<span class="op">(</span></span>
-<span id="cb30-6"><a href="#cb30-6"></a>    when_all<span class="op">(</span>s2, s3<span class="op">)</span>,</span>
-<span id="cb30-7"><a href="#cb30-7"></a>    <span class="op">[](</span><span class="dt">int</span> a, <span class="dt">int</span> b<span class="op">){</span><span class="cf">return</span> a<span class="op">+</span>b;<span class="op">}))</span>;</span>
-<span id="cb30-8"><a href="#cb30-8"></a><span class="co">// r==9</span></span></code></pre></div>
-<h3 id="wording-7"><span class="header-section-number">3.9.2</span> Wording<a href="#wording-7" class="self-link"></a></h3>
+<div class="sourceCode" id="cb33"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb33-1"><a href="#cb33-1"></a><span class="kw">auto</span> s1 <span class="op">=</span> just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span> share<span class="op">()</span>;</span>
+<span id="cb33-2"><a href="#cb33-2"></a><span class="kw">auto</span> s2 <span class="op">=</span> s1 <span class="op">|</span> transform<span class="op">([](</span><span class="kw">const</span> <span class="dt">int</span><span class="op">&amp;</span> v<span class="op">){</span><span class="cf">return</span> v<span class="op">+</span><span class="dv">1</span>;<span class="op">}))</span></span>
+<span id="cb33-3"><a href="#cb33-3"></a><span class="kw">auto</span> s3 <span class="op">=</span> s1 <span class="op">|</span> transform<span class="op">([](</span><span class="kw">const</span> <span class="dt">int</span><span class="op">&amp;</span> v<span class="op">){</span><span class="cf">return</span> v<span class="op">+</span><span class="dv">2</span>;<span class="op">}))</span></span>
+<span id="cb33-4"><a href="#cb33-4"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<span id="cb33-5"><a href="#cb33-5"></a>  transform<span class="op">(</span></span>
+<span id="cb33-6"><a href="#cb33-6"></a>    when_all<span class="op">(</span>s2, s3<span class="op">)</span>,</span>
+<span id="cb33-7"><a href="#cb33-7"></a>    <span class="op">[](</span><span class="dt">int</span> a, <span class="dt">int</span> b<span class="op">){</span><span class="cf">return</span> a<span class="op">+</span>b;<span class="op">}))</span>;</span>
+<span id="cb33-8"><a href="#cb33-8"></a><span class="co">// r==9</span></span></code></pre></div>
+<h3 id="wording-8"><span class="header-section-number">3.10.2</span> Wording<a href="#wording-8" class="self-link"></a></h3>
 <p>The name <code>execution::share</code> denotes a customization point object. For some subexpressions <code>s</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code>. The expression <code>execution::share(s, f)</code> is expression-equivalent to:</p>
 <ul>
 <li><code>s.share()</code> if that expression is valid and if <code>s</code> satisfies <code>sender</code>.</li>
 <li>Otherwise, <code>share(s)</code>, if that expression is valid, if <code>s</code> satisfies <code>sender</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
-<div class="sourceCode" id="cb31"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb31-1"><a href="#cb31-1"></a>   void share() = delete;</span></code></pre></div>
+<div class="sourceCode" id="cb34"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb34-1"><a href="#cb34-1"></a>   void share() = delete;</span></code></pre></div>
 <p>and that does not include a declaration of <code>execution::share</code>.</p>
 <ul>
 <li><p>Otherwise constructs a receiver, <code>r</code> and passes that receiver to <code>execution::connect(s, r)</code> resulting in an <code>operation_state</code> <code>os</code>. Constructs some shared state, <code>shr</code> to store the completion result(s) of <code>s</code>.</p>
@@ -1121,50 +1165,6 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <li>If <code>r</code> was satisfied with a call to <code>set_done</code>, call <code>execution::set_done(output_receiver)</code>.</li>
 </ul></li>
 <li><p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p></li>
-</ul>
-<h2 id="executionlet_value"><span class="header-section-number">3.10</span> execution::let_value<a href="#executionlet_value" class="self-link"></a></h2>
-<h3 id="overview-8"><span class="header-section-number">3.10.1</span> Overview<a href="#overview-8" class="self-link"></a></h3>
-<p><code>let_value</code> is a sender adapter that takes a <code>sender</code> and an invocable and returns a <code>sender</code> that keeps the completion result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.</p>
-<p>Signature:</p>
-<div class="sourceCode" id="cb32"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb32-1"><a href="#cb32-1"></a><span class="kw">template</span><span class="op">&lt;</span><span class="kw">typename</span> F<span class="op">&gt;</span></span>
-<span id="cb32-2"><a href="#cb32-2"></a><span class="kw">struct</span> is<span class="op">-</span>invocable<span class="op">-</span>with <span class="op">{</span></span>
-<span id="cb32-3"><a href="#cb32-3"></a>  <span class="kw">template</span><span class="op">&lt;</span><span class="kw">typename</span><span class="op">...</span> Args<span class="op">&gt;</span></span>
-<span id="cb32-4"><a href="#cb32-4"></a>  <span class="kw">using</span> apply <span class="op">=</span> std<span class="op">::</span>bool_constant<span class="op">&lt;(</span>std<span class="op">::</span>invocable<span class="op">&lt;</span>F, Args<span class="op">...&gt;</span> <span class="op">&amp;&amp;</span> <span class="op">...)&gt;</span>;</span>
-<span id="cb32-5"><a href="#cb32-5"></a><span class="op">}</span>;</span>
-<span id="cb32-6"><a href="#cb32-6"></a></span>
-<span id="cb32-7"><a href="#cb32-7"></a><span class="kw">template</span><span class="op">&lt;</span>execution<span class="op">::</span>sender S, moveable<span class="op">-</span>value F<span class="op">&gt;</span></span>
-<span id="cb32-8"><a href="#cb32-8"></a>  <span class="kw">requires</span> sender_traits<span class="op">&lt;</span>S<span class="op">&gt;::</span><span class="kw">template</span> value_types<span class="op">&lt;</span></span>
-<span id="cb32-9"><a href="#cb32-9"></a>    is<span class="op">-</span>invocable<span class="op">-</span>with<span class="op">&lt;</span>F<span class="op">&gt;::</span><span class="kw">template</span> apply<span class="op">&gt;::</span>value</span>
-<span id="cb32-10"><a href="#cb32-10"></a>see<span class="op">-</span>below let_value<span class="op">(</span>S s, F f<span class="op">)</span>;</span></code></pre></div>
-<p>where <code>S&lt;T...&gt;</code> and <code>S&lt;T2&gt;</code> are implementation-defined types that is represent senders that send a value of type list <code>T...</code> or <code>T2</code> respectively in their value channels. Note that in the general case there may be many types <code>T...</code> for a given <code>sender</code>, in which case the invocable may have to represent an overload set.</p>
-<p><em>[ Example:</em></p>
-<div class="sourceCode" id="cb33"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb33-1"><a href="#cb33-1"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
-<span id="cb33-2"><a href="#cb33-2"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span></span>
-<span id="cb33-3"><a href="#cb33-3"></a>  let_value<span class="op">([](</span><span class="dt">int</span><span class="op">&amp;</span> let_v<span class="op">){</span></span>
-<span id="cb33-4"><a href="#cb33-4"></a>    <span class="cf">return</span> just<span class="op">(</span><span class="dv">4</span><span class="op">)</span> <span class="op">|</span> transform<span class="op">([&amp;](</span><span class="dt">int</span> v<span class="op">){</span><span class="cf">return</span> let_v <span class="op">+</span> v;<span class="op">})))</span>;</span>
-<span id="cb33-5"><a href="#cb33-5"></a><span class="co">// r==7</span></span></code></pre></div>
-<h3 id="wording-8"><span class="header-section-number">3.10.2</span> Wording<a href="#wording-8" class="self-link"></a></h3>
-<p>The name <code>execution::let_value</code> denotes a customization point object. For some subexpressions <code>s</code> and <code>f</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code> and <code>decltype((f))</code> is <code>F</code>. The expression <code>execution::let_value(s, f)</code> is expression-equivalent to:</p>
-<ul>
-<li>s.let_value(f), if that expression is valid, if <code>s</code> satisfies <code>sender</code> and <code>f</code> satisfies <code>invocable</code>.</li>
-<li>Otherwise, <code>let_value(s, f)</code>, if that expression is valid,, if <code>s</code> satisfies <code>sender</code> and <code>f</code> satisfies <code>invocable</code> with overload resolution performed in a context that includes the declaration</li>
-</ul>
-<div class="sourceCode" id="cb34"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb34-1"><a href="#cb34-1"></a>    void let_value() = delete;</span></code></pre></div>
-<p>and that does not include a declaration of <code>execution::let_value</code>. * Otherwise, returns a <code>sender</code>, <code>s2</code>, that, when <code>connect(s, output_receiver)</code> is called on <code>s2</code>, for some <code>output_receiver</code>, returning an <code>operation_state</code> <code>os2</code> which will be stored as a subobject of the parent <code>operation_state</code>, constructs a <code>receiver</code> <code>r</code> and passes that receiver to <code>connect(s, r)</code>, returning <code>operation_state</code> object <code>os</code> and stores <code>os</code> as a subobject of <code>os2</code>:</p>
-<ul>
-<li>If <code>set_value(r, ts...)</code> is called:
-<ul>
-<li>copies <code>ts...</code> into <code>os2</code> as subobjects <code>t2s...</code>, calls <code>std::invoke(f, t2s...)</code> to return some <code>invoke_result</code></li>
-<li>calls <code>execution::connect(invoke_result, output_receiver)</code> resulting in some <code>operation_state</code> <code>os3</code>, stores <code>os3</code> as a subobject of <code>os2</code> and calls <code>execution::start(os3)</code>.</li>
-<li>the destructor of <code>os2</code> must be sequenced after the completion of the operation represented by <code>invoke_result</code>.</li>
-<li>If <code>f</code> or <code>connect()</code> throws, catches the exception and passes it to <code>set_error(output_receiver, e)</code>.</li>
-</ul></li>
-<li>If <code>set_error(r, e)</code> is called, passes <code>e</code> to <code>set_error(output_receiver, e)</code>.</li>
-<li>If <code>set_done(r)</code> is called, calls <code>set_done(output_receiver)</code>.</li>
-</ul>
-<p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p>
-<ul>
-<li>Otherwise the expression <code>execution::let_value(s, f)</code> is ill-formed.</li>
 </ul>
 <h1 id="customization-and-example"><span class="header-section-number">4</span> Customization and example<a href="#customization-and-example" class="self-link"></a></h1>
 <p>Each of these algorithms, apart from <code>just</code>, is customizable on one or more <code>sender</code> implementations. This allows full optimization. For example, in the following simple work chain:</p>

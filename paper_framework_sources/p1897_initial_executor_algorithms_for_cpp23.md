@@ -724,6 +724,65 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
    * If `set_done(r)` is called, calls `execution::set_done(output_receiver)`.
 -->
 
+
+## execution::let_value
+
+### Overview
+`let_value` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that keeps the completion result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.
+
+Signature:
+```cpp
+template<typename F>
+struct is-invocable-with {
+  template<typename... Args>
+  using apply = std::bool_constant<(std::invocable<F, Args...> && ...)>;
+};
+
+template<execution::sender S, moveable-value F>
+  requires sender_traits<S>::template value_types<
+    is-invocable-with<F>::template apply>::value
+see-below let_value(S s, F f);
+```
+
+where `S<T...>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T2` respectively in their value channels.
+Note that in the general case there may be many types `T...` for a given `sender`, in which case the invocable may have to represent an overload set.
+
+*[ Example:*
+```cpp
+int r = sync_wait(
+  just(3) |
+  let_value([](int& let_v){
+    return just(4) | transform([&](int v){return let_v + v;})));
+// r==7
+```
+
+### Wording
+The name `execution::let_value` denotes a customization point object.
+For some subexpressions `s` and `f`, let `S` be a type such that `decltype((s))` is `S` and `decltype((f))` is `F`.
+The expression `execution::let_value(s, f)` is expression-equivalent to:
+
+ * s.let_value(f), if that expression is valid, if `s` satisfies `sender` and `f` satisfies `invocable`.
+ * Otherwise, `let_value(s, f)`, if that expression is valid,, if `s` satisfies `sender` and `f` satisfies `invocable` with overload resolution performed in a context that includes the declaration
+```
+    void let_value() = delete;
+```
+  and that does not include a declaration of `execution::let_value`.
+ * Otherwise, returns a `sender`, `s2`, that, when `connect(s, output_receiver)` is called on `s2`, for some `output_receiver`, returning an `operation_state` `os2` which will be stored as a subobject of the parent `operation_state`, constructs a `receiver` `r` and passes that receiver to `connect(s, r)`, returning `operation_state` object `os` and stores `os` as a subobject of `os2`:
+
+   * If `set_value(r, ts...)` is called:
+     * copies `ts...` into `os2` as subobjects `t2s...`, calls `std::invoke(f, t2s...)` to return some `invoke_result`
+     * calls `execution::connect(invoke_result, output_receiver)` resulting in some `operation_state` `os3`, stores `os3` as a subobject of `os2` and calls `execution::start(os3)`.
+     * the destructor of `os2` must be sequenced after the completion of the operation represented by `invoke_result`.
+     * If `f` or `connect()` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
+   * If `set_error(r, e)` is called, passes `e` to `set_error(output_receiver, e)`.
+   * If `set_done(r)` is called, calls `set_done(output_receiver)`.
+
+   When `start` is called on `os2`, call `execution::start(os)`.
+
+ * Otherwise the expression `execution::let_value(s, f)` is ill-formed.
+
+
+
 ## execution::let_error
 
 ### Overview
@@ -828,63 +887,6 @@ The expression `execution::share(s, f)` is expression-equivalent to:
    * If `r` was satisfied with a call to `set_done`, call `execution::set_done(output_receiver)`.
 
  * When `start` is called on `os2`, call `execution::start(os)`.
-
-## execution::let_value
-
-### Overview
-`let_value` is a sender adapter that takes a `sender` and an invocable and returns a `sender` that keeps the completion result of the incoming sender alive for the duration of the algorithm returned by the invocable and makes that value available to the invocable.
-
-Signature:
-```cpp
-template<typename F>
-struct is-invocable-with {
-  template<typename... Args>
-  using apply = std::bool_constant<(std::invocable<F, Args...> && ...)>;
-};
-
-template<execution::sender S, moveable-value F>
-  requires sender_traits<S>::template value_types<
-    is-invocable-with<F>::template apply>::value
-see-below let_value(S s, F f);
-```
-
-where `S<T...>` and `S<T2>` are implementation-defined types that is represent senders that send a value of type list `T...` or `T2` respectively in their value channels.
-Note that in the general case there may be many types `T...` for a given `sender`, in which case the invocable may have to represent an overload set.
-
-*[ Example:*
-```cpp
-int r = sync_wait(
-  just(3) |
-  let_value([](int& let_v){
-    return just(4) | transform([&](int v){return let_v + v;})));
-// r==7
-```
-
-### Wording
-The name `execution::let_value` denotes a customization point object.
-For some subexpressions `s` and `f`, let `S` be a type such that `decltype((s))` is `S` and `decltype((f))` is `F`.
-The expression `execution::let_value(s, f)` is expression-equivalent to:
-
- * s.let_value(f), if that expression is valid, if `s` satisfies `sender` and `f` satisfies `invocable`.
- * Otherwise, `let_value(s, f)`, if that expression is valid,, if `s` satisfies `sender` and `f` satisfies `invocable` with overload resolution performed in a context that includes the declaration
-```
-    void let_value() = delete;
-```
-  and that does not include a declaration of `execution::let_value`.
- * Otherwise, returns a `sender`, `s2`, that, when `connect(s, output_receiver)` is called on `s2`, for some `output_receiver`, returning an `operation_state` `os2` which will be stored as a subobject of the parent `operation_state`, constructs a `receiver` `r` and passes that receiver to `connect(s, r)`, returning `operation_state` object `os` and stores `os` as a subobject of `os2`:
-
-   * If `set_value(r, ts...)` is called:
-     * copies `ts...` into `os2` as subobjects `t2s...`, calls `std::invoke(f, t2s...)` to return some `invoke_result`
-     * calls `execution::connect(invoke_result, output_receiver)` resulting in some `operation_state` `os3`, stores `os3` as a subobject of `os2` and calls `execution::start(os3)`.
-     * the destructor of `os2` must be sequenced after the completion of the operation represented by `invoke_result`.
-     * If `f` or `connect()` throws, catches the exception and passes it to `set_error(output_receiver, e)`.
-   * If `set_error(r, e)` is called, passes `e` to `set_error(output_receiver, e)`.
-   * If `set_done(r)` is called, calls `set_done(output_receiver)`.
-
-   When `start` is called on `os2`, call `execution::start(os)`.
-
- * Otherwise the expression `execution::let_value(s, f)` is ill-formed.
-
 
 
 # Customization and example
