@@ -1067,12 +1067,8 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <li>Otherwise, <code>let_error(s, f)</code>, if that expression is valid,, if <code>s</code> satisfies <code>sender</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
 <div class="sourceCode" id="cb28"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb28-1"><a href="#cb28-1"></a>    void let_error() = delete;</span></code></pre></div>
-<p>and that does not include a declaration of <code>execution::let_error</code>. * Otherwise returns a sender that when <code>connect()</code> is called on it constructs a <code>receiver</code>, <code>r</code>, and passes that receiver to <code>execution::connect(S, r)</code> returning an <code>operation_state</code> <code>os</code> such that When some <code>output_receiver</code> has been passed to <code>connect</code> on the returned <code>sender</code> returning some <code>operation_state</code> <code>os2</code>:</p>
+<p>and that does not include a declaration of <code>execution::let_error</code>.</p>
 <ul>
-<li><p>If <code>set_value(r, ts...)</code> is called, for some potentially empty list of values <code>ts...</code>, passes <code>ts...</code> to <code>set_value(output_receiver, ts...)</code>.</p></li>
-<li><p>If <code>set_error(r, e)</code> is called, calls <code>std::invoke(f, e)</code> to return some <code>invoke_result</code>, and calls <code>execution::start(execution::connect(invoke_result, output_receiver))</code>.</p></li>
-<li><p>If <code>f</code> throws, catches the exception and passes it to <code>set_error(output_receiver, e)</code>.</p></li>
-<li><p>If <code>set_done(r)</code> is called, calls <code>set_done(output_receiver)</code>.</p></li>
 <li><p>Otherwise, returns a <code>sender</code>, <code>s2</code>, that, when <code>connect(s, output_receiver)</code> is called on <code>s2</code>, for some <code>output_receiver</code>, returning an <code>operation_state</code> <code>os2</code>, constructs a <code>receiver</code> <code>r</code> and passes that receiver to <code>connect(s, r)</code>, returning <code>operation_state</code> object <code>os</code> and stores <code>os</code> as a subobject of <code>os2</code>:</p>
 <ul>
 <li>If <code>set_value(r, ts...)</code> is called, passes <code>ts...</code> to <code>set_valus(output_receiver, ts...)</code>.</li>
