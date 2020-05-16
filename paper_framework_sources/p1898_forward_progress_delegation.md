@@ -1,7 +1,7 @@
 ---
 title: "Forward progress delegation for executors"
 document: P1898R1
-date: 2020-04-30
+date: 2020-05-16
 audience: SG1
 author:
   - name: Lee Howes
@@ -319,7 +319,7 @@ The expression `execution::get_scheduler(sp)` is expression-equivalent to:
       void get_scheduler() = delete;
  ```
    and that does not include a declaration of `execution::get_scheduler`.
-
+ * All work scheduled on a `scheduler` returned by `execution::get_scheduler(sp)` must complete before the destructor of `sp`. **Note:** This is because the execution context underlying the `scheduler` may have a lifetime bounded by the lifetime of `sp`.
 
 ## execution::sync_wait modifications
 ### Summary

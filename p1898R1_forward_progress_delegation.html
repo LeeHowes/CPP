@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="mpark/wg21" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <meta name="dcterms.date" content="2020-04-30" />
+  <meta name="dcterms.date" content="2020-05-16" />
   <title>Forward progress delegation for executors</title>
   <style>
       code{white-space: pre-wrap;}
@@ -424,7 +424,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
   </tr>
   <tr>
     <td>Date: </td>
-    <td>2020-04-30</td>
+    <td>2020-05-16</td>
   </tr>
   <tr>
     <td style="vertical-align:top">Project: </td>
@@ -609,7 +609,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <li>Otherwise, <code>get_scheduler(sp)</code> if that expression is valid, if the expression return type satisfies <code>scheduler</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
 <div class="sourceCode" id="cb16"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb16-1"><a href="#cb16-1"></a>     void get_scheduler() = delete;</span></code></pre></div>
-<p>and that does not include a declaration of <code>execution::get_scheduler</code>.</p>
+<p>and that does not include a declaration of <code>execution::get_scheduler</code>. * All work scheduled on a <code>scheduler</code> returned by <code>execution::get_scheduler(sp)</code> must complete before the destructor of <code>sp</code>. <strong>Note:</strong> This is because the execution context underlying the <code>scheduler</code> may have a lifetime bounded by the lifetime of <code>sp</code>.</p>
 <h2 id="executionsync_wait-modifications"><span class="header-section-number">6.3</span> execution::sync_wait modifications<a href="#executionsync_wait-modifications" class="self-link"></a></h2>
 <h3 id="summary-2"><span class="header-section-number">6.3.1</span> Summary<a href="#summary-2" class="self-link"></a></h3>
 <p>Modifications to <code>sync_wait</code> as specified in <span class="citation" data-cites="P1897R3">[<a href="#ref-P1897R3" role="doc-biblioref">P1897</a>]</span>. Rather than simply passing a <code>receiver</code> to the passed <code>sender</code>, <code>sync_wait</code> constructs an execution context on the blocked thread, such that the blocked thread drives that executor and executed enqueued work. A <code>scheduler</code> representing that execution context will be made available from the <code>receiver</code> passed to <code>connect</code> on the <code>sender</code>, thus making that <code>receiver</code> a <code>scheduler_provider</code>.</p>
