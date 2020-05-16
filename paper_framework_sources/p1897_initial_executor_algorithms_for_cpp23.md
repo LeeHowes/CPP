@@ -1,7 +1,7 @@
 ---
 title: "Towards C++23 executors: A proposal for an initial set of algorithms"
 document: P1897R3
-date: 2020-04-30
+date: 2020-05-16
 audience: SG1
 author:
   - name: Lee Howes
@@ -13,14 +13,14 @@ toc: false
 ## Differences between R2 and R3
  * Rename `just_via` to `just_on`.
  * Rename `via` to `on`.
- * Add `share`.
+ * Add `ensure_started`.
  * Add note on the feedback about `indexed_for` in Prague. Removed `indexed_for` from the paper of initial algorithms.
- * Add `let`.
- * Tweaked `handle_error` wording to be more similar to `let`, and renamed `let_error` for naming consistency.
- * Renamed `let` to `let_value` for naming consistency.
+ * Add `let_value`.
+ * Tweaked `handle_error` wording to be more similar to `let_value`, and renamed `let_error` for naming consistency.
  * Updated to use P0443R13 as a baseline.
  * Improves the wording to be closer to mergable wording and less pseudowording.
  * Modified `sync_wait` to terminate on done rather than throwing.
+ * Added notes to clarify execution context of completion of `on` and `just_on`.
 
 ## Differences between R1 and R2
  * Add `just_via` algorithm to allow type customization at the head of a work chain.
@@ -100,8 +100,8 @@ We propose immediately discussing the addition of the following algorithms:
  * `let_error(s, f)`
    * Creates an async scope where an error propagated by `s` is available for the duration of another async operation produced by `f`.
      Value and cancellation propagate unmodified.
- * `share(s)`
-   * Eagerly submits `s` and returns a sender that may be used more than once, propagating the value by reference.
+ * `ensure_started(s)`
+   * Eagerly submits `s` and returns a sender that may be executing concurrently with surrounding code.
 
 ## Examples
 
@@ -221,9 +221,9 @@ A simple example showing how an exception that leaks out of a transform may prop
 int result = 0;
 try {
   auto just_sender = just(3);
-  auto via_sender = via(std::move(just_sender), scheduler1);
+  auto on_sender = on(std::move(just_sender), scheduler1);
   auto transform_sender = transform(
-    std::move(via_sender),
+    std::move(on_sender),
     [](int a){throw 2;});
   auto skipped_transform_sender = transform(
     std::move(transform_sender).
@@ -251,7 +251,7 @@ int result = 0;
 try {
  result = sync_wait(
     just(3) |
-    via(scheduler1) |
+    on(scheduler1) |
     transform([](int a){throw 2;}) |
     transform([](){return 3;}));
 } catch(int a) {
@@ -264,7 +264,7 @@ Very similar to the above, we can handle an error mid-stream
 
 ```cpp
 auto just_sender = just(3);
-auto via_sender = via(std::move(just_sender), scheduler1);
+auto via_sender = on(std::move(just_sender), scheduler1);
 auto transform_sender = transform(
   std::move(via_sender),
   [](int a){throw 2;});
@@ -294,7 +294,7 @@ In this example we:
 auto s = ;
 int result = sync_wait(
   just(3) |
-  via(scheduler1) |
+  on(scheduler1) |
   transform([](float a){throw 2;}) |
   transform([](){return 3;}) |
   let_error([](auto e){
@@ -404,7 +404,7 @@ int r = sync_wait(just_on(s, 3));
 ### Wording
 The name `execution::just_on` denotes a customization point object.
 For some subexpressions `sch` and `ts...` let `Sch` be a type such that `decltype((sch))` is `Sch` and let `Ts...` be a pack of types such that `decltype((ts))...` is `Ts...`.
- The expression `execution::just_on(s, ts...)` is expression-equivalent to:
+ The expression `execution::just_on(sch, ts...)` is expression-equivalent to:
 
   * `sch.just_on(ts...)` if that expression is valid and if `sch` satisfies `scheduler`.
   * Otherwise, `just_on(sch, ts...)`, if that expression is valid, if `sch` satisfies `scheduler` with overload resolution performed in a context that includes the declaration
@@ -413,6 +413,8 @@ For some subexpressions `sch` and `ts...` let `Sch` be a type such that `decltyp
  ```
    and that does not include a declaration of `execution::just_on`.
  * Otherwise returns the result of the expression: `execution::on(execution::just(ts...), sch)`
+
+ * Any customisation of `execution::just_on(sch, ts)` returning a `sender` `s` shall execute calls to `set_value`, `set_done` or `set_error` on a `receiver` connected to `s` on an execution context owned by `sch`.
 
 <!--
 ## execution::just_error
@@ -523,6 +525,8 @@ The expression `execution::on(s, sch)` is expression-equivalent to:
    * When `execution::start` is called on `os`, call `execution::start(ros)`.
  * Otherwise, `execution::on(s, sch)` is ill-formed.
 
+ * Any customisation of `execution::on(s, sch)` returning a `sender` `s2` shall execute calls to `set_value`, `set_done` or `set_error` on a `receiver` connected to `s2` on an execution context owned by `sch`.
+
 
 ## execution::when_all
 
@@ -565,9 +569,7 @@ The expression `execution::when_all(ss...)` is expression-equivalent to:
 
   When `start` is called on the returned `sender`'s `operation_state`, call `execution::start(osi)` for each `operation_state` `osi`.
 
-**Notes:**
- * Efficient execution here under exceptional conditions requires cancellation support. This will be detailed separately.
- * Explicitly transitioning onto a downstream execution context maintains correctness in the general case.
+**Note:** See [Planned Developments](#planned-developments).
 
 
 <!--
@@ -839,54 +841,55 @@ The expression `execution::let_error(s, f)` is expression-equivalent to:
  * Otherwise the expression `execution::let_error(s, f)` is ill-formed.
 
 
-## execution::share
+## execution::ensure_started
 
 ### Overview
-`share` is a sender adapter that takes a `sender`, eagerly submits it and returns a `sender` that propagates the value by reference and can be used as an l-value.
+`ensure_started` is a sender adapter that takes a `sender`, eagerly submits it and returns a `sender` that propagates the value by reference and can be used as an l-value.
 
 Signature:
 ```cpp
 template <execution::sender S>
-see-below share(S s);
+see-below ensure_started(S s);
 ```
 
 *[ Example:*
 ```cpp
-auto s1 = just(3) | share();
-auto s2 = s1 | transform([](const int& v){return v+1;}))
-auto s3 = s1 | transform([](const int& v){return v+2;}))
+auto s1 = just(3) | ensure_started();
+auto s2 = s1 | transform([](const int& a){return a+1;}))
 int r = sync_wait(
   transform(
-    when_all(s2, s3),
-    [](int a, int b){return a+b;}));
-// r==9
+    s2,
+    [](int b){return b*2;}));
+// r==8
 ```
 
 ### Wording
-The name `execution::share` denotes a customization point object.
+The name `execution::ensure_started` denotes a customization point object.
 For some subexpressions `s`, let `S` be a type such that `decltype((s))` is `S`.
-The expression `execution::share(s, f)` is expression-equivalent to:
+The expression `execution::ensure_started(s, f)` is expression-equivalent to:
 
- * `s.share()` if that expression is valid and if `s` satisfies `sender`.
- * Otherwise, `share(s)`, if that expression is valid, if `s` satisfies `sender` with overload resolution performed in a context that includes the declaration
+ * `s.ensure_started()` if that expression is valid and if `s` satisfies `sender`.
+ * Otherwise, `ensure_started(s)`, if that expression is valid, if `s` satisfies `sender` with overload resolution performed in a context that includes the declaration
  ```
-    void share() = delete;
+    void ensure_started() = delete;
  ```
-   and that does not include a declaration of `execution::share`.
+   and that does not include a declaration of `execution::ensure_started`.
 
- * Otherwise constructs a receiver, `r` and passes that receiver to `execution::connect(s, r)` resulting in an `operation_state` `os`.
-   Constructs some shared state, `shr` to store the completion result(s) of `s`.
+ * Otherwise, returns a `sender`, `s2`, that, constructs a shared state `shr`, constructs a receiver, `r` and passes that receiver to `execution::connect(s, r)` resulting in an `operation_state` `os` that is stored as a subobject of `shr`.
 
-   * If `set_value(r, ts)` is called stores `ts` in `shr`.
-   * If `set_error(r, e)` is called, stores `e` in `shr`.
-   * If `set_done(r)` is called stores the done result in `shr`.
+   * If `set_value(r, ts)` is called stores `ts` as subobjects of `os`.
+   * If `set_error(r, e)` is called, stores `e` as a subobject of `os`.
+   * If `set_done(r)` is called stores the done result as a subobject of `os`.
 
-   When some `output_receiver` has been passed to `connect` on the returned `sender`, resulting in an `operation_state` `os2` and one of the above has been called on `r`:
+   When some `output_receiver` has been passed to `connect` on `s2`, resulting in an `operation_state` `os2` and one of the above has been called on `r`:
    * If `r` was satisfied with a call to `set_value`, call `set_value(output_receiver, ts...)`
    * If `r` was satisfied with a call to `set_error`, call `set_error(output_receiver, e)`.
    * If `r` was satisfied with a call to `set_done`, call `execution::set_done(output_receiver)`.
 
  * When `start` is called on `os2`, call `execution::start(os)`.
+ * If `s2` is destroyed before `start` is called on `os2`, calls `std::terminate()`.
+
+ **Note:** See [Planned Developments](#planned-developments).
 
 
 # Customization and example
@@ -900,7 +903,7 @@ auto s = just(3) |                                        // s1
          transform([](int a){return a+1;}) |              // s3
          transform([](int a){return a*2;}) |              // s4
          on(scheduler2) |                                 // s5
-         let_error([](auto e){return just(3);});       // s6
+         let_error([](auto e){return just(3);});          // s6
 int r = sync_wait(s);
 ```
 
@@ -925,20 +928,28 @@ At this point it will call `submit` on the incoming `scheduler1_transform_sender
 `r` is of course the value 8 at this point assuming that neither scheduler triggered an error.
 If there were to be a scheduling error, then that error would propagate to `let_error` and `r` would subsequently have the value `3`.
 
-# Potential future changes
+# Planned developments
+Future changes and discussion points based on R3 of this paper.
 
-## when_all's context
-Based on experience in Facebook's codebase, we believe that `when_all` should return a sender that requires an executor-provider and uses forward progress delegation as discussed in [@P1898R1].
-The returned sender should complete on the delegated context.
-This removes the ambiguity about which context it completes on.
+## when_all and ensure_started's contexts
+Based on experience in Facebook's codebase, we believe that `when_all` and `ensure_started` should return senders that require a `scheduler_provider`s and use forward progress delegation as discussed in [@P1898R1].
+
+In the case of `when_all`, the context the returned `sender` completes on will depend on which incoming `sender` completes last.
+It is thus non-deterministic across that set.
+
+`ensure_started` is similarly adding non-determinism by removing laziness.
+If the `sender` returned by `ensure_started` is complete by the time a `receiver` is connected to it, the `start` call would complete inline with the caller.
+
+In both cases, requiring a `scheduler_provider`, as discussed in [@P1898R1] would offer determinism by guaranteeing a transition onto some downstream scheduler and adding wording to require submission onto that provided `scheduler` if it does not match the completing context.
 
 ## when_all for void types and mixed success
 We should add a when_all variant that returns tuples and variants in its result, or some similar mechanism for to allow parameter packs, including empty packs in the form of void-senders, and mixed success/error to propagate.
 
-## when_all and share both require cancellation and async cleanup to be fully flexible
+## when_all and ensure_started both require cancellation and async cleanup to be fully flexible
 Under error circumstances, `when_all` should cancel the other incoming work. This will be described separately.
 
-`share` similarly needs to be updated to describe how it behaves in the presence of one downstream task being cancelled, and precisely when and where the shared state is destroyed.
+`ensure_started` similarly needs to be updated to describe how it behaves in the presence of one downstream task being cancelled, and precisely when and where the shared state is destroyed.
+This would be a preferable solution to termination, as described above, particularly in cases where `ensure_started` is used as part of a set of operations where something else might throw and cause the `sender` to be destroyed.
 
 # Proposed question for the Prague 2020 meeting
 ## Replace `bulk_execute` in P0443 with `indexed_for` as described above.

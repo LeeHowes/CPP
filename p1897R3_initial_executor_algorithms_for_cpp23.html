@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="mpark/wg21" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <meta name="dcterms.date" content="2020-04-30" />
+  <meta name="dcterms.date" content="2020-05-16" />
   <title>Towards C++23 executors: A proposal for an initial set of algorithms</title>
   <style>
       code{white-space: pre-wrap;}
@@ -424,7 +424,7 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
   </tr>
   <tr>
     <td>Date: </td>
-    <td>2020-04-30</td>
+    <td>2020-05-16</td>
   </tr>
   <tr>
     <td style="vertical-align:top">Project: </td>
@@ -447,14 +447,14 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <ul>
 <li>Rename <code>just_via</code> to <code>just_on</code>.</li>
 <li>Rename <code>via</code> to <code>on</code>.</li>
-<li>Add <code>share</code>.</li>
+<li>Add <code>ensure_started</code>.</li>
 <li>Add note on the feedback about <code>indexed_for</code> in Prague. Removed <code>indexed_for</code> from the paper of initial algorithms.</li>
-<li>Add <code>let</code>.</li>
-<li>Tweaked <code>handle_error</code> wording to be more similar to <code>let</code>, and renamed <code>let_error</code> for naming consistency.</li>
-<li>Renamed <code>let</code> to <code>let_value</code> for naming consistency.</li>
+<li>Add <code>let_value</code>.</li>
+<li>Tweaked <code>handle_error</code> wording to be more similar to <code>let_value</code>, and renamed <code>let_error</code> for naming consistency.</li>
 <li>Updated to use P0443R13 as a baseline.</li>
 <li>Improves the wording to be closer to mergable wording and less pseudowording.</li>
 <li>Modified <code>sync_wait</code> to terminate on done rather than throwing.</li>
+<li>Added notes to clarify execution context of completion of <code>on</code> and <code>just_on</code>.</li>
 </ul>
 <h2 id="differences-between-r1-and-r2"><span class="header-section-number">1.2</span> Differences between R1 and R2<a href="#differences-between-r1-and-r2" class="self-link"></a></h2>
 <ul>
@@ -537,9 +537,9 @@ div#refs p { padding-left: 32px; text-indent: -32px; }
 <ul>
 <li>Creates an async scope where an error propagated by <code>s</code> is available for the duration of another async operation produced by <code>f</code>. Value and cancellation propagate unmodified.</li>
 </ul></li>
-<li><code>share(s)</code>
+<li><code>ensure_started(s)</code>
 <ul>
-<li>Eagerly submits <code>s</code> and returns a sender that may be used more than once, propagating the value by reference.</li>
+<li>Eagerly submits <code>s</code> and returns a sender that may be executing concurrently with surrounding code.</li>
 </ul></li>
 </ul>
 <h2 id="examples"><span class="header-section-number">2.2</span> Examples<a href="#examples" class="self-link"></a></h2>
@@ -642,9 +642,9 @@ vector<int> result_vec = sync_wait(
 <div class="sourceCode" id="cb5"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb5-1"><a href="#cb5-1"></a><span class="dt">int</span> result <span class="op">=</span> <span class="dv">0</span>;</span>
 <span id="cb5-2"><a href="#cb5-2"></a><span class="cf">try</span> <span class="op">{</span></span>
 <span id="cb5-3"><a href="#cb5-3"></a>  <span class="kw">auto</span> just_sender <span class="op">=</span> just<span class="op">(</span><span class="dv">3</span><span class="op">)</span>;</span>
-<span id="cb5-4"><a href="#cb5-4"></a>  <span class="kw">auto</span> via_sender <span class="op">=</span> via<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>just_sender<span class="op">)</span>, scheduler1<span class="op">)</span>;</span>
+<span id="cb5-4"><a href="#cb5-4"></a>  <span class="kw">auto</span> on_sender <span class="op">=</span> on<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>just_sender<span class="op">)</span>, scheduler1<span class="op">)</span>;</span>
 <span id="cb5-5"><a href="#cb5-5"></a>  <span class="kw">auto</span> transform_sender <span class="op">=</span> transform<span class="op">(</span></span>
-<span id="cb5-6"><a href="#cb5-6"></a>    std<span class="op">::</span>move<span class="op">(</span>via_sender<span class="op">)</span>,</span>
+<span id="cb5-6"><a href="#cb5-6"></a>    std<span class="op">::</span>move<span class="op">(</span>on_sender<span class="op">)</span>,</span>
 <span id="cb5-7"><a href="#cb5-7"></a>    <span class="op">[](</span><span class="dt">int</span> a<span class="op">){</span><span class="cf">throw</span> <span class="dv">2</span>;<span class="op">})</span>;</span>
 <span id="cb5-8"><a href="#cb5-8"></a>  <span class="kw">auto</span> skipped_transform_sender <span class="op">=</span> transform<span class="op">(</span></span>
 <span id="cb5-9"><a href="#cb5-9"></a>    std<span class="op">::</span>move<span class="op">(</span>transform_sender<span class="op">).</span></span>
@@ -668,7 +668,7 @@ vector<int> result_vec = sync_wait(
 <span id="cb6-2"><a href="#cb6-2"></a><span class="cf">try</span> <span class="op">{</span></span>
 <span id="cb6-3"><a href="#cb6-3"></a> result <span class="op">=</span> sync_wait<span class="op">(</span></span>
 <span id="cb6-4"><a href="#cb6-4"></a>    just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span></span>
-<span id="cb6-5"><a href="#cb6-5"></a>    via<span class="op">(</span>scheduler1<span class="op">)</span> <span class="op">|</span></span>
+<span id="cb6-5"><a href="#cb6-5"></a>    on<span class="op">(</span>scheduler1<span class="op">)</span> <span class="op">|</span></span>
 <span id="cb6-6"><a href="#cb6-6"></a>    transform<span class="op">([](</span><span class="dt">int</span> a<span class="op">){</span><span class="cf">throw</span> <span class="dv">2</span>;<span class="op">})</span> <span class="op">|</span></span>
 <span id="cb6-7"><a href="#cb6-7"></a>    transform<span class="op">([](){</span><span class="cf">return</span> <span class="dv">3</span>;<span class="op">}))</span>;</span>
 <span id="cb6-8"><a href="#cb6-8"></a><span class="op">}</span> <span class="cf">catch</span><span class="op">(</span><span class="dt">int</span> a<span class="op">)</span> <span class="op">{</span></span>
@@ -677,7 +677,7 @@ vector<int> result_vec = sync_wait(
 <h4 id="handle-an-exception"><span class="header-section-number">2.2.0.4</span> Handle an exception<a href="#handle-an-exception" class="self-link"></a></h4>
 <p>Very similar to the above, we can handle an error mid-stream</p>
 <div class="sourceCode" id="cb7"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb7-1"><a href="#cb7-1"></a><span class="kw">auto</span> just_sender <span class="op">=</span> just<span class="op">(</span><span class="dv">3</span><span class="op">)</span>;</span>
-<span id="cb7-2"><a href="#cb7-2"></a><span class="kw">auto</span> via_sender <span class="op">=</span> via<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>just_sender<span class="op">)</span>, scheduler1<span class="op">)</span>;</span>
+<span id="cb7-2"><a href="#cb7-2"></a><span class="kw">auto</span> via_sender <span class="op">=</span> on<span class="op">(</span>std<span class="op">::</span>move<span class="op">(</span>just_sender<span class="op">)</span>, scheduler1<span class="op">)</span>;</span>
 <span id="cb7-3"><a href="#cb7-3"></a><span class="kw">auto</span> transform_sender <span class="op">=</span> transform<span class="op">(</span></span>
 <span id="cb7-4"><a href="#cb7-4"></a>  std<span class="op">::</span>move<span class="op">(</span>via_sender<span class="op">)</span>,</span>
 <span id="cb7-5"><a href="#cb7-5"></a>  <span class="op">[](</span><span class="dt">int</span> a<span class="op">){</span><span class="cf">throw</span> <span class="dv">2</span>;<span class="op">})</span>;</span>
@@ -703,7 +703,7 @@ vector<int> result_vec = sync_wait(
 <div class="sourceCode" id="cb8"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb8-1"><a href="#cb8-1"></a><span class="kw">auto</span> s <span class="op">=</span> ;</span>
 <span id="cb8-2"><a href="#cb8-2"></a><span class="dt">int</span> result <span class="op">=</span> sync_wait<span class="op">(</span></span>
 <span id="cb8-3"><a href="#cb8-3"></a>  just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span></span>
-<span id="cb8-4"><a href="#cb8-4"></a>  via<span class="op">(</span>scheduler1<span class="op">)</span> <span class="op">|</span></span>
+<span id="cb8-4"><a href="#cb8-4"></a>  on<span class="op">(</span>scheduler1<span class="op">)</span> <span class="op">|</span></span>
 <span id="cb8-5"><a href="#cb8-5"></a>  transform<span class="op">([](</span><span class="dt">float</span> a<span class="op">){</span><span class="cf">throw</span> <span class="dv">2</span>;<span class="op">})</span> <span class="op">|</span></span>
 <span id="cb8-6"><a href="#cb8-6"></a>  transform<span class="op">([](){</span><span class="cf">return</span> <span class="dv">3</span>;<span class="op">})</span> <span class="op">|</span></span>
 <span id="cb8-7"><a href="#cb8-7"></a>  let_error<span class="op">([](</span><span class="kw">auto</span> e<span class="op">){</span></span>
@@ -781,13 +781,16 @@ If `execution::is_noexcept_sender(s)` returns true for a `sender` `s` then it is
 <span id="cb12-3"><a href="#cb12-3"></a><span class="co">// r==3</span></span></code></pre></div>
 <p><em>- end example]</em></p>
 <h3 id="wording-1"><span class="header-section-number">3.3.2</span> Wording<a href="#wording-1" class="self-link"></a></h3>
-<p>The name <code>execution::just_on</code> denotes a customization point object. For some subexpressions <code>sch</code> and <code>ts...</code> let <code>Sch</code> be a type such that <code>decltype((sch))</code> is <code>Sch</code> and let <code>Ts...</code> be a pack of types such that <code>decltype((ts))...</code> is <code>Ts...</code>. The expression <code>execution::just_on(s, ts...)</code> is expression-equivalent to:</p>
+<p>The name <code>execution::just_on</code> denotes a customization point object. For some subexpressions <code>sch</code> and <code>ts...</code> let <code>Sch</code> be a type such that <code>decltype((sch))</code> is <code>Sch</code> and let <code>Ts...</code> be a pack of types such that <code>decltype((ts))...</code> is <code>Ts...</code>. The expression <code>execution::just_on(sch, ts...)</code> is expression-equivalent to:</p>
 <ul>
 <li><code>sch.just_on(ts...)</code> if that expression is valid and if <code>sch</code> satisfies <code>scheduler</code>.</li>
 <li>Otherwise, <code>just_on(sch, ts...)</code>, if that expression is valid, if <code>sch</code> satisfies <code>scheduler</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
 <div class="sourceCode" id="cb13"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb13-1"><a href="#cb13-1"></a>   void just_on() = delete;</span></code></pre></div>
 <p>and that does not include a declaration of <code>execution::just_on</code>. * Otherwise returns the result of the expression: <code>execution::on(execution::just(ts...), sch)</code></p>
+<ul>
+<li>Any customisation of <code>execution::just_on(sch, ts)</code> returning a <code>sender</code> <code>s</code> shall execute calls to <code>set_value</code>, <code>set_done</code> or <code>set_error</code> on a <code>receiver</code> connected to <code>s</code> on an execution context owned by <code>sch</code>.</li>
+</ul>
 <!--
 ## execution::just_error
 
@@ -871,6 +874,7 @@ Note that `sync_wait` requires `S` to propagate a single value type.
 <li>When <code>execution::start</code> is called on <code>os</code>, call <code>execution::start(ros)</code>.</li>
 </ul></li>
 <li><p>Otherwise, <code>execution::on(s, sch)</code> is ill-formed.</p></li>
+<li><p>Any customisation of <code>execution::on(s, sch)</code> returning a <code>sender</code> <code>s2</code> shall execute calls to <code>set_value</code>, <code>set_done</code> or <code>set_error</code> on a <code>receiver</code> connected to <code>s2</code> on an execution context owned by <code>sch</code>.</p></li>
 </ul>
 <h2 id="executionwhen_all"><span class="header-section-number">3.6</span> execution::when_all<a href="#executionwhen_all" class="self-link"></a></h2>
 <h3 id="overview-4"><span class="header-section-number">3.6.1</span> Overview<a href="#overview-4" class="self-link"></a></h3>
@@ -900,7 +904,7 @@ Note that `sync_wait` requires `S` to propagate a single value type.
 </ul></li>
 </ul>
 <p>When <code>start</code> is called on the returned <code>sender</code>’s <code>operation_state</code>, call <code>execution::start(osi)</code> for each <code>operation_state</code> <code>osi</code>.</p>
-<p><strong>Notes:</strong> * Efficient execution here under exceptional conditions requires cancellation support. This will be detailed separately. * Explicitly transitioning onto a downstream execution context maintains correctness in the general case.</p>
+<p><strong>Note:</strong> See <a href="#planned-developments">Planned Developments</a>.</p>
 <!--
 ## execution::indexed_for
 
@@ -1128,44 +1132,45 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p></li>
 <li><p>Otherwise the expression <code>execution::let_error(s, f)</code> is ill-formed.</p></li>
 </ul>
-<h2 id="executionshare"><span class="header-section-number">3.10</span> execution::share<a href="#executionshare" class="self-link"></a></h2>
+<h2 id="executionensure_started"><span class="header-section-number">3.10</span> execution::ensure_started<a href="#executionensure_started" class="self-link"></a></h2>
 <h3 id="overview-8"><span class="header-section-number">3.10.1</span> Overview<a href="#overview-8" class="self-link"></a></h3>
-<p><code>share</code> is a sender adapter that takes a <code>sender</code>, eagerly submits it and returns a <code>sender</code> that propagates the value by reference and can be used as an l-value.</p>
+<p><code>ensure_started</code> is a sender adapter that takes a <code>sender</code>, eagerly submits it and returns a <code>sender</code> that propagates the value by reference and can be used as an l-value.</p>
 <p>Signature:</p>
 <div class="sourceCode" id="cb32"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb32-1"><a href="#cb32-1"></a><span class="kw">template</span> <span class="op">&lt;</span>execution<span class="op">::</span>sender S<span class="op">&gt;</span></span>
-<span id="cb32-2"><a href="#cb32-2"></a>see<span class="op">-</span>below share<span class="op">(</span>S s<span class="op">)</span>;</span></code></pre></div>
+<span id="cb32-2"><a href="#cb32-2"></a>see<span class="op">-</span>below ensure_started<span class="op">(</span>S s<span class="op">)</span>;</span></code></pre></div>
 <p><em>[ Example:</em></p>
-<div class="sourceCode" id="cb33"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb33-1"><a href="#cb33-1"></a><span class="kw">auto</span> s1 <span class="op">=</span> just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span> share<span class="op">()</span>;</span>
-<span id="cb33-2"><a href="#cb33-2"></a><span class="kw">auto</span> s2 <span class="op">=</span> s1 <span class="op">|</span> transform<span class="op">([](</span><span class="kw">const</span> <span class="dt">int</span><span class="op">&amp;</span> v<span class="op">){</span><span class="cf">return</span> v<span class="op">+</span><span class="dv">1</span>;<span class="op">}))</span></span>
-<span id="cb33-3"><a href="#cb33-3"></a><span class="kw">auto</span> s3 <span class="op">=</span> s1 <span class="op">|</span> transform<span class="op">([](</span><span class="kw">const</span> <span class="dt">int</span><span class="op">&amp;</span> v<span class="op">){</span><span class="cf">return</span> v<span class="op">+</span><span class="dv">2</span>;<span class="op">}))</span></span>
-<span id="cb33-4"><a href="#cb33-4"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
-<span id="cb33-5"><a href="#cb33-5"></a>  transform<span class="op">(</span></span>
-<span id="cb33-6"><a href="#cb33-6"></a>    when_all<span class="op">(</span>s2, s3<span class="op">)</span>,</span>
-<span id="cb33-7"><a href="#cb33-7"></a>    <span class="op">[](</span><span class="dt">int</span> a, <span class="dt">int</span> b<span class="op">){</span><span class="cf">return</span> a<span class="op">+</span>b;<span class="op">}))</span>;</span>
-<span id="cb33-8"><a href="#cb33-8"></a><span class="co">// r==9</span></span></code></pre></div>
+<div class="sourceCode" id="cb33"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb33-1"><a href="#cb33-1"></a><span class="kw">auto</span> s1 <span class="op">=</span> just<span class="op">(</span><span class="dv">3</span><span class="op">)</span> <span class="op">|</span> ensure_started<span class="op">()</span>;</span>
+<span id="cb33-2"><a href="#cb33-2"></a><span class="kw">auto</span> s2 <span class="op">=</span> s1 <span class="op">|</span> transform<span class="op">([](</span><span class="kw">const</span> <span class="dt">int</span><span class="op">&amp;</span> a<span class="op">){</span><span class="cf">return</span> a<span class="op">+</span><span class="dv">1</span>;<span class="op">}))</span></span>
+<span id="cb33-3"><a href="#cb33-3"></a><span class="dt">int</span> r <span class="op">=</span> sync_wait<span class="op">(</span></span>
+<span id="cb33-4"><a href="#cb33-4"></a>  transform<span class="op">(</span></span>
+<span id="cb33-5"><a href="#cb33-5"></a>    s2,</span>
+<span id="cb33-6"><a href="#cb33-6"></a>    <span class="op">[](</span><span class="dt">int</span> b<span class="op">){</span><span class="cf">return</span> b<span class="op">*</span><span class="dv">2</span>;<span class="op">}))</span>;</span>
+<span id="cb33-7"><a href="#cb33-7"></a><span class="co">// r==8</span></span></code></pre></div>
 <h3 id="wording-8"><span class="header-section-number">3.10.2</span> Wording<a href="#wording-8" class="self-link"></a></h3>
-<p>The name <code>execution::share</code> denotes a customization point object. For some subexpressions <code>s</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code>. The expression <code>execution::share(s, f)</code> is expression-equivalent to:</p>
+<p>The name <code>execution::ensure_started</code> denotes a customization point object. For some subexpressions <code>s</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code>. The expression <code>execution::ensure_started(s, f)</code> is expression-equivalent to:</p>
 <ul>
-<li><code>s.share()</code> if that expression is valid and if <code>s</code> satisfies <code>sender</code>.</li>
-<li>Otherwise, <code>share(s)</code>, if that expression is valid, if <code>s</code> satisfies <code>sender</code> with overload resolution performed in a context that includes the declaration</li>
+<li><code>s.ensure_started()</code> if that expression is valid and if <code>s</code> satisfies <code>sender</code>.</li>
+<li>Otherwise, <code>ensure_started(s)</code>, if that expression is valid, if <code>s</code> satisfies <code>sender</code> with overload resolution performed in a context that includes the declaration</li>
 </ul>
-<div class="sourceCode" id="cb34"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb34-1"><a href="#cb34-1"></a>   void share() = delete;</span></code></pre></div>
-<p>and that does not include a declaration of <code>execution::share</code>.</p>
+<div class="sourceCode" id="cb34"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb34-1"><a href="#cb34-1"></a>   void ensure_started() = delete;</span></code></pre></div>
+<p>and that does not include a declaration of <code>execution::ensure_started</code>.</p>
 <ul>
-<li><p>Otherwise constructs a receiver, <code>r</code> and passes that receiver to <code>execution::connect(s, r)</code> resulting in an <code>operation_state</code> <code>os</code>. Constructs some shared state, <code>shr</code> to store the completion result(s) of <code>s</code>.</p>
+<li><p>Otherwise, returns a <code>sender</code>, <code>s2</code>, that, constructs a shared state <code>shr</code>, constructs a receiver, <code>r</code> and passes that receiver to <code>execution::connect(s, r)</code> resulting in an <code>operation_state</code> <code>os</code> that is stored as a subobject of <code>shr</code>.</p>
 <ul>
-<li>If <code>set_value(r, ts)</code> is called stores <code>ts</code> in <code>shr</code>.</li>
-<li>If <code>set_error(r, e)</code> is called, stores <code>e</code> in <code>shr</code>.</li>
-<li>If <code>set_done(r)</code> is called stores the done result in <code>shr</code>.</li>
+<li>If <code>set_value(r, ts)</code> is called stores <code>ts</code> as subobjects of <code>os</code>.</li>
+<li>If <code>set_error(r, e)</code> is called, stores <code>e</code> as a subobject of <code>os</code>.</li>
+<li>If <code>set_done(r)</code> is called stores the done result as a subobject of <code>os</code>.</li>
 </ul>
-<p>When some <code>output_receiver</code> has been passed to <code>connect</code> on the returned <code>sender</code>, resulting in an <code>operation_state</code> <code>os2</code> and one of the above has been called on <code>r</code>:</p>
+<p>When some <code>output_receiver</code> has been passed to <code>connect</code> on <code>s2</code>, resulting in an <code>operation_state</code> <code>os2</code> and one of the above has been called on <code>r</code>:</p>
 <ul>
 <li>If <code>r</code> was satisfied with a call to <code>set_value</code>, call <code>set_value(output_receiver, ts...)</code></li>
 <li>If <code>r</code> was satisfied with a call to <code>set_error</code>, call <code>set_error(output_receiver, e)</code>.</li>
 <li>If <code>r</code> was satisfied with a call to <code>set_done</code>, call <code>execution::set_done(output_receiver)</code>.</li>
 </ul></li>
 <li><p>When <code>start</code> is called on <code>os2</code>, call <code>execution::start(os)</code>.</p></li>
+<li><p>If <code>s2</code> is destroyed before <code>start</code> is called on <code>os2</code>, calls <code>std::terminate()</code>.</p></li>
 </ul>
+<p><strong>Note:</strong> See <a href="#planned-developments">Planned Developments</a>.</p>
 <h1 id="customization-and-example"><span class="header-section-number">4</span> Customization and example<a href="#customization-and-example" class="self-link"></a></h1>
 <p>Each of these algorithms, apart from <code>just</code>, is customizable on one or more <code>sender</code> implementations. This allows full optimization. For example, in the following simple work chain:</p>
 <div class="sourceCode" id="cb35"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb35-1"><a href="#cb35-1"></a>auto s = just(3) |                                        // s1</span>
@@ -1173,7 +1178,7 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <span id="cb35-3"><a href="#cb35-3"></a>         transform([](int a){return a+1;}) |              // s3</span>
 <span id="cb35-4"><a href="#cb35-4"></a>         transform([](int a){return a*2;}) |              // s4</span>
 <span id="cb35-5"><a href="#cb35-5"></a>         on(scheduler2) |                                 // s5</span>
-<span id="cb35-6"><a href="#cb35-6"></a>         let_error([](auto e){return just(3);});       // s6</span>
+<span id="cb35-6"><a href="#cb35-6"></a>         let_error([](auto e){return just(3);});          // s6</span>
 <span id="cb35-7"><a href="#cb35-7"></a>int r = sync_wait(s);</span></code></pre></div>
 <p>The result of <code>s1</code> might be a <code>just_sender&lt;int&gt;</code> implemented by the standard library vendor.</p>
 <p><code>on(just_sender&lt;int&gt;, scheduler1)</code> has no customization defined, and this expression returns an <code>scheduler1_on_sender&lt;int&gt;</code> that is a custom type from the author of <code>scheduler1</code>, it will call <code>submit</code> on the result of <code>s1</code>.</p>
@@ -1182,14 +1187,18 @@ The expression `execution::bulk_transform(S, F)` for some subexpressions S and F
 <p>At <code>s5</code>, however, the implementor of <code>scheduler2</code> does not know about the implementation of <code>scheduler1</code>. At this point it will call <code>submit</code> on the incoming <code>scheduler1_transform_sender</code>, forcing <code>scheduler1</code>’s sender to implement the necessary synchronization to map back from the behind-the-scenes optimal queue to something interoperable with another vendor’s implementation.</p>
 <p><code>let_error</code> at <code>s6</code> will be generic in terms of <code>submit</code> and not do anything special, this uses the default implementation in terms of <code>submit</code>. <code>sync_wait</code> similarly constructs a <code>condition_variable</code> and a temporary <code>int</code>, submits a <code>receiver</code> to <code>s</code> and waits on the <code>condition_variable</code>, blocking the calling thread.</p>
 <p><code>r</code> is of course the value 8 at this point assuming that neither scheduler triggered an error. If there were to be a scheduling error, then that error would propagate to <code>let_error</code> and <code>r</code> would subsequently have the value <code>3</code>.</p>
-<h1 id="potential-future-changes"><span class="header-section-number">5</span> Potential future changes<a href="#potential-future-changes" class="self-link"></a></h1>
-<h2 id="when_alls-context"><span class="header-section-number">5.1</span> when_all’s context<a href="#when_alls-context" class="self-link"></a></h2>
-<p>Based on experience in Facebook’s codebase, we believe that <code>when_all</code> should return a sender that requires an executor-provider and uses forward progress delegation as discussed in <span class="citation" data-cites="P1898R1">[<a href="#ref-P1898R1" role="doc-biblioref">P1898R1</a>]</span>. The returned sender should complete on the delegated context. This removes the ambiguity about which context it completes on.</p>
+<h1 id="planned-developments"><span class="header-section-number">5</span> Planned developments<a href="#planned-developments" class="self-link"></a></h1>
+<p>Future changes and discussion points based on R3 of this paper.</p>
+<h2 id="when_all-and-ensure_starteds-contexts"><span class="header-section-number">5.1</span> when_all and ensure_started’s contexts<a href="#when_all-and-ensure_starteds-contexts" class="self-link"></a></h2>
+<p>Based on experience in Facebook’s codebase, we believe that <code>when_all</code> and <code>ensure_started</code> should return senders that require a <code>scheduler_provider</code>s and use forward progress delegation as discussed in <span class="citation" data-cites="P1898R1">[<a href="#ref-P1898R1" role="doc-biblioref">P1898R1</a>]</span>.</p>
+<p>In the case of <code>when_all</code>, the context the returned <code>sender</code> completes on will depend on which incoming <code>sender</code> completes last. It is thus non-deterministic across that set.</p>
+<p><code>ensure_started</code> is similarly adding non-determinism by removing laziness. If the <code>sender</code> returned by <code>ensure_started</code> is complete by the time a <code>receiver</code> is connected to it, the <code>start</code> call would complete inline with the caller.</p>
+<p>In both cases, requiring a <code>scheduler_provider</code>, as discussed in <span class="citation" data-cites="P1898R1">[<a href="#ref-P1898R1" role="doc-biblioref">P1898R1</a>]</span> would offer determinism by guaranteeing a transition onto some downstream scheduler and adding wording to require submission onto that provided <code>scheduler</code> if it does not match the completing context.</p>
 <h2 id="when_all-for-void-types-and-mixed-success"><span class="header-section-number">5.2</span> when_all for void types and mixed success<a href="#when_all-for-void-types-and-mixed-success" class="self-link"></a></h2>
 <p>We should add a when_all variant that returns tuples and variants in its result, or some similar mechanism for to allow parameter packs, including empty packs in the form of void-senders, and mixed success/error to propagate.</p>
-<h2 id="when_all-and-share-both-require-cancellation-and-async-cleanup-to-be-fully-flexible"><span class="header-section-number">5.3</span> when_all and share both require cancellation and async cleanup to be fully flexible<a href="#when_all-and-share-both-require-cancellation-and-async-cleanup-to-be-fully-flexible" class="self-link"></a></h2>
+<h2 id="when_all-and-ensure_started-both-require-cancellation-and-async-cleanup-to-be-fully-flexible"><span class="header-section-number">5.3</span> when_all and ensure_started both require cancellation and async cleanup to be fully flexible<a href="#when_all-and-ensure_started-both-require-cancellation-and-async-cleanup-to-be-fully-flexible" class="self-link"></a></h2>
 <p>Under error circumstances, <code>when_all</code> should cancel the other incoming work. This will be described separately.</p>
-<p><code>share</code> similarly needs to be updated to describe how it behaves in the presence of one downstream task being cancelled, and precisely when and where the shared state is destroyed.</p>
+<p><code>ensure_started</code> similarly needs to be updated to describe how it behaves in the presence of one downstream task being cancelled, and precisely when and where the shared state is destroyed. This would be a preferable solution to termination, as described above, particularly in cases where <code>ensure_started</code> is used as part of a set of operations where something else might throw and cause the <code>sender</code> to be destroyed.</p>
 <h1 id="proposed-question-for-the-prague-2020-meeting"><span class="header-section-number">6</span> Proposed question for the Prague 2020 meeting<a href="#proposed-question-for-the-prague-2020-meeting" class="self-link"></a></h1>
 <h2 id="replace-bulk_execute-in-p0443-with-indexed_for-as-described-above."><span class="header-section-number">6.1</span> Replace <code>bulk_execute</code> in P0443 with <code>indexed_for</code> as described above.<a href="#replace-bulk_execute-in-p0443-with-indexed_for-as-described-above." class="self-link"></a></h2>
 <p><code>indexed_for</code> as described above should replace bulk_execute during the merge of <span class="citation" data-cites="P0443R11">[<a href="#ref-P0443R11" role="doc-biblioref">P0443R11</a>]</span> into C++23. Suggest fine-tuning this wording and forwarding to LEWG.</p>
