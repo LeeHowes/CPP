@@ -1,7 +1,7 @@
 ---
 title: "Forward progress delegation for executors"
-document: P1898R0
-date: 2019-10-06
+document: P1898R1
+date: 2020-05-16
 audience: SG1
 author:
   - name: Lee Howes
@@ -9,20 +9,27 @@ author:
 toc: false
 ---
 
+# Changelog
+## Differences between R0 and R1
+ * Tidying of introduction.
+ * Updated wording to more clearly make changes necessary to P1898R3.
+
 # Introduction
 
-This is an early proposal to sound out one approach to forward progress delegation for executors, based in part on a discussion of the `DeferredExecutor` that works with [folly's](https://github.com/facebook/folly/) [SemiFuture](https://github.com/facebook/folly/blob/master/folly/futures/Future.h).
+This design enables delegation of forward progress in asynchronous algorithms and enables well-defined propagation of execution resources through an asynchronous work chain.
+This work is based in part on a discussion of the `DeferredExecutor` that works with [folly's](https://github.com/facebook/folly/) [SemiFuture](https://github.com/facebook/folly/blob/master/folly/futures/Future.h) and how folly's coroutines propagate executors as well to ensure that work runs on predictable underlying execution resources.
 
-In this paper `executor` refers to the general concept as expressed in the title of [@P0443R11] and the long standing executors effort.
-The concrete concepts used may be `executor`, `scheduler` or `sender` depending on the context.
+In this paper `executor` refers to the general concept as expressed in the title of [@P0443R13] and the long standing executors effort.
+The concrete concepts used may satisfy `executor`, `scheduler` or `sender` depending on the context.
 
-Building on the definitions in [@P0443R11] and [@P1660R0], we start with the definition of a `receiver` we propose adding a concept `scheduler_provider` that allows a `sender` to require that a `receiver` passed to it is able to provide an executor, or more accurately a `scheduler` in the language of [@P0443R11].
-This concept offers a `get_scheduler` customization point that allows a `scheduler` to be propagated from downstream to upstream asynchronous tasks.
-A given `scheduler`, and therefore any `sender` created off that scheduler may require the availability of such a customization on `recivers`s passed to the `submit` operation.
+Building on the definitions in [@P0443R13] and [@P1897R3], we start with the definition of a `receiver` we propose adding a concept `scheduler_provider` that allows a `sender` to require that a `receiver` passed to it is able to provide an executor, or more accurately a `scheduler` in the language of [@P0443R13].
+This concept offers a `get_scheduler` customization point that allows a `scheduler` to be propagated from downstream to upstream asynchronous tasks, or alternatively from upstream to downstream.
+A given `scheduler`, and therefore any `sender` created off that scheduler may require the availability of such a customization on `receivers`s passed to the `submit` operation.
 
 A given `sender` may delegate any tasks it is unable to perform to the scheduler it acquires from the downstream `Callback`.
+A given `sender` alternatively might always reschedule work to an underlying `scheduler`, and in situations where the chosen `scheduler` is ambiguous, for example where the output work runs from a `when_all` operation, that `sender` might require that downstream work provide a `scheduler` for it to reschedule onto to remove nondeterminism in where work runs.
 
-A `sync_wait` operation, as defined in [@P1897R0], encapsulates a `scheduler` that wraps a context owned by and executed on the calling thread.
+A `sync_wait` operation, as defined in [@P1897R3], encapsulates a `scheduler` that wraps a context owned by and executed on the calling thread.
 This will make progress and as such can act as the executor-of-last-resort when the C++20 guarantee is required in blocking code.
 
 We also propose that a set of definitions for forward progress of asynchronous graph nodes be provided.
@@ -48,7 +55,7 @@ Allows the runtime to assume that the statement `s0` is safe to execute concurre
 However, the same is true of statement `s1`. Once started, `s1` must also run to completion.
 As a result, while the runtime makes no guarantee about instances of `s0` the collection of such instances must complete - and therefore every instance must run eventually.
 
-In practice, on shared resources, other work in the system might occupy every available thread.  
+In practice, on shared resources, other work in the system might occupy every available thread.
 To guarantee that all `s0`s are able to run eventually, we might need to create three threads to achieve this - and in the extreme this might not be possible.
 
 We therefore fall back to a design where the calling thread may run the remaining work.
@@ -56,21 +63,21 @@ We know the caller is making progress.
 If no thread ever becomes available to run the work the caller might iterate through all instances of `s0` serially.
 
 ## Forward progress delegation in an asynchronous world
-Unfortunately, if `transform` is made asynchronous, then we have a challenge.
+Unfortunately, if `transform` is made asynchronous, which we will call `range_transform` below, then we have a challenge.
 Take a result-by-return formulation of async transform as an example.
 
 In either an imagined coroutine formulation:
 ```cpp
 awaitable<vector<int>> doWork(vector<int> vec) {
-  co_return co_await bulk_coroutine_transform(
+  co_return co_await range_transform(
     vec, [](int i) {return i+1;});
 }
 ```
 
-Or a declarative formulation as in [@P1897R0]:
+Or a declarative formulation as in [@P1897R3]:
 ```cpp
-sender_to<vector<int>> doWork(sender_to<vector<int>> vec) {
-  return std::move(vec) | bulk_transform([](int i) {return i+1;});
+sender-of<vector<int>> doWork(sender-of<vector<int>> vec) {
+  return std::move(vec) | range_transform([](int i) {return i+1;});
 }
 ```
 
@@ -159,10 +166,12 @@ Therefore the most appropriate solution is to make available a valid downstream 
 # Generalising
 Let us say that a given asynchronous algorithm promises some forward progress guarantee that depends on its executor/scheduler^[Potentially also on the execution property passed but we leave that out here for simplicity.].
 
+Note that in the examples below *sender-of<T>* refers to a `sender` that will call `set_value` on a `receiver` passed to its `connect` operation with type `T`, and exists for exposition only.
+
 So in a work chain (using `|` to represent a chaining of work as in C++20's Ranges):
 ```cpp
-sender_to<vector<int>> doWork(sender_to<vector<int>> vec) {
-  return std::move(vec) | on(DeferredExecutor{}) | bulk_transform([](int i) {return i+1;});
+sender-of<vector<int>> doWork(sender-of<vector<int>> vec) {
+  return std::move(vec) | on(DeferredExecutor{}) | range_transform([](int i) {return i+1;});
 }
 ```
 
@@ -182,47 +191,49 @@ At worst, this executor might also be deferred, but it is a requirement that at 
 Now let’s say we explicitly provide an executor with a strong guarantee.
 A concurrent executor like `NewThreadExecutor`:
 ```cpp
-sender_to<vector<int>> doWork(sender_to<vector<int>> vec) {
+sender-of<vector<int>> doWork(sender-of<vector<int>> vec) {
   return std::move(vec) |
     on(DeferredExecutor{}) |
-    bulk_transform([](int i) {return i+1;}) | // c2
+    range_transform([](int i) {return i+1;}) | // c2
     on(NewThreadExecutor{});
 }
 ```
 
 Now the algorithm `c2` is guaranteed to run on the `NewThreadExecutor`.
-It is guaranteed to make concurrent progress, which is enough to ensure that the `bulk_transform` starts and completes in reasonable time.
+It is guaranteed to make concurrent progress, which is enough to ensure that the `range_transform` starts and completes in reasonable time.
 
 Note that this also provides an opportunity for an intermediate state. If instead of a `DeferredExecutor` we had a `BoundedQueueExecutor` with the obvious meaning and a queue size of 1:
 
 ```cpp
-sender_to<vector<int>> doWork(sender_to<vector<int>> vec) {
+sender-of<vector<int>> doWork(sender-of<vector<int>> vec) {
   return std::move(vec) |
     on(BoundedQueueExecutor{1}) |
-    bulk_transform([](int i) {return i+1;}) | // c2
+    range_transform([](int i) {return i+1;}) | // c2
     on(NewThreadExecutor{});
 }
 ```
 
-`bulk_transform` will launch a task per element of `vec` and `vec` is larger than 1.
+`range_transform` will launch a task per element of `vec` and `vec` is larger than 1.
 As a result, the second task may be rejected because of the queue bound.
-One option is to propagate a failure error downstream, such that the `transform` would fail with an error.
+One option is to propagate a failure error downstream, such that the `range_transform` would fail with an error.
 However, if `BoundedQueueExecutor` can make use of the scheduler provided by the downstream `receiver`, it can instead delegate the work, ensuring that even though it hit a limit internally, the second scheduler will complete the work.
 
 Any given executor should declare in its specification if it will delegate or not.
-If no delegate executor is provided, for example we submit all of this work with a null `receiver` making it fire-and-forget, then no delegation happens but we could instead still make the error available:
+If no delegate executor is provided, for example we detach the work as below:
 
 ```cpp
-void doWork(sender_to<vector<int>> vec) {
+void doWork(sender-of<vector<int>> vec) {
   std::move(vec) |
     on(BoundedQueueExecutor{1}) |
-    bulk_transform([](int i) {return i+1;}) |
-    on_error([](Ex&& ex) {Handle the error}) |
-    eagerify();
+    range_transform([](int i) {return i+1;}) |
+    handle_error([](Ex&& ex) {Handle the error}) |
+    detach();
 }
 ```
 
-Finally, note that this is objectively more flexible than throwing an exception on enqueue - the `submit` operation on the `sender_to` provided by both of the above instances of `BoundedQueueExecutor` can always succeed, removing the risk of trying to handle an enqueue failure from the caller.
+then no delegating executor is available to delegate to, and we might instead produce the error which can be handled appropriately.
+
+Finally, note that this is more flexible than throwing an exception on enqueue - the `submit` operation on the `sender` provided by both of the above instances of `BoundedQueueExecutor` can always succeed, removing the risk of trying to handle an enqueue failure from the caller.
 One will propagate an error inline, the other gives the executor the decision of whether to propagate work or not.
 That allows it to make the decision to delegate after a *successful* enqueue - for example when the queue has accepted work but the underlying execution context realizes some property cannot be satisfied.
 
@@ -244,7 +255,7 @@ std::transform(
 
 May be achieved by something like:
 ```cpp
-vector<int> doWork(Sender<vector<int>> vec) {
+vector<int> doWork(sender-of<vector<int>> vec) {
   vector<int> output;
   ManualExecutor m;
   std::move(vec) |
@@ -258,11 +269,11 @@ vector<int> doWork(Sender<vector<int>> vec) {
 
 That is that the forward progress of the transform, if it is unable to satisfy the requirement, may delegate to the `ManualExecutor`.
 This is an executor that may be driven by the calling thread, in this case by the `drain` method.
-So we have attracted the delegation of work by providing an executor to delegate to, but donating the current thread’s forward progress to that executor until all the work is complete.
+So we support the delegation of work onto the calling thread by providing an executor to delegate to, but donating the current thread’s forward progress to that executor until all the work is complete.
 
-This would of course be wrapped in a wait algorithm in practice, as proposed in [@P1897R0]:
+This would of course be wrapped in a wait algorithm in practice, as proposed in [@P1897R3]:
 ```cpp
-vector<int> doWork(Sender<vector<int>> vec) {
+vector<int> doWork(sender-of<vector<int>> vec) {
   return sync_wait(std::move(vec) |
     bulk_transform(std::execution::par, [](int i) {return i+1;}));
 }
@@ -274,93 +285,75 @@ vector<int> doWork(Sender<vector<int>> vec) {
 # Impact on the Standard
  * Add `scheduler_provider` concept.
  * Add `get_scheduler` CPO.
- * Additional wording to the `sync_wait` CPO specifying that it will pass an `executor_provider` to the `submit` method of the passed `sender`.
- * Add `on` CPO to apply the `scheduler` both upstream and downstream.
- * Ensure that all asynchronous algorithms propagate the scheduler from the output to the input when this makes sense.
+ * Additional wording to the `sync_wait` CPO specifying that it will pass an `scheduler_provider` to the `connect` operation on the passed `sender`.
+ * Additional wording to the `on` CPO specifying that it will pass an `scheduler_provider` to the `connect` operation on the passed `sender`.
+ * Additional wording for other algorithms specifying that they pass through the `get_scheduler` CPO, making their own `receiver`s also `scheduler_provider`s.
 
 ## Concept scheduler_provider
 ### Summary
 A concept for receivers that may provide a scheduler upstream.
-May be used to overload submit methods to allow delegation in the presence of a downstream scheduler.
-May be used to restrict the submit method on a `sender` to require an `executor_provider`.
-This restriction would be important to implement folly's `SemiFuture` or `SemiAwaitable` concepts where all work is delegated.
+May be used to overload `connect` algorithm, to allow delegation in the presence of a downstream scheduler.
+May be used to restrict the `connect` operation on a `sender` to require an `scheduler_provider`.
 
 ### Wording
 ```
 template<class R>
 concept scheduler_provider =
-  receiver<R> &&
-  requires(R&& r) {	 
-    { execution::get_scheduler((R&&) r) } noexcept;
+  requires(SP&& sp) {
+    { execution::get_scheduler((SP&&) sp) -> scheduler } noexcept;
   };
 ```
 
 ## execution::get_scheduler
 ### Summary
-When applied to a `receiver`, if supported, will return a `scheduler` that the `receiver` expects to be able to run delegated work safely, and that callers may assume they are able to delegate work to.
+When applied to a `scheduler_provider`, if supported, will return a `scheduler` that the `scheduler_provider` expects to be able to run delegated work safely, and that callers may assume they are able to delegate work to.
 
 ### Wording
 The name `execution::get_scheduler` denotes a customization point object.
-The expression `execution::get_scheduler(R)` for some subexpression `R` is expression-equivalent to:
+For some subexpression `sp`, let `SP` be a type such that `decltype((sp))` is `SP`
+The expression `execution::get_scheduler(sp)` is expression-equivalent to:
 
- * `R.get_scheduler()` if that expression is valid.
- * Otherwise, `get_scheduler(R)` if that expression is valid with overload resolution performed in a context that includes the declaration
+ * `sp.get_scheduler()` if that expression is valid and if the expression return type satisfies `scheduler`
+ * Otherwise, `get_scheduler(sp)` if that expression is valid, if the expression return type satisfies `scheduler` with overload resolution performed in a context that includes the declaration
  ```
-         template<class R>
-           void get_scheduler(R) = delete;
+      void get_scheduler() = delete;
  ```
-
+   and that does not include a declaration of `execution::get_scheduler`.
+ * All work scheduled on a `scheduler` returned by `execution::get_scheduler(sp)` must complete before the destructor of `sp`. **Note:** This is because the execution context underlying the `scheduler` may have a lifetime bounded by the lifetime of `sp`.
 
 ## execution::sync_wait modifications
 ### Summary
-Modifications to `sync_wait` as specified in [@P1897R0].
+Modifications to `sync_wait` as specified in [@P1897R3].
 Rather than simply passing a `receiver` to the passed `sender`, `sync_wait` constructs an execution context on the blocked thread, such that the blocked thread drives that executor and executed enqueued work.
-A `scheduler` representing that execution context will be made available from the `receiver` passed to `submit` on the `sender`, thus making that `receiver` a `scheduler_provider`.
+A `scheduler` representing that execution context will be made available from the `receiver` passed to `connect` on the `sender`, thus making that `receiver` a `scheduler_provider`.
 
-
-### Wording
+### Wording to modify final otherwise clause
  * Otherwise:
    * Constructs an execution context owned by the calling thread such that tasks enqueued into that context will be processed by the calling thread.
-   * Constructs a `scheduler`, `s` representing that execution context.
-   * Constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes that callback to `execution::submit(S, r)`.
-   * `execution::get_scheduler(r)` will return `s`.   
-   * Waits on the synchronization primitive to block on completion of `S`.
+   * Constructs a `scheduler`, `sch` representing that execution context.
+   * Constructs a `receiver`, `r` over an implementation-defined synchronization primitive and passes that callback to `execution::connect(s, r)` returning an `operation_state` `os` such that:
+     * `r` satisfies `scheduler_provider`.
+     * `execution::get_scheduler(r)` will return `sch`.
+     * If the operation completes by calling `set_value(r, t)` then `sync_wait()` will return a value, `x`, of type `remove_cvref_t<decltype(t)>`.
+     * If the operation completes by calling `set_value(r)` then `sync_wait()` will return `void`.
+     * If the operation completes by calling `set_error(r, e)` then `sync_wait()` calls `std::rethrow_exception(e)` if `decltype(e)` is `std::exception_ptr` or `throw e;` otherwise.
+     * If the operation completes by calling `set_done(r)` then `sync_wait()` will call `std::terminate`.
+   * Calls `execution::start(os)`.
+   * Waits on the synchronization primitive to block on completion of `s`, driving the execution context as necessary until `set_value`, `set_error` or `set_done` is called on `r` .
 
 The thread that invokes `sync_wait` will block with forward progress delegation on completion of the work where supported by the implementation of `s`.
 
 
-## execution::on
+## execution::on modifications
 ### Summary
-Transitions execution from one executor to the context of a scheduler.
-Passes a `scheduler_provider` to the passed `sender`, such that it is valid to apply `on` to a sender that restricts its `submit` operation to `scheduler_provider`s.
-That is that:
-```
-sender1 | on(scheduler1) | bulk_execute(f)...
-```
+In addition to transitioning execution from one execution context to another, `on` also changes the `scheduler` that is propagated upstream through `scheduler_provider`s.
 
-will return a sender that runs in the context of `scheduler1` such that `f` will run on the context of `scheduler1`, potentially customized, but that is not triggered until the completion of `sender1`.
-If `sender1` calls `get_scheduler` on the `receiver` passed by `on` to `sender1`'s `submit` operation, then that shall return `scheduler1`.
+### Wording to modify otherwise clause
+Add the clauses:
+   * If `output_receiver` satisfies `scheduler_provider` then `execution::get_scheduler(r2)` returns the result of `execution::get_scheduler(output_receiver)`.
+   * `r` satisfies `scheduler_provider` and `execution::get_scheduler(r)` returns sch.
 
-`on(S1, S2)` may be customized on either or both of `S1` and `S2`.
-`on` differs from `via` in that via does not provide the executor to the passed `sender`, thus not allowing the upstream work to be delegated downstream.
 
-### Wording
-The name `execution::on` denotes a customization point object.
-The expression `execution::on(S1, S2)` for some subexpressions `S1`, `S2` is expression-equivalent to:
-
-* `S1.on(S2)` if that expression is valid.
-* Otherwise, `on(S1, S2)` if that expression is valid with overload resolution performed in a context that includes the declaration
-```
-        template<class S1, class S2>
-          void on(S1, S2) = delete;
-```
-
- * Otherwise constructs a `receiver` `r` such that when `on_value`, `on_error` or `on_done` is called on `r` the value(s) or error(s) are packaged, and a callback `c2` constructed such that when `execution::value(c2)` is called, the stored value or error is transmitted and `c2` is submitted to a `sender` obtained from `S2`.
- * `get_scheduler(r)` shall return `S2`.
- * The returned sender_to's value types match those of `S1`.
- * The returned sender_to's execution context is that of `S2`.
-
-If `execution::is_noexcept_sender(S1)` returns true at compile-time, and `execution::is_noexcept_sender(S2)` returns true at compile-time and all entries in `S1::value_types` are nothrow movable, `execution::is_noexcept_sender(on(S1, S2))` should return `true` at compile time.
 
 ## Delegation through asynchronous algorithms
 ### Summary
@@ -368,9 +361,13 @@ Most algorithms do not provide executors.
 These algorithms should avoid breaking the forward progress delegation chain and should allow executors to propagate from `receiver` to `sender` in a chain.
 
 ### Wording
-To `execution::transform`, `execution::bulk_transform`, `execution::bulk_execute` and `execution::handle_error` add the text:
+To `execution::when_all` add the text:
+ * If `output_receiver` satisfies `scheduler_provider`, `execution::get_scheduler(ri)` for all `ri` returns the result of `execution::get_scheduler(output_receiver)`.
 
-If `r2` is the `receiver` passed to `submit(s, r2)` and `s` is the `sender` returned by ALGORITHM and `r` is the `receiver` provided to `submit(S, r)`. if `get_scheduler(r2)` is defined then `get_scheduler(r)` is equal to `get_scheduler(r2)`.
+To `execution::transform`, `execution::handle_error` and `execution::let` add the text:
+ * If `output_receiver` satisfies `scheduler_provider`, `execution::get_scheduler(r)` returns the result of `execution::get_scheduler(output_receiver)`.
+
+A similar modification should be applied to `bulk_execute` once the semantics of the returned `sender` are clear.
 
 
 # Future Work: adding algorithm-level forward progress definitions
@@ -455,22 +452,22 @@ We don't have a concrete design in mind, but would like us as a group to be thin
 
 ---
 references:
-  - id: P0443R11
-    citation-label: P0443R11
+  - id: P0443R13
+    citation-label: P0443R13
     title: "A Unified Executors Proposal for C++"
     issued:
-      year: 2019
-    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0443r11.html
+      year: 2020
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p0443R13.html
   - id: P1660R0
     citation-label: P1660R0
     title: "A Compromise Executor Design Sketch"
     issued:
       year: 2019
     URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1660r0.pdf
-  - id: P1897R0
+  - id: P1897R3
     citation-label: P1897
     title: "Towards C++23 executors: A proposal for an initial set of algorithms"
     issued:
-      year: 2019
-    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1897r0.pdf
+      year: 2020
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p1897r3.pdf
 ---
