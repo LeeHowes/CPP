@@ -1,11 +1,17 @@
 ---
-title: "Forward progress delegation for executors"
+title: "Bulk schedule"
 document: D2203R0
 date: 2020-05-16
 audience: SG1
 author:
   - name: Lee Howes
     email: <lwh@fb.com>
+  - name: Lewis Baker
+    email: <lbaker@fb.com>
+  - name: Kirk Shoop
+    email: <kirkshoop@fb.com>
+  - name: Eric Niebler
+    email: <eniebler@fb.com>
 toc: false
 ---
 
@@ -81,7 +87,7 @@ auto s1 = executor.execute([](){
 sync_wait(s1);
 ```
 which is obviously how we can do this in a fire-and-forget world, and with the right implementation can work for a handle-returning style as well.
-The `let` algorithm in [@p1897] essentially supports this model.
+The `let` algorithm in [@P1897] essentially supports this model.
 
 Or we make them dependent directly, which is how the `sender` description of `execute` would work where this is an algorithm on senders, not on executors:
 ```
@@ -290,7 +296,7 @@ Vitally, after it makes all calls to `set_next`, it calls `set_value`, providing
 The returned `many_sender` will call `set_next(i)` for each index in the iteration space on the receiver connected to it.
 If all complete, and the operation has not been cancelled, it will call `set_value` on the same receiver.
 
-In libunifex we have a very simple example of this:
+In libunifex we have a [very simple example](https://github.com/facebookexperimental/libunifex/blob/master/test/bulk_schedule_test.cpp) of this:
 ```
     unifex::sync_wait(
         unifex::bulk_join(
@@ -332,33 +338,43 @@ Cancellation is provided by a `let_with_stop_source` algorithm:
 
 that provides `stop_source` integration and in this case trivially cancels future invocations of `set_next` after a particular one has been reached.
 As we passed the `seq` policy that ordering is guaranteed.
+Like `let`, the `stop_source`, and the entire function object passed to the algorithm remain alive until the nested work completes.
+`let_with_stop_source` also chains `stop_token`s such that if, instead of `sync_wait` an algorithm is used that might want to cancel upstream work, cancelling that token will also cancel the token that `stopSource` triggers.
+Requesting cancellation of `stopSource` cancels as yet unexecuted instances of the `bulk_schedule`, but is propagated into the `bulk_schedule` entirely generically because `bulk_schedule` will request the `stop_token` from the receiver passed to it.
 
 Of course, the full set of algorithms we define for C++23 and beyond is wide open. `bulk_transform` and `bulk_with_stop_source` are simply examples of the kind of algorithms we can hook up with the fundamental `bulk_schedule` primitive, in the same way that we aim to define asynchronous parallel algorithms on top of [@P0443].
 
+# Examples
 
 # Impact on the Standard
 
 ---
 references:
-  - id: P0443R13
+  - id: P0443
     citation-label: P0443R13
     title: "A Unified Executors Proposal for C++"
     issued:
       year: 2020
     URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p0443R13.html
-  - id: P1660R0
+  - id: P1660
     citation-label: P1660R0
     title: "A Compromise Executor Design Sketch"
     issued:
       year: 2019
     URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p1660r0.pdf
-  - id: P1898R1
+  - id: P1897
+    citation-label: P1897
+    title: "Towards C++23 executors: A proposal for an initial set of algorithms"
+    issued:
+      year: 2020
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p1897r3.pdf
+  - id: P1898
     citation-label: P1898
     title: "Forward progress delegation for executors"
     issued:
       year: 2020
-    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p1897r3.pdf
-  - id: P2181R0
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p1898r1.pdf
+  - id: P2181
     citation-label: P2181
     title: "Correcting the Design of Bulk Execution"
     issued:
