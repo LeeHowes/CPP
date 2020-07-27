@@ -348,6 +348,125 @@ Of course, the full set of algorithms we define for C++23 and beyond is wide ope
 
 # Impact on the Standard
 
+# Critique of [@P2181] discussion
+## Heap allocations
+bulk_execute as defaults requires two heap allocations in the general case where:
+
+ * it is non-blocking (because while not all executors need be, all good QOI used by async algorithms must be).
+ * we need some sort of inter-task communication
+ * we need to know when the task has been cancelled
+
+in these cases:
+ * the bulk-execute call will have to heap allocate the function object
+ * the shared state will have to be allocated
+
+If we need to know that the task has been cancelled, so we can safely satisfy a barrier that something else might be waiting on for clean process shutdown, we need the function object to be passed by value.
+If it is passed by reference, the caller either heap allocates or can keep it locally, but at the cost that the executor now has no generic way to tell the caller that the task will never happen.
+This is a receipe for deadlock on process shutdown.
+
+The sender-based model of this has no such problem:
+ * connect/start removes the fundamental heap allocation
+ * a clear sequence point on completion (success failure or cancellation) tells us when the task finishes, without the caller having to pessimise with reference counting
+
+We should not be defining new APIs that default to a heap allocating reference-counting-heavy model of task management.
+
+## Implementing bulk_execute on top of bulk_schedule is trivial
+This should be pretty simple:
+```
+struct Executor {
+  void bulk_execute(index_t size, Func&& func) {
+    submit(bulk_schedule(size), as_bulk_receiver(func));
+  }
+  ...
+};
+```
+
+So is `bulk_schedule` itself complicated to implement, assuming some internal bulk_execute-like API?
+Marginally, but only to enforce the sequence point.
+
+```
+struct Scheduler {
+  struct OS {
+    struct Wrapper {
+      Receiver r_;
+      std::atomic<index_t> cnt_;
+      ~Wrapper(){
+        if(cnt_ == 0) {
+          r_.set_next();
+        } else {
+          r_.set_done();
+        }
+      }
+    };
+    void start() {
+      internal_bulk_execute([s = make_shared<Wrapper>(r_, size)](index_t idx){s->r.set_next(idx);});
+    }
+    index_t size;
+    Receiver r_;
+  };
+  struct Sender {
+    index_t size;
+    OS connect(Receiver&& r) {
+      return OS{size, r};
+    }
+  };
+  Sender bulk_schedule(index_t size) {
+    return Sender{size};
+  }
+  ...
+};
+```
+
+Note how little real "laziness" there is in that sequence of calls?
+Everything is trivial argument currying, of trivial values.
+There is no added latency involved.
+
+So the complexity is only that the executor is adding just enough state to know how to tell the caller that this bulk task completes - but the executor is the right place to do that:
+
+ * It is the entity that knows what the safest form of memory allocation and reference counting is for that state.
+ * It knows the right barrier type to use.
+ * It knows if it actually has some sort of event model in the driver so that it can ignore reference counting completely and rely on a driver callback.
+
+For good QOI as users of these APIs, and maintainers of the tooling that thousands of developers will use to (largely indirectly) use these APIs, we much prefer the idea that my executor implementor tweaks the above implementation to work well for the target runtime and architecture than to prefer a model that relies on the shared_ptr and heap allocated barrier pessimization.
+
+## Not passing the policy
+The question here is at what point we communicate the policy to the executor.
+If we do it before we call an algorithm:
+```
+parallel_executor e;
+algorithm(e, execution::seq, ...);
+```
+
+then the algorithm has one restriction placed on its worker functions, and another restriction arising from the concrete executor.
+If part of the implementation of the algorithm uses a different policy, in the above case a more relaxed operation that can run `par_unseq` then it has no way to communicate this to the executor, which might be able to optimise its execution in that case.
+We lose flexibility by fixing the executor's policy before passing it to the algorithm.
+
+This is even more true in compound algorithms, that we might get from sender chaining:
+
+```
+parallel_scheduler e;
+auto r1 = algorithm(e.schedule(), execution::par, ...);
+auto r2 = algorithm(r1, execution::seq, ...);
+```
+
+now it is true that at this time we do not have a final decision on how the parallel algorithm API should be setup - and maybe each will take an executor explicitly.
+This seems limiting, however.
+
+The alternative is to allow the algorithm to apply modifications:
+```
+void algorithm(Executor e,...) {
+  auto e2 = e.make_seq();
+  // use e2 with seq
+}
+```
+
+this would have to leak to the interface if we were to allow passing an executor that could not take this modification.
+At that point we are almost as well off taking a list of executors for different parts of the algorithm.
+More seriously, though, it means that if we want to slightly change the implementation to allow part of it to run in a more relaxed forward progress mode we cannot do it without changing the constraints on the API.
+
+Even if we did allow for this option, and put the constraints appropriately on the API, or required the implementation to make decisions so that this never fails but only allows different implementations, it seems little different from passing it to execute anyway.
+So what do we gain from the limitation?
+
 ---
 references:
   - id: P0443
