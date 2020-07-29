@@ -35,35 +35,45 @@ The sender/receiver work, in its most general discussed form in the group, aims 
  The changes we discuss here aim to ensure that bulk execution satifies all of the above.
 
 
-# A simple async
-Take a simple async operation, currently defined in [@P0443] as `executor.execute(func)`.
-Let's take it as given that there are situations where a fire-and-forget execute is beneficial and not dispute that point.
-However, let's address why the above set of ideas are often beneficial even for a very simple operation like this.
+# Senders and schedule
+If we look at `schedule`, that returns a `Sender` as in [@P0443] we see all of the above.
 
-If we make this a "two-way" operation:
-```
-auto f = executor.execute(func);
-```
+Going briefly through the list:
 
-then we have a handle to the result. Why do we care?
+ * Laziness: until we call `start()` we can assume that no `set_*` function is called on the receiver passed to `connect()`.
+   This greatly simplifies the protection we have to apply in the implementation.
+   Note that this does not mean that the sender we call `connect` on has not started - eager execution is fine, although it makes little sense for the `sender` returned straight from `schedule`.
+ * Inline allocated where possible: the `operation_state` returned by `connect` is not moveable, and contains all the state necessary for the algorithms.
+   This means that we can, for example, implement a linked-list of tasks intrusively on the stack with no heap allocation even for complex compound algorithms.
+ * Sequenced: a `Sender` notifies its completion via a call to a well-defined set of operations on the `Receiver`, allowing work to be chained.
+   With knowledge of the relationship between types of receiver the intermediate calls may be removed if two chained `sender`s behave the same with or without the call.
+ * Interoperable: for an unknown pairing of two `sender`s, the inteface on the `Receiver` must be obeyed.
+   This is the mechanism through which two arbitrary execution contexts from different vendors can cleanly interoperate.
+ * Cancellable: `set_done` is a notification to the `Receiver` that work was cancelled and that the state of prior work cannot be assumed.
+   This is defined in [@P0443].
+   In addition, a `get_stop_token` CPO is assumed to be available on a `Receiver` to propagate cancellation information from receiver to sender.
+   This is the same mechanism that is used to propagate `schedulers` in [@1898] and maps well to coroutines where a `co_await`ing coroutine may pass allocators, executors and other state from caller to callee.
 
-## Blocking
-We can block on this either by making `execute` itself blocking, or by using an algorithm that blocks:
-```
-sync_wait(executor.execute(func));
-```
+A fire-and-forget operation like `executor.execute(func)` offers a more limited set of options.
+Mutating the executor is one way to pass in allocators, and potentially a stop-token.
+Making the operation blocking, or embedding chaining of work directly in the passed function, allows for chaining.
+Chaining through blocking is a significant limitation for an algorithm using an executor.
+Chaining through the function itself loses optimisation opportunities because it requires the user to embed the mechanism, removing the opportunity for the context to optimise back to back operations, for example through using an in-order queue rather than enqueue-by-callback.
 
-why might we do it this way?
-First, the implementation here would be very similar to the implementation of a generic blocking version of execute, so there should be no latency or allocation change.
 
-However, there are advantages:
 
- * Orthogonality: We can change the style of waiting independently of the algorithm. `timed_wait` that makes a `stop_token` available to the executor becomes easy to build without duplicating the `execute` algorithm (note that this matters with the multiplicative effect of having multiple algorithms).
- * Thread-safety: This was brought up in one of the review calls. If execute is blocking we have an interesting question if two threads operation on the executor such that one is blocking in `execute` and the other is assigning to the executor. This definition is much cleaner if we decouple the blocking operation and move it to a single-shot `sender` returned from the algorithm instead.
+TODO:
+
+# bulk_execute/bulk_schedule
+Bulk execution scales directly from simple scalar execution.
+Allocation and blocking apply similarly to bulk execution.
+
+Sequencing is a little different, and the extension of blocking to more general cancellation becomes very interesting.
+For now let's discuss some `bulk_execute` as for `execute` above, where we just assume that some number, potentially a large number, of calls to `func` happen.
+The reason for this is that this example is here purely to explain a point about `bulk_schedule`, and generalises to the full set of bulk algorithms eventually.
 
 ## Sequencing
 
-**Sequencing**
 A sequence of executes is clearly a valuable thing. Let's assume here that `func2` depends on `func1`. How do we support this:
 ```
 executor.execute(func);
@@ -103,54 +113,26 @@ What is clear is that the work has a well-defined generic underlying mechanism f
 As this `set_next` call is well-defined as an interface, we can mix and match algorithms and mix and match authors without problems.
 We can also optimise it away when we know all these types and customise the algorithm, using the sequential queue underneath.
 
-## Allocation
-In a true fire-and-forget mode of `execute`, we have to hand work to an allocator, which will generically heap allocate storage for the function.
-In the `sender` model of an execute algorithm, we do not.
-Given:
-```
-auto f = executor.execute(func);
-sync_wait(f);
-```
 
-where `execute` itself is **not** blocking (we realise the example as a whole is for simplicity) by the time we call `sync_wait` `func` and all state needed to manage `func` may still be pending.
-This is a lazy operation by default.
-In this case we wait one line of code, and then `sync_wait` calls `connect` on f, stores that state locally on its stack, calls `start()` and waits for the result.
-Everything is allocated inline in the caller.
 
-Now of course, if we want `execute` to run eagerly, we still have to heap allocate.
-This seems unfortunate, but may be the right implementation decision in some cases where eagerness matters.
-However, we don't *have* to do that.
-
-What if we have a `launch` algorithm that `connect`s `f`, makes it run immediately hence removing any latency concern, but returns a stack allocated handle to the state?
-```
-auto f = executor.execute(func);
-auto state = launch(f);
-// Do other things, we don't need to block
-sync_wait(state);
-```
-
-now we are:
- * Immediately launching `func`, eagerly, with no added latency.
- * We benefit from the lazy model by making an explicit decision to stack allocate all state.
-   We could, for example, implement `executor`'s queue as an intrusive list across stack-allocated objects.
- * We can do work concurrently while the object is live on the stack.
-
-This is a common pattern for nested algorithms, where we don't really stack allocate, but we do collapse operations into some parent algorithm's state such that there is a heap allocation, but only one heap allocation for some relatively complicated set of work.
-
-# bulk_execute/bulk_schedule
-Bulk execution scales directly from simple scalar execution.
-Allocation and blocking apply similarly to bulk execution.
-
-Sequencing is a little different, and the extension of blocking to more general cancellation becomes very interesting.
-For now let's discuss some `bulk_execute` as for `execute` above, where we just assume that some number, potentially a large number, of calls to `func` happen.
-The reason for this is that this example is here purely to explain a point about `bulk_schedule`, and generalises to the full set of bulk algorithms eventually.
-
-## Bulk sequencing
 Taking the bulk version of the above scalar sequence:
 ```
 executor.bulk_execute(func);
 executor.bulk_execute(func2);
 ```
+
+We can block on this either by making `execute` itself blocking, or by using an algorithm that blocks:
+```
+sync_wait(executor.execute(func));
+```
+
+why might we do it this way?
+First, the implementation here would be very similar to the implementation of a generic blocking version of execute, so there should be no latency or allocation change.
+
+However, there are advantages:
+
+ * Orthogonality: We can change the style of waiting independently of the algorithm. `timed_wait` that makes a `stop_token` available to the executor becomes easy to build without duplicating the `execute` algorithm (note that this matters with the multiplicative effect of having multiple algorithms).
+ * Thread-safety: This was brought up in one of the review calls. If execute is blocking we have an interesting question if two threads operation on the executor such that one is blocking in `execute` and the other is assigning to the executor. This definition is much cleaner if we decouple the blocking operation and move it to a single-shot `sender` returned from the algorithm instead.
 
 Sequencing this using blocking calls suffers the same way as for execute.
 We need not elaborate.
@@ -202,6 +184,42 @@ By encoding sequence points in the abstraction we put them under the control of 
 By default, because one of our goals is that this code be *Interoperatable* of course this uses `set_value`, `set_done` or `set_error` because that's the interface we defined.
 In practice, though, we can customise on the intermediate sender types and avoid that cost.
 So a default of well-defined sequencing with optimisation is more practical as a model than no sequencing, custom sequencing for each executor type or blocking algorithms.
+
+
+## Allocation
+In a true fire-and-forget mode of `execute`, we have to hand work to an allocator, which will generically heap allocate storage for the function.
+In the `sender` model of an execute algorithm, we do not.
+Given:
+```
+auto f = executor.execute(func);
+sync_wait(f);
+```
+
+where `execute` itself is **not** blocking (we realise the example as a whole is for simplicity) by the time we call `sync_wait` `func` and all state needed to manage `func` may still be pending.
+This is a lazy operation by default.
+In this case we wait one line of code, and then `sync_wait` calls `connect` on f, stores that state locally on its stack, calls `start()` and waits for the result.
+Everything is allocated inline in the caller.
+
+Now of course, if we want `execute` to run eagerly, we still have to heap allocate.
+This seems unfortunate, but may be the right implementation decision in some cases where eagerness matters.
+However, we don't *have* to do that.
+
+What if we have a `launch` algorithm that `connect`s `f`, makes it run immediately hence removing any latency concern, but returns a stack allocated handle to the state?
+```
+auto f = executor.execute(func);
+auto state = launch(f);
+// Do other things, we don't need to block
+sync_wait(state);
+```
+
+now we are:
+ * Immediately launching `func`, eagerly, with no added latency.
+ * We benefit from the lazy model by making an explicit decision to stack allocate all state.
+   We could, for example, implement `executor`'s queue as an intrusive list across stack-allocated objects.
+ * We can do work concurrently while the object is live on the stack.
+
+This is a common pattern for nested algorithms, where we don't really stack allocate, but we do collapse operations into some parent algorithm's state such that there is a heap allocation, but only one heap allocation for some relatively complicated set of work.
+
 
 
 ## Bulk cancellation
