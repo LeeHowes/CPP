@@ -30,6 +30,7 @@ The sender/receiver work, in its most general discussed form in the group, aims 
  * Sequenced: `set_next` calls represent sequencing between asynchronous operations.
  * Optimisable: `set_next` calls are not necessary if two chained operations can customise on each others; types.
  * Interoperatable: by defining first the hooks between a `sender` and a `receiver` we define interfaces between different implementors' libraries in the same way that a `range` defines a simple shared concept, irrespective of how an algorithm is implemented. This includes generic support for error handling, value propagation and cancellation.
+ * Cancellable: supporting cancellation in both bulk and non-bulk algorithms is important to a lot of use cases. In [@P0443] the downstream part of cancellation is explicit in the inclusion of `set_done`. The upstream is a query on the receiver.
 
  The changes we discuss here aim to ensure that bulk execution satifies all of the above.
 
