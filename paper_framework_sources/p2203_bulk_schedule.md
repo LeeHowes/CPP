@@ -25,14 +25,32 @@ This paper serves as an addendum to that design that we hope leads to wider agre
 
 ## Properties of Sender/Receiver
 The sender/receiver work, in its most general discussed form in the group, aims for a few goals:
+
  * Laziness by assumption: to allow implementations to remove shared state and synchronization.
  * Inline allocated where possible: `connect`/`start` APIs so that all asynchronous work can be inlined into the caller's state if that makes sense, rather than assuming heap allocations.
- * Sequenced: `set_next` calls represent sequencing between asynchronous operations.
- * Optimisable: `set_next` calls are not necessary if two chained operations can customise on each others; types.
+ * Sequenced: `set_value` calls represent sequencing between asynchronous operations.
+ * Optimisable: `set_value` calls are not necessary if two chained operations can customise on each others; types.
+ * Composable: rather than building out variants of an algorithm (`post`/`defer`, allocator parameter, different function signatures, per-algorithm shared state, timeouts) composition allows us to build more sophisticated algorthms from simple ones. With inline allocation and laziness we can do this at no cost.
  * Interoperatable: by defining first the hooks between a `sender` and a `receiver` we define interfaces between different implementors' libraries in the same way that a `range` defines a simple shared concept, irrespective of how an algorithm is implemented. This includes generic support for error handling, value propagation and cancellation.
  * Cancellable: supporting cancellation in both bulk and non-bulk algorithms is important to a lot of use cases. In [@P0443] the downstream part of cancellation is explicit in the inclusion of `set_done`. The upstream is a query on the receiver.
 
- The changes we discuss here aim to ensure that bulk execution satifies all of the above.
+`bulk_schedule`, compared with `bulk_execute` gives us most of these features.
+This is its power.
+As a trivial example, if we want a blocking operation, we compose bulk_schedule with `sync_wait`:
+```
+sync_wait(bulk_transform(bulk_schedule(ex, 10), [](){...}));
+```
+this requires the `bulk_transform` algorithm, but that is a trivial pass through much like [@P1897]'s `transform`.
+
+If we want to wait with a timeout here, we can add that algorithm:
+```
+timed_wait(bulk_transform(bulk_schedule(ex, 10), [](){...}), 10s);
+```
+
+
+
+
+The gap in the [@P2181] definition of `bulk_schedule` is in sequencing
 
 
 # Senders and schedule
@@ -145,11 +163,11 @@ auto s1 = execute(executor.schedule(), func);
 auto s2 = execute(s1, func2);
 ```
 
-In this design the work has a well-defined generic underlying mechanism for signalling, using a `set_next` call when all instances of `func` complete and when `func2` should run.
-As this `set_next` call is well-defined as an interface, we can mix and match algorithms and mix and match authors without problems.
+In this design the work has a well-defined generic underlying mechanism for signalling, using a `set_value` call when all instances of `func` complete and when `func2` should run.
+As this `set_value` call is well-defined as an interface, we can mix and match algorithms and mix and match authors without problems.
 
-As for the scalar case, we can also optimise away the `set_next` call when we know all these types and customise the algorithm, using the sequential queue underneath, and even when this is not available, we can let the runtime system optimise the context on which `set_next` is called to ensure it is valid.
-If necessary a driver-owned thread might call `set_next` even if an accelerator runs the calls to `func`.
+As for the scalar case, we can also optimise away the `set_value` call when we know all these types and customise the algorithm, using the sequential queue underneath, and even when this is not available, we can let the runtime system optimise the context on which `set_value` is called to ensure it is valid.
+If necessary a driver-owned thread might call `set_value` even if an accelerator runs the calls to `func`.
 By making this up to the implementation, rather than up to the user to inject code into the passed function, offers scope for more efficient implementations.
 
 The point here is that **sequence points matter** to bulk algorithms.
