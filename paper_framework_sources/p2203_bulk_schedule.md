@@ -60,66 +60,119 @@ Making the operation blocking, or embedding chaining of work directly in the pas
 Chaining through blocking is a significant limitation for an algorithm using an executor.
 Chaining through the function itself loses optimisation opportunities because it requires the user to embed the mechanism, removing the opportunity for the context to optimise back to back operations, for example through using an in-order queue rather than enqueue-by-callback.
 
+However, none of this is to say that a one-way execute algorithm is valueless.
+In a known environment it works well, and indeed is the common way for building tasking environments at this time.
 
 
-TODO:
+
 
 # bulk_execute/bulk_schedule
 Bulk execution scales directly from simple scalar execution.
-Allocation and blocking apply similarly to bulk execution.
-
-Sequencing is a little different, and the extension of blocking to more general cancellation becomes very interesting.
-For now let's discuss some `bulk_execute` as for `execute` above, where we just assume that some number, potentially a large number, of calls to `func` happen.
-The reason for this is that this example is here purely to explain a point about `bulk_schedule`, and generalises to the full set of bulk algorithms eventually.
+We should design bulk operations with the same goals in mind, for interoperability, efficiency and to support efficient compound algorithms.
+Some aspects become more complicated than for scalar algorithms: in particular, sequencing is more difficult to support efficiently, but this makes it more important to consider.
 
 ## Sequencing
 
-A sequence of executes is clearly a valuable thing. Let's assume here that `func2` depends on `func1`. How do we support this:
+A sequence of executes is clearly a valuable thing. Let's assume here that `func2` depends on `func1`. We want to support chaining of operations in some fashion:
 ```
-executor.execute(func);
-executor.execute(func2);
+bulk_execute(exec, func);
+bulk_execute(exec, func2);
 ```
 
-One way is to make these blocking.
-That has the disadvantages we just discussed, but also means the author of whatever algorithm is making these calls has to either also write a blocking algorithm, which is a bit problem in a production system and would require constant thread creation to make this safe - effectively concurrent forward progress.
+One way is to make these blocking, either directly, or by manually using blocking algorithms to make it clearer at the call site:
+```
+sync_wait(bulk_execute(exec, func));
+sync_wait(bulk_execute(exec, func2));
+```
 
-Another approach is that we implicitly sequence, such that `executor` maintains an in-order queue.
+Blocking has a huge disadvantage because it is viral.
+If we have some algorithm that calls these two:
+void alg(...) {
+  sync_wait(bulk_execute(executor, func));
+  sync_wait(bulk_execute(executor, func2));
+}
+
+then alg has to be blocking.
+For some algorithms this may be a valid design, but for asynchronous algorithms it is not, or at least not without launching a thread for each algorithm to do the blocking, so in general this is a poor solution.
+It certainly cannot be the only way we provide work chaining.
+
+Another approach is that we implicitly sequence, such that `executor` maintains an in-order queue in order of call to bulk_execute.
 This is a common approach in runtime systems.
 The problem with it is that it does not interoperate, so it fails the *Interoperatable* goal.
 We need to add a second mechanism to bridge queues from different implementations.
 
-Or we can sequence by nesting, which is likely a little more expensive in some cases than having an underlying queue, but is a common use case if a subsequent task is dependent on some signal from an earlier one anyway, or where we are waiting for a callback.
-That is that a task triggers execution of the next task internally:
+We can sequence by nesting, where the implementation of `func` triggers the enqueue of `func2`.
+For scalar work this makes a lot of sense, being practical apart from losing the potential in-order queue optimisation:
 ```
-auto s1 = executor.execute([](){
+executor.execute([executor](){
     func();
-    return executor.execute(func2);
+    executor.execute(func2);
   });
-sync_wait(s1);
 ```
-which is obviously how we can do this in a fire-and-forget world, and with the right implementation can work for a handle-returning style as well.
-The `let` algorithm in [@P1897] essentially supports this model.
 
-Or we make them dependent directly, which is how the `sender` description of `execute` would work where this is an algorithm on senders, not on executors:
+For a bulk algorithm this is more complicated:
+```
+executor.bulk_execute([executor](){
+    func();
+    if(is_last_task) {
+      executor.bulk_execute(func2);
+    }
+  });
+```
+where we need some way to compute `is_last_task`, and we need to be sure we can enqueue more work from within the bulk task.
+That may be limited for weak forward progress situations.
+
+We could instead explicitly order on a barrier:
+```
+some_barrier_type barrier(num_elements);
+bulk_execute(executor.schedule(), [](){
+    func();
+    barrier.signal();
+  });
+bulk_execute(executor.schedule(), [](){
+    barrier.wait();
+    func();
+  });
+```
+
+this both has lifetime issues to consider with respect to `barrier`, potentially solved by reference counting.
+It also risks launching a wide fan out, blocking task, onto an execution context which is an easy path to deadlock.
+
+Finally, we can chain bulk algorithms the same way we chain scalar algorithms.
+This is the design we discussed in Prague for [@P0443] where bulk_execute takes and returns a `Sender`:
 ```
 auto s1 = execute(executor.schedule(), func);
 auto s2 = execute(s1, func2);
-sync_wait(s2);
 ```
 
-note again there is no need for latency here.
-We can always actually run work eagerly.
-What is clear is that the work has a well-defined generic underlying mechanism for signalling, using a `set_next` call when `func` completes and when `func2` should run.
+In this design the work has a well-defined generic underlying mechanism for signalling, using a `set_next` call when all instances of `func` complete and when `func2` should run.
 As this `set_next` call is well-defined as an interface, we can mix and match algorithms and mix and match authors without problems.
-We can also optimise it away when we know all these types and customise the algorithm, using the sequential queue underneath.
+
+As for the scalar case, we can also optimise away the `set_next` call when we know all these types and customise the algorithm, using the sequential queue underneath, and even when this is not available, we can let the runtime system optimise the context on which `set_next` is called to ensure it is valid.
+If necessary a driver-owned thread might call `set_next` even if an accelerator runs the calls to `func`.
+By making this up to the implementation, rather than up to the user to inject code into the passed function, offers scope for more efficient implementations.
+
+The point here is that **sequence points matter** to bulk algorithms.
+By encoding sequence points in the abstraction we put them under the control of the execution context.
+By default, because one of our goals is that this code be *Interoperable* of course this uses `set_value`, `set_done` or `set_error` because that's the interface we defined.
+In practice, though, we can customise on the intermediate sender types and avoid that cost.
+So a default of well-defined sequencing with optimisation is more practical as a model than no sequencing, custom sequencing for each executor type or blocking algorithms.
 
 
 
-Taking the bulk version of the above scalar sequence:
-```
-executor.bulk_execute(func);
-executor.bulk_execute(func2);
-```
+
+
+
+
+
+
+
+
+
+
+
+OLD:
+------------
 
 We can block on this either by making `execute` itself blocking, or by using an algorithm that blocks:
 ```
