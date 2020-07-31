@@ -57,7 +57,7 @@ Make `bulk_schedule` symmetric with `schedule` by:
  * Renaming `set_value` to `set_next`, to remove a fundamentally different ordering semantic.
  * Add `set_value` back with the same meaning as in the sender returned from `schedule`.
  * Define `many_sender` and `many_receiver` to match these definitions.
- * Propagating the execution policy via a `get_execution_policy` query on the `bulk_receiver`, consistent with `get_scheduler` as defined in [@P1898].
+ * Propagating the execution policy via a `get_execution_policy` query on the `many_receiver`, consistent with `get_scheduler` as defined in [@P1898].
 
 
 # Sequencing
@@ -195,129 +195,177 @@ By default, because one of our goals is that this code be *Interoperable* of cou
 In practice, though, we can customise on the intermediate sender types and avoid that cost.
 So a default of well-defined sequencing with optimisation is more practical as a model than no sequencing, custom sequencing for each executor type or blocking algorithms.
 
+
+# The changes
+To maintain sequencing, we need `set_value` to have the same definition as in `sender` for the type returned by `bulk_schedule`.
+It should not be possible to accidentally chain scalar work onto bulk work:
+```
+transform(bulk_schedule(exec), [](auto...){...});
+```
+
+ * `set_value` then will, like `set_error` or `set_done` be called at most once on the receiver.
+ * We add a `set_next` operation, that differentiates a `many_sender` or `many_receiver` from their original forms, that is called once for each element of the iteration space, and passes the index.
+ * After all necessary calls to `set_next` return, `set_value`, `set_error` or `set_done` will be called.
+ * It is not necessary for *every* call to `set_next` to be called, if the operation is cancelled mid-way-through because the result was found early, then we may see different behaviour for a given `many_sender`.
+ * A query, `get_execution_policy` called on a `many_receiver` will return the policy that that receiver requires to be able to safely execute.
+   This may or may not be utilised by the scheduler, but it should be propagated through a chain of receivers and upgraded to a tighter policy if necessary.
+
+
 # Impact on the Standard
+## execution::set_next
+The name execution::set_next denotes a customization point object. The expression `execution::set_next(R, Idx, Vs...)` for some subexpressions `R`, `Idx` and `Vs...` is expression-equivalent to:
 
+`R.set_next(Idx, Vs...)`, if that expression is valid. If the function selected does not send the value(s) `Idx` and `Vs...` to the `many_receiver` `R`’s next operation, the program is ill-formed with no diagnostic required.
 
-
-
-# Critique of [@P2181] discussion
-## Heap allocations
-bulk_execute as defaults requires two heap allocations in the general case where:
-
- * it is non-blocking (because while not all executors need be, all good QOI used by async algorithms must be).
- * we need some sort of inter-task communication
- * we need to know when the task has been cancelled
-
-in these cases:
- * the bulk-execute call will have to heap allocate the function object
- * the shared state will have to be allocated
-
-If we need to know that the task has been cancelled, so we can safely satisfy a barrier that something else might be waiting on for clean process shutdown, we need the function object to be passed by value.
-If it is passed by reference, the caller either heap allocates or can keep it locally, but at the cost that the executor now has no generic way to tell the caller that the task will never happen.
-This is a receipe for deadlock on process shutdown.
-
-The sender-based model of this has no such problem:
- * connect/start removes the fundamental heap allocation
- * a clear sequence point on completion (success failure or cancellation) tells us when the task finishes, without the caller having to pessimise with reference counting
-
-We should not be defining new APIs that default to a heap allocating reference-counting-heavy model of task management.
-
-## Implementing bulk_execute on top of bulk_schedule is trivial
-This should be pretty simple:
+Otherwise, `set_next(R, Idx, Vs...)`, if that expression is valid, with overload resolution performed in a context that includes the declaration
 ```
-struct Executor {
-  void bulk_execute(index_t size, Func&& func) {
-    submit(bulk_schedule(size), as_bulk_receiver(func));
-  }
-  ...
-};
+  void set_next();
 ```
+and that does not include a declaration of `execution::set_next`. If the function selected by overload resolution does not send the value(s) `Idx` and `Vs...` to the receiver `R`’s next channel, the program is ill-formed with no diagnostic required.
 
-So is `bulk_schedule` itself complicated to implement, assuming some internal bulk_execute-like API?
-Marginally, but only to enforce the sequence point.
+Otherwise, `execution::set_next(R, Idx, Vs...)` is ill-formed.
+
+[Editorial note: We should probably define what “send the value(s) Vs... to the many_receiver R’s next channel” means more carefully. –end editorial note]
+
+## execution::bulk_schedule
+The name `execution::bulk_schedule` denotes a customization point object. For some subexpressions `s` and `size`, let `S` be a type such that `decltype((s))` is `S` and `Size` be a type such that `decltype((size))` is `Size`. The expression `execution::bulk_schedule(s, size)` is expression-equivalent to:
+
+`s.bulk_schedule(size)`, if that expression is valid and its type models sender.
+
+Otherwise, schedule(s), if that expression is valid and its type models sender with overload resolution performed in a context that includes the declaration
+```
+  void bulk_schedule();
+```
+and that does not include a declaration of `execution::bulk_schedule`.
+
+Otherwise, `execution::bulk_schedule(s)` is ill-formed.
+
+[NOTE: The defition of the default implementation of bulk_schedule is open to discussion]
+
+## Concept many_receiver_of
+A `many_receiver` represents the continuation of an asynchronous operation formed from a potentially unordered sequence of indexed suboperations.
+An asynchronous operation may complete with a (possibly empty) set of values, an error, or it may be cancelled.
+A `many_receiver` has one operation corresponding to one of the set of indexed suboperations: `set_next`. Like a `receiver`, a `many_receiver` has three principal operations corresponding to the three ways an asynchronous operation may complete: `set_value`, `set_error`, and `set_done`. These are collectively known as a `many_receiver`’s completion-signal operations.
 
 ```
-struct Scheduler {
-  struct OS {
-    struct Wrapper {
-      Receiver r_;
-      std::atomic<index_t> cnt_;
-      ~Wrapper(){
-        if(cnt_ == 0) {
-          r_.set_next();
-        } else {
-          r_.set_done();
-        }
-      }
-    };
-    void start() {
-      internal_bulk_execute([s = make_shared<Wrapper>(r_, size)](index_t idx){s->r.set_next(idx);});
-    }
-    index_t size;
-    Receiver r_;
-  };
-  struct Sender {
-    index_t size;
-    OS connect(Receiver&& r) {
-      return OS{size, r};
-    }
-  };
-  Sender bulk_schedule(index_t size) {
-    return Sender{size};
-  }
-  ...
-};
+    template<class T, class Idx, class... An>
+    concept many_receiver_of =
+      receiver_of<T, An> &&
+      requires(remove_cvref_t<T>&& t, Idx idx, An&&... an) {
+        execution::set_value(std::move(t), (An&&) an...);
+        execution::set_next(t&, idx, (An&&) an...);
+      };
+```
+The `many_receiver`’s completion-signal operations have semantic requirements that are collectively known as the `many_receiver` contract, described below:
+
+None of a `many_receiver`’s completion-signal operations shall be invoked before `execution::start` has been called on the operation state object that was returned by `execution::connect` to connect that `many_receiver` to a `many_sender`.
+
+Once `execution::start` has been called on the operation state object, `set_next` shall be called for each index in some iteration space and parameterised with that index, under the restriction of the policy returned by a call to `get_execution_policy` on the `many_receiver`.
+
+All of the `many_receiver`'s `set_next` calls shall happen-before any of the `many_receiver`'s completion-signal operations.
+Exactly one of the receiver’s completion-signal operations shall complete non-exceptionally before the receiver is destroyed.
+
+If any call to `execution::set_next` or `execution::set_value` exits with an exception, it is still valid to call `execution::set_error` or `execution::set_done` on the `many_receiver`.
+If all calls to `execution::set_next` complete successfully, it is valid to call `execution::set_value` on the `many_receiver`.
+
+Once one of a `many_receiver`’s completion-signal operations has completed non-exceptionally, the `many_receiver` contract has been satisfied.
+
+
+## Concepts many_sender and many_sender_to
+XXX TODO The many_sender and many_sender_to concepts…
+
+    template<class S>
+      concept many_sender =
+        move_constructible<remove_cvref_t<S>> &&
+        !requires {
+          typename sender_traits<remove_cvref_t<S>>::__unspecialized; // exposition only
+        };
+
+    template<class S, class R>
+      concept many_sender_to =
+        many_sender<S> &&
+        many_receiver<R> &&
+        requires (S&& s, R&& r) {
+          execution::connect((S&&) s, (R&&) r);
+        };
+None of these operations shall introduce data races as a result of concurrent invocations of those functions from different threads.
+
+A `many_sender` type’s destructor shall not block pending completion of the submitted function objects. [Note: The ability to wait for completion of submitted function objects may be provided by the associated execution context. –end note]
+
+## execution::connect
+[NOTE: Shall be updated appropriately to ensure that in `execution::connect(s, r)` if `r` is a `many_receiver_of<Ts>` then `s` must be a `many_sender` if necessary.]
+
+# Why use get_execution_policy on the receiver?
+There are two questions embedded in this:
+
+ * Why pass the policy into the bulk operation at all (with reference to the discussion point in [@P2181])?
+ * Why do it this way rather than as a parameter?
+
+
+## Why pass a policy into the bulk API?
+For a compound algorithm, it is unreasonable to assume that the policy passed to the algorithm need be the one applied to the executor.
+This is for a variety of reasons, but primarily that the author of the algorithm may not be in a position to match policies perfectly.
+We might implement sort:
+```
+output_sender std::execution::sort(input_sender, executor, policy, comparison_function, range);
 ```
 
-Note how little real "laziness" there is in that sequence of calls?
-Everything is trivial argument currying, of trivial values.
-There is no added latency involved.
-
-So the complexity is only that the executor is adding just enough state to know how to tell the caller that this bulk task completes - but the executor is the right place to do that:
-
- * It is the entity that knows what the safest form of memory allocation and reference counting is for that state.
- * It knows the right barrier type to use.
- * It knows if it actually has some sort of event model in the driver so that it can ignore reference counting completely and rely on a driver callback.
-
-For good QOI as users of these APIs, and maintainers of the tooling that thousands of developers will use to (largely indirectly) use these APIs, we much prefer the idea that my executor implementor tweaks the above implementation to work well for the target runtime and architecture than to prefer a model that relies on the shared_ptr and heap allocated barrier pessimization.
-
-## Not passing the policy
-The question here is at what point we communicate the policy to the executor.
-If we do it before we call an algorithm:
-```
-parallel_executor e;
-algorithm(e, execution::seq, ...);
-```
-
-then the algorithm has one restriction placed on its worker functions, and another restriction arising from the concrete executor.
-If part of the implementation of the algorithm uses a different policy, in the above case a more relaxed operation that can run `par_unseq` then it has no way to communicate this to the executor, which might be able to optimise its execution in that case.
-We lose flexibility by fixing the executor's policy before passing it to the algorithm.
-
-This is even more true in compound algorithms, that we might get from sender chaining:
+where the policy passed to match comparison_function is `par_unseq` but where a complex multi-stage sort needs par internally.
+Here we end up with a question: do we have to restrict the interface to match the implementation? That might be hard.
+The alternative is to transform the executor inside the algorithm.
+Potentially using `require`, or a `with_policy` wrapper.
+The problem is that this is semantically identical to passing the policy with the continuation, but syntactically worse:
 
 ```
-parallel_scheduler e;
-auto r1 = algorithm(e.schedule(), execution::par, ...);
-auto r2 = algorithm(r1, execution::seq, ...);
-```
+output_sender std::execution::algorithm(input_sender, executor, policy) {
+  auto seq_executor = with_policy(executor, seq);
+  auto s1 = alg_stage_1(input_sender, seq_executor)
 
-now it is true that at this time we do not have a final decision on how the parallel algorithm API should be setup - and maybe each will take an executor explicitly.
-This seems limiting, however.
-
-The alternative is to allow the algorithm to apply modifications:
+  auto par_executor = with_policy(executor, par);
+  return alg_stage_2(s1, par_executor)
+}
 ```
-void algorithm(Executor e,...) {
-  auto e2 = e.make_seq();
-  // use e2 with seq
+it is syntactically worse because the executor has been transformed and stored - it may drift far from the point of use, and thus create a risk of UB introduced during maintenance.
+
+The alternative would appear structurally similar, but note that if we have attached a policy to the algorithm *if the executor is incapable of executing that way it can report the error*.
+Whichever way we do this we have to decide what an executor is allowed to reject in terms of itself being associated with a policy, and the work being associated with a policy.
+
+
+## Why use get_execution_policy on the receiver instead of a parameter?
+This is a question both of scaling of compound algorithms and into the future.
+A compound algorithm may need to make policy decisions at each stage.
+For example, using async versions of `std::sort` and `std::transform`
+```
+output_sender std::execution::algorithm(input_sender, executor, policy) {
+  auto s1 = sort(input_sender, executor, policy)
+  return transform(s1, executor, policy)
 }
 ```
 
-this would have to leak to the interface if we were to allow passing an executor that could not take this modification.
-At that point we are almost as well off taking a list of executors for different parts of the algorithm.
-More seriously, though, it means that if we want to slightly change the implementation to allow part of it to run in a more relaxed forward progress mode we cannot do it without changing the constraints on the API.
+based on prior work, each of these user-visible algorithms would take a policy.
+They are all user-facing as well as implementation-details.
+In the `get_execution_policy` model each of these can communicate a policy to the prior algorithm.
 
-Even if we did allow for this option, and put the constraints appropriately on the API, or required the implementation to make decisions so that this never fails but only allows different implementations, it seems little different from passing it to execute anyway.
-So what do we gain from the limitation?
+You may ask, surely these algorithms are communicating single values rather than bulk, and that is true.
+Both are valid.
+If we want to be sure that we can implement a completion signal safely, that is useful.
+
+If `set_value` is to be called on the last completing task, and we know that the next algorithm constructed a receiver that is safe to call in a `par_unseq` agent, then the prior agent is safe to call it from its last completing `par_unseq` agent.
+If not, then the executor has to setup a `par` agent to make that call from, because that is the most general method for chaining work across different contexts.
+
+This might imply that we need `get_bulk_execution_policy` and `get_scalar_execution_policy` or a similar pairing, representing the `set_next` and `set_value` calls separately, for their different meanings, but it should be clear that we can propagate this through a receiver chain to allow bulk agents to optimise their execution patterns tightly.
+
+Another future use case reason for doing it this way is the potential for compiler help.
+Imagine somethingm like:
+```
+bulk_schedule(exec, size, bulk_transform([]() [[with_compiler_generated_policy]] {...}))
+```
+
+where the compiler is allowed to analyse that code and wrap the lambda in a way that will expose the `get_execution_policy` query to `bulk_transform` and of course to `bulk_schedule`.
+If the compiler sees a `std::mutex` in here, it might strengthen the policy requirement such that executor can report a mismatch.
+We have provided a general mechanism, that future compilers can hook into, especially when generating custom accelerator code, to reduce the risk of mistakes on the part of the developer.
+
+
 
 ---
 references:
