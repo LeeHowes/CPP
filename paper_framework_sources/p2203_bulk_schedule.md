@@ -206,7 +206,6 @@ transform(bulk_schedule(exec), [](auto...){...});
  * `set_value` then will, like `set_error` or `set_done` be called at most once on the receiver.
  * We add a `set_next` operation, that differentiates a `many_sender` or `many_receiver` from their original forms, that is called once for each element of the iteration space, and passes the index.
  * After all necessary calls to `set_next` return, `set_value`, `set_error` or `set_done` will be called.
- * It is not necessary for *every* call to `set_next` to be called, if the operation is cancelled mid-way-through because the result was found early, then we may see different behaviour for a given `many_sender`.
  * A query, `get_execution_policy` called on a `many_receiver` will return the policy that that receiver requires to be able to safely execute.
    This may or may not be utilised by the scheduler, but it should be propagated through a chain of receivers and upgraded to a tighter policy if necessary.
 
