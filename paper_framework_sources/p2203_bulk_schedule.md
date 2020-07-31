@@ -248,12 +248,12 @@ An asynchronous operation may complete with a (possibly empty) set of values, an
 A `many_receiver` has one operation corresponding to one of the set of indexed suboperations: `set_next`. Like a `receiver`, a `many_receiver` has three principal operations corresponding to the three ways an asynchronous operation may complete: `set_value`, `set_error`, and `set_done`. These are collectively known as a `many_receiver`’s completion-signal operations.
 
 ```
-    template<class T, class Idx, class... An>
+    template<class T, class Idx, class... An, class... Nn...>
     concept many_receiver_of =
-      receiver_of<T, An> &&
-      requires(remove_cvref_t<T>&& t, Idx idx, An&&... an) {
+      receiver_of<T, An...> &&
+      requires(remove_cvref_t<T>&& t, Idx idx, An&&... an, Nn&&... nn) {
         execution::set_value(std::move(t), (An&&) an...);
-        execution::set_next(t&, idx, (An&&) an...);
+        execution::set_next(t&, idx, (Nn&&) nn...);
       };
 ```
 The `many_receiver`’s completion-signal operations have semantic requirements that are collectively known as the `many_receiver` contract, described below:
@@ -273,7 +273,7 @@ Once one of a `many_receiver`’s completion-signal operations has completed non
 
 ## Concepts many_sender and many_sender_to
 XXX TODO The many_sender and many_sender_to concepts…
-
+```
     template<class S>
       concept many_sender =
         move_constructible<remove_cvref_t<S>> &&
@@ -288,12 +288,12 @@ XXX TODO The many_sender and many_sender_to concepts…
         requires (S&& s, R&& r) {
           execution::connect((S&&) s, (R&&) r);
         };
+```
+
 None of these operations shall introduce data races as a result of concurrent invocations of those functions from different threads.
 
 A `many_sender` type’s destructor shall not block pending completion of the submitted function objects. [Note: The ability to wait for completion of submitted function objects may be provided by the associated execution context. –end note]
 
-## execution::connect
-[NOTE: Shall be updated appropriately to ensure that in `execution::connect(s, r)` if `r` is a `many_receiver_of<Ts>` then `s` must be a `many_sender` if necessary.]
 
 # Why use get_execution_policy on the receiver?
 There are two questions embedded in this:
