@@ -57,7 +57,9 @@ Make `bulk_schedule` symmetric with `schedule` by:
  * Renaming `set_value` to `set_next`, to remove a fundamentally different ordering semantic.
  * Add `set_value` back with the same meaning as in the sender returned from `schedule`.
  * Define `many_sender` and `many_receiver` to match these definitions.
- * Propagating the execution policy via a `get_execution_policy` query on the `many_receiver`, consistent with `get_scheduler` as defined in [@P1898].
+ * Propagating the forward progress requirements of `set_value` via a `get_execution_policy` query on the `many_receiver`, consistent with `get_scheduler` as defined in [@P1898].
+ * Propagating the forward progress requirements of `set_next` via a `get_bulk_execution_policy` query on the `many_receiver`, consistent with `get_scheduler` as defined in [@P1898].
+ * Propagating a stop_token via a `get_stop_token` query on the `many_receiver`, as defined in [@P2175] and allowing the `many_sender` to abort early on cancellation.
 
 
 # Sequencing
@@ -198,16 +200,23 @@ So a default of well-defined sequencing with optimisation is more practical as a
 
 # The changes
 To maintain sequencing, we need `set_value` to have the same definition as in `sender` for the type returned by `bulk_schedule`.
-It should not be possible to accidentally chain scalar work onto bulk work:
-```
-transform(bulk_schedule(exec), [](auto...){...});
-```
+It should not be possible to accidentally chain scalar work onto bulk work.
 
- * `set_value` then will, like `set_error` or `set_done` be called at most once on the receiver.
+The list of clarifications necessary:
+
+ * `set_value` will, like `set_error` or `set_done` be called at most once on the receiver.
  * We add a `set_next` operation, that differentiates a `many_sender` or `many_receiver` from their original forms, that is called once for each element of the iteration space, and passes the index.
- * After all necessary calls to `set_next` return, `set_value`, `set_error` or `set_done` will be called.
- * A query, `get_execution_policy` called on a `many_receiver` will return the policy that that receiver requires to be able to safely execute.
+ * After all necessary calls to `set_next` return, `set_value` will be called.
+ * `set_error` or `set_done` indicate that some `set_next` calls may not have completed successfully.
+ * A query, `get_bulk_execution_policy` called on a `many_receiver` will return the policy that that receiver requires to be able to safely call `set_next` on the receiver.
+ * A query, `get_execution_policy` called on a `many_receiver` will return the policy that that receiver requires to be able to safely call `set_value` on the receiver.
    This may or may not be utilised by the scheduler, but it should be propagated through a chain of receivers and upgraded to a tighter policy if necessary.
+ * A query, `get_stop_token` called on a `many_receiver` will return a `stop_token` associated with that receiver such that the receiver or some downstream receiver may request cancellation of the operation.
+ * A `many_receiver` is-a `receiver` and when passed to a single `sender` behaves as if an iteration space of 0 was executed.
+ * A `sender` is-a `many_sender` by the same interpretation. It is a `many_sender` that does not call `set_next`.\
+ * `bulk_schedule(s, size)` returns a `many_sender` that once connected to a `many_receiver` `r` will call `set_next(r, idx)` once for each in the range `0 <= idx < size` and subsequently call `set_value(r)`.
+ * A `many_sender` **may** obtain a `stop_token` via a call to `get_stop_token` on a `many_receiver` `r`.
+   If stop is requested the `many_sender` **may** elide subsequent calls to `set_next` and call `set_done(r)`.
 
 
 # Impact on the Standard
@@ -294,7 +303,7 @@ None of these operations shall introduce data races as a result of concurrent in
 A `many_sender` type’s destructor shall not block pending completion of the submitted function objects. [Note: The ability to wait for completion of submitted function objects may be provided by the associated execution context. –end note]
 
 
-# Why use get_execution_policy on the receiver?
+# Why use get_(bulk_)execution_policy on the receiver?
 There are two questions embedded in this:
 
  * Why pass the policy into the bulk operation at all (with reference to the discussion point in [@P2181])?
@@ -345,17 +354,17 @@ based on prior work, each of these user-visible algorithms would take a policy.
 They are all user-facing as well as implementation-details.
 In the `get_execution_policy` model each of these can communicate a policy to the prior algorithm.
 
-You may ask, surely these algorithms are communicating single values rather than bulk, and that is true.
-Both are valid.
-If we want to be sure that we can implement a completion signal safely, that is useful.
+These algorithms are communicating single values rather than bulk.
+If we want to be sure that we can implement a completion signal safely, that is useful because it allows the executor to guarantee safe communication with the next executor.
 
 If `set_value` is to be called on the last completing task, and we know that the next algorithm constructed a receiver that is safe to call in a `par_unseq` agent, then the prior agent is safe to call it from its last completing `par_unseq` agent.
 If not, then the executor has to setup a `par` agent to make that call from, because that is the most general method for chaining work across different contexts.
 
-This might imply that we need `get_bulk_execution_policy` and `get_scalar_execution_policy` or a similar pairing, representing the `set_next` and `set_value` calls separately, for their different meanings, but it should be clear that we can propagate this through a receiver chain to allow bulk agents to optimise their execution patterns tightly.
+This is why we need `get_bulk_execution_policy` and `get_execution_policy`, representing the `set_next` and `set_value` calls separately, for their different meanings.
+Both propagate through a receiver chain via `tag_invoke` forwarding.
 
 Another future use case reason for doing it this way is the potential for compiler help.
-Imagine somethingm like:
+Imagine something like:
 ```
 bulk_schedule(exec, size, bulk_transform([]() [[with_compiler_generated_policy]] {...}))
 ```
@@ -398,4 +407,10 @@ references:
     issued:
       year: 2020
     URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p2181r0.pdf
+  - id: P2175
+    citation-label: P2175
+    title: "Composable cancellation for sender-based async operations"
+    issued:
+      year: 2020
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p2175r0.pdf
 ---
