@@ -354,11 +354,14 @@ In the `get_execution_policy` model each of these can communicate a policy to th
 
 We do realise that execution policy is a broader concept than just forward progress - it may be that we need to separate concerns here.
 The aspect of the execution policy that is a minimum requirement for the code being passed in - the way they are used in the current set of defined policies on the parallel algorithms - may be abstracted in this way while the wider policy is separate and describing execution may be useful.
+In that case `get_forward_progress_requirement` might be a better name.
+
 Having said that, wider policy requirements still do not seem to be properties of the executor and so the above section about passing a property into the bulk API still apply.
+We should be careful to distinguish properties of an individual algorithm call: which may include the forward progress requirements of the operation, the allocator the operation wants to use, the cancellation token it wants to be able to cancel with, of even if it is following a continuation or run-anytime model of execution.
+These are distinct from properties that should be applied to an executor, such as how it is capable of running things, potentially also an allocator that it wants to use, and similar work.
 
 There is also an argument for needing a separate forward progress query representing the `set_value` call, in addition to the bulk `set_next` calls.
 Both propagating through a receiver chain via `tag_invoke` forwarding.
-In that case `get_forward_progress_requirement` might be a better name.
 
 If `set_value` is to be called on the last completing task, and we know that the next algorithm constructed a receiver that is safe to call in a `par_unseq` agent, then the prior agent is safe to call it from its last completing `par_unseq` agent.
 If not, then the executor has to setup a `par` agent to make that call from, because that is the most general method for chaining work across different contexts.
