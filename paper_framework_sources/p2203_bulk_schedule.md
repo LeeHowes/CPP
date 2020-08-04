@@ -57,8 +57,7 @@ Make `bulk_schedule` symmetric with `schedule` by:
  * Renaming `set_value` to `set_next`, to remove a fundamentally different ordering semantic.
  * Add `set_value` back with the same meaning as in the sender returned from `schedule`.
  * Define `many_sender` and `many_receiver` to match these definitions.
- * Propagating the forward progress requirements of `set_value` via a `get_execution_policy` query on the `many_receiver`, consistent with `get_scheduler` as defined in [@P1898].
- * Propagating the forward progress requirements of `set_next` via a `get_bulk_execution_policy` query on the `many_receiver`, consistent with `get_scheduler` as defined in [@P1898].
+ * Propagating the forward progress requirements of `set_next` via a `get_execution_policy` query on the `many_receiver`, consistent with `get_scheduler` as defined in [@P1898].
  * Propagating a stop_token via a `get_stop_token` query on the `many_receiver`, as defined in [@P2175] and allowing the `many_sender` to abort early on cancellation.
 
 
@@ -208,8 +207,7 @@ The list of clarifications necessary:
  * We add a `set_next` operation, that differentiates a `many_sender` or `many_receiver` from their original forms, that is called once for each element of the iteration space, and passes the index.
  * After all necessary calls to `set_next` return, `set_value` will be called.
  * `set_error` or `set_done` indicate that some `set_next` calls may not have completed successfully.
- * A query, `get_bulk_execution_policy` called on a `many_receiver` will return the policy that that receiver requires to be able to safely call `set_next` on the receiver.
- * A query, `get_execution_policy` called on a `many_receiver` will return the policy that that receiver requires to be able to safely call `set_value` on the receiver.
+ * A query, `get_execution_policy` called on a `many_receiver` will return the policy that that receiver requires to be able to safely call `set_next` on the receiver.
    This may or may not be utilised by the scheduler, but it should be propagated through a chain of receivers and upgraded to a tighter policy if necessary.
  * A query, `get_stop_token` called on a `many_receiver` will return a `stop_token` associated with that receiver such that the receiver or some downstream receiver may request cancellation of the operation.
  * A `many_receiver` is-a `receiver` and when passed to a single `sender` behaves as if an iteration space of 0 was executed.
@@ -354,14 +352,17 @@ based on prior work, each of these user-visible algorithms would take a policy.
 They are all user-facing as well as implementation-details.
 In the `get_execution_policy` model each of these can communicate a policy to the prior algorithm.
 
-These algorithms are communicating single values rather than bulk.
-If we want to be sure that we can implement a completion signal safely, that is useful because it allows the executor to guarantee safe communication with the next executor.
+We do realise that execution policy is a broader concept than just forward progress - it may be that we need to separate concerns here.
+The aspect of the execution policy that is a minimum requirement for the code being passed in - the way they are used in the current set of defined policies on the parallel algorithms - may be abstracted in this way while the wider policy is separate and describing execution may be useful.
+Having said that, wider policy requirements still do not seem to be properties of the executor and so the above section about passing a property into the bulk API still apply.
+
+There is also an argument for needing a separate forward progress query representing the `set_value` call, in addition to the bulk `set_next` calls.
+Both propagating through a receiver chain via `tag_invoke` forwarding.
 
 If `set_value` is to be called on the last completing task, and we know that the next algorithm constructed a receiver that is safe to call in a `par_unseq` agent, then the prior agent is safe to call it from its last completing `par_unseq` agent.
 If not, then the executor has to setup a `par` agent to make that call from, because that is the most general method for chaining work across different contexts.
-
-This is why we need `get_bulk_execution_policy` and `get_execution_policy`, representing the `set_next` and `set_value` calls separately, for their different meanings.
-Both propagate through a receiver chain via `tag_invoke` forwarding.
+However, this is a bigger problem to solve.
+If we want to implement nested parallelism, or to call any parallel algorithm, synchronous or asynchronous, from within a parallel algorithm then we need to understand the forward progress requiements that call places.
 
 Another future use case reason for doing it this way is the potential for compiler help.
 Imagine something like:
