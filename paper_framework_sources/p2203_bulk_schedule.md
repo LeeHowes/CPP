@@ -357,7 +357,7 @@ The aspect of the execution policy that is a minimum requirement for the code be
 In that case `get_forward_progress_requirement` might be a better name.
 
 Having said that, wider policy requirements still do not seem to be properties of the executor and so the above section about passing a property into the bulk API still apply.
-We should be careful to distinguish properties of an individual algorithm call: which may include the forward progress requirements of the operation, the allocator the operation wants to use, the cancellation token it wants to be able to cancel with, of even if it is following a continuation or run-anytime model of execution.
+We should be careful to distinguish properties of an individual algorithm call: which may include the forward progress requirements of the operation, the allocator the operation wants to use, the cancellation token it wants to be able to cancel with, if it is following a continuation or run-anytime model of execution or even the executor it wants to have work run on (See [@P1898]).
 These are distinct from properties that should be applied to an executor, such as how it is capable of running things, potentially also an allocator that it wants to use, and similar work.
 
 There is also an argument for needing a separate forward progress query representing the `set_value` call, in addition to the bulk `set_next` calls.
