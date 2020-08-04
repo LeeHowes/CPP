@@ -358,6 +358,7 @@ Having said that, wider policy requirements still do not seem to be properties o
 
 There is also an argument for needing a separate forward progress query representing the `set_value` call, in addition to the bulk `set_next` calls.
 Both propagating through a receiver chain via `tag_invoke` forwarding.
+In that case `get_forward_progress_requirement` might be a better name.
 
 If `set_value` is to be called on the last completing task, and we know that the next algorithm constructed a receiver that is safe to call in a `par_unseq` agent, then the prior agent is safe to call it from its last completing `par_unseq` agent.
 If not, then the executor has to setup a `par` agent to make that call from, because that is the most general method for chaining work across different contexts.
