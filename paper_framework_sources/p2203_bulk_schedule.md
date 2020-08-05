@@ -29,7 +29,7 @@ The sender/receiver work, in its most general discussed form in the group, aims 
  * Lazy by assumption: to allow implementations to remove shared state and synchronization.
  * Inline allocated where possible: `connect`/`start` APIs so that all asynchronous work can be inlined into the caller's state if that makes sense, rather than assuming heap allocations.
  * Sequenced: `set_value` calls represent sequencing between asynchronous operations.
- * Optimisable: `set_value` calls are not necessary if two chained operations can customise on each others; types.
+ * Optimisable: `set_value` calls are not necessary if two chained operations can customise on each other's types.
  * Composable: rather than building out variants of an algorithm (`post`/`defer`, allocator parameter, different function signatures, per-algorithm shared state, timeouts) composition allows us to build more sophisticated algorthms from simple ones. With inline allocation and laziness we can do this at no cost.
  * Interoperatable: by defining first the hooks between a `sender` and a `receiver` we define interfaces between different implementors' libraries in the same way that a `range` defines a simple shared concept, irrespective of how an algorithm is implemented. This includes generic support for error handling, value propagation and cancellation.
  * Cancellable: supporting cancellation in both bulk and non-bulk algorithms is important to a lot of use cases. In [@P0443] the downstream part of cancellation is explicit in the inclusion of `set_done`. The upstream is a query on the receiver.
@@ -38,13 +38,13 @@ The sender/receiver work, in its most general discussed form in the group, aims 
 This is its power.
 As a trivial example, if we want a blocking operation, we compose bulk_schedule with `sync_wait`:
 ```
-sync_wait(bulk_transform(bulk_schedule(ex, 10), [](){...}));
+sync_wait(bulk_join(bulk_transform(bulk_schedule(ex, 10), [](){...})));
 ```
-this requires the `bulk_transform` algorithm, but that is a trivial pass through much like [@P1897]'s `transform`.
+this requires the `bulk_transform` algorithm, but that is a trivial pass through much like [@P1897]'s `transform` and `bulk_join` converts a bulk operation into a single operation.
 
 If we want to wait with a timeout here, we can add that algorithm:
 ```
-sync_wait_for(bulk_transform(bulk_schedule(ex, 10), [](){...}), 10s);
+timed_sync_wait(bulk_join(bulk_transform(bulk_schedule(ex, 10), [](){...}), 10s));
 ```
 while maintaining a clearly written clue to what we are doing and where the caller will block.
 
@@ -54,8 +54,8 @@ This is what we aim to close.
 ## Proposal TL/DR
 Make `bulk_schedule` symmetric with `schedule` by:
 
- * Renaming `set_value` to `set_next`, to remove a fundamentally different ordering semantic.
- * Add `set_value` back with the same meaning as in the sender returned from `schedule`.
+ * Adding a `set_next` operation alongside `set_value`.
+   This roughly matches [@P2181]'s definition of `set_value` without changing the semantic of the operation.
  * Define `many_sender` and `many_receiver` to match these definitions.
  * Propagating the forward progress requirements of `set_next` via a `get_execution_policy` query on the `many_receiver`, consistent with `get_scheduler` as defined in [@P1898].
  * Propagating a stop_token via a `get_stop_token` query on the `many_receiver`, as defined in [@P2175] and allowing the `many_sender` to abort early on cancellation.
@@ -277,31 +277,73 @@ If all calls to `execution::set_next` complete successfully, it is valid to call
 Once one of a `many_receiver`’s completion-signal operations has completed non-exceptionally, the `many_receiver` contract has been satisfied.
 
 
-## Concepts many_sender and many_sender_to
-XXX TODO The many_sender and many_sender_to concepts…
+## Concepts many_sender, many_sender_to and typed_many_sender
+XXX TODO The many_sender and many_sender_to concepts.
+If these are necessary, complete definitions along with sender, sender_to and typed_sender.
 ```
     template<class S>
-      concept many_sender =
-        move_constructible<remove_cvref_t<S>> &&
-        !requires {
-          typename sender_traits<remove_cvref_t<S>>::__unspecialized; // exposition only
-        };
+      concept many_sender = ...
 
     template<class S, class R>
-      concept many_sender_to =
+      concept many_sender_to = ...
+
+    template<class S>
+      concept typed_many_sender =
         many_sender<S> &&
-        many_receiver<R> &&
-        requires (S&& s, R&& r) {
-          execution::connect((S&&) s, (R&&) r);
-        };
+        has-sender-types<sender_traits<remove_cvref_t<S>>>;
 ```
 
 None of these operations shall introduce data races as a result of concurrent invocations of those functions from different threads.
 
-A `many_sender` type’s destructor shall not block pending completion of the submitted function objects. [Note: The ability to wait for completion of submitted function objects may be provided by the associated execution context. –end note]
+A `many_sender` type’s destructor shall not block pending completion of the submitted receiver. [Note: The ability to wait for completion of submitted function objects may be provided by the associated execution context. –end note]
 
+## Extend sender_traits
+Let has-sender-types be an implementation-defined concept equivalent to:
+```
+  ...
+  template<template<template<class...> class> class>
+    struct has-next-types ; // exposition only
 
-# Why use get_(bulk_)execution_policy on the receiver?
+  ...
+
+  template<class S>
+    concept has-many-sender-types =
+      requires {
+        typename has-value-types <S::template value_types>;
+        typename has-next-types <S::template next_types>;
+        typename has-error-types <S::template error_types>;
+        typename bool_constant<S::sends_done>;
+      };
+```
+
+If `has-many-sender-types<S>` is true, `then many-sender-traits-base` is equivalent to:
+```
+  template<class S>
+    struct sender-traits-base {
+      template<template<class...> class Tuple, template<class...> class Variant>
+        using value_types = typename S::template value_types<Tuple, Variant>;
+
+      template<template<class...> class Tuple, template<class...> class Variant>
+        using next_types = typename S::template next_types<Tuple, Variant>;
+
+      template<template<class...> class Variant>
+        using error_types = typename S::template error_types<Variant>;
+
+      static constexpr bool sends_done = S::sends_done;
+    };
+```
+
+Otherwise, let `void-many-receiver` be an implementation-defined class type equivalent to
+```
+  struct void-many-receiver { // exposition only
+    void set_value() noexcept;
+    void set_next(size_t) noexcept;
+    void set_error(exception_ptr) noexcept;
+    void set_done() noexcept;
+  };
+```
+
+# Why use get_execution_policy on the receiver?
 There are two questions embedded in this:
 
  * Why pass the policy into the bulk operation at all (with reference to the discussion point in [@P2181])?
@@ -320,8 +362,8 @@ where the policy passed to match comparison_function is `par_unseq` but where a 
 Here we end up with a question: do we have to restrict the interface to match the implementation? That might be hard.
 The alternative is to transform the executor inside the algorithm.
 Potentially using `require`, or a `with_policy` wrapper.
-The problem is that this is semantically identical to passing the policy with the continuation, but syntactically worse:
 
+The problem is that modifying the executor to provide a policy is semantically identical to passing it with the continuation, but it is less easy to read:
 ```
 output_sender std::execution::algorithm(input_sender, executor, policy) {
   auto seq_executor = with_policy(executor, seq);
@@ -331,7 +373,7 @@ output_sender std::execution::algorithm(input_sender, executor, policy) {
   return alg_stage_2(s1, par_executor)
 }
 ```
-it is syntactically worse because the executor has been transformed and stored - it may drift far from the point of use, and thus create a risk of UB introduced during maintenance.
+it is harder to read because the executor has been transformed and stored - it may drift far from the point of use, and thus create a risk of UB introduced during maintenance.
 
 The alternative would appear structurally similar, but note that if we have attached a policy to the algorithm *if the executor is incapable of executing that way it can report the error*.
 Whichever way we do this we have to decide what an executor is allowed to reject in terms of itself being associated with a policy, and the work being associated with a policy.
@@ -353,7 +395,7 @@ They are all user-facing as well as implementation-details.
 In the `get_execution_policy` model each of these can communicate a policy to the prior algorithm.
 
 We do realise that execution policy is a broader concept than just forward progress - it may be that we need to separate concerns here.
-The aspect of the execution policy that is a minimum requirement for the code being passed in - the way they are used in the current set of defined policies on the parallel algorithms - may be abstracted in this way while the wider policy is separate and describing execution may be useful.
+The aspect of the execution policy that is a statement of what the most relaxed conditions in which the function is safe to callthe way they are used in the current set of defined policies on the parallel algorithms, may be abstracted in this way while the wider policy is separate and describing execution may be useful.
 In that case `get_forward_progress_requirement` might be a better name.
 
 Having said that, wider policy requirements still do not seem to be properties of the executor and so the above section about passing a property into the bulk API still apply.
@@ -362,11 +404,12 @@ These are distinct from properties that should be applied to an executor, such a
 
 There is also an argument for needing a separate forward progress query representing the `set_value` call, in addition to the bulk `set_next` calls.
 Both propagating through a receiver chain via `tag_invoke` forwarding.
-
 If `set_value` is to be called on the last completing task, and we know that the next algorithm constructed a receiver that is safe to call in a `par_unseq` agent, then the prior agent is safe to call it from its last completing `par_unseq` agent.
 If not, then the executor has to setup a `par` agent to make that call from, because that is the most general method for chaining work across different contexts.
 However, this is a bigger problem to solve.
 If we want to implement nested parallelism, or to call any parallel algorithm, synchronous or asynchronous, from within a parallel algorithm then we need to understand the forward progress requiements that call places.
+For that matter, if we call any uncontrolled code from within a parallel algorithm, the same applies.
+
 
 Another future use case reason for doing it this way is the potential for compiler help.
 Imagine something like:
