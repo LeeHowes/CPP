@@ -195,7 +195,7 @@ Making this up to the implementation, rather than up to the user to inject code 
 
 ### Summary
 The point here is that **sequence points matter** to bulk algorithms.
-Most importantly, termination sequence points matter.
+Most importantly, completion sequence points matter.
 We can easily handle the start of a bulk algorithm by delaying enqueue, at some cost if we would have preferred to rely on FIFO queuing.
 It is much harder to notify the completion of a parallel operation without executor support.
 Completion is by far the more important sequence point to include, and both can be optimised away by overloading in the library.
