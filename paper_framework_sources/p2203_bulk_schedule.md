@@ -180,10 +180,14 @@ auto s2 = bulk_execute(s1, func2);
 In this design the work has a well-defined generic underlying mechanism for signalling, using a `set_value` call when all instances of `func` complete and when `func2` should run.
 As this `set_value` call is well-defined as an interface, we can mix and match algorithms and mix and match authors without problems.
 
-The way this differs from the nesting design is that it is up to `executor` to decide how `set_value` is called.
-That means it may be fine to use the atomic-count last-worker-calls model.
-It may be that the runtime attaches a callback to the work that is run on some runtime-controlled thread, however.
+The way this differs from the nesting design is that it is up to `executor` to decide how `set_value` is called:
+
+ * it may be fine to use the atomic-count last-worker-calls model.
+ * the runtime may wish to attach a callback to the work that is run on some runtime-controlled thread.
+ * if we have an underlying in-order queue or event DAG represention, of the sort that CUDA or OpenCL supports, we actually enqueue two tasks: one bulk task representing the set of `set_next` calls and one to call `set_value` to notify completion, potentially with a synchronization barrier in between if the model requires it.
+
 The `executor` is the right place to make that decision.
+Makign the decision anywhere else would be a pessimisation in generic code.
 
 As for the scalar case, we can also optimise away the `set_value` call when we know all these types and customise the algorithm, using the sequential queue underneath.
 For example, an OpenCL runtime might use events or an in-order queue to chain work on the same executor, and then use a host queue or an event callback to transition onto some other executor completely safely.
@@ -191,10 +195,15 @@ Making this up to the implementation, rather than up to the user to inject code 
 
 ### Summary
 The point here is that **sequence points matter** to bulk algorithms.
+Most importantly, termination sequence points matter.
+We can easily handle the start of a bulk algorithm by delaying enqueue, at some cost if we would have preferred to rely on FIFO queuing.
+It is much harder to notify the completion of a parallel operation without executor support.
+Completion is by far the more important sequence point to include, and both can be optimised away by overloading in the library.
+
 By encoding sequence points in the abstraction we put them under the control of the execution context.
-By default, because one of our goals is that this code be *Interoperable* of course this uses `set_value`, `set_done` or `set_error` because that's the interface we defined.
+By default, because one of our goals is that this code be *Interoperable* of course this uses `set_value`, `set_done` or `set_error`; that's the interface we have agreed for senders and receivers.
 In practice, though, we can customise on the intermediate sender types and avoid that cost.
-So a default of well-defined sequencing with optimisation is more practical as a model than no sequencing, custom sequencing for each executor type or blocking algorithms.
+So a default of well-defined sequencing with optimisation is more practical as a model than no sequencing, custom sequencing for each executor type or, maybe worst of all, blocking algorithms.
 
 
 # The changes
