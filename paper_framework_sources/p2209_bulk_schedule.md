@@ -1,7 +1,7 @@
 ---
 title: "Bulk schedule"
-document: D2203R0
-date: 2020-05-16
+document: P2209R0
+date: 2020-08-14
 audience: SG1
 author:
   - name: Lee Howes

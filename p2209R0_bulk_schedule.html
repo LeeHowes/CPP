@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang xml:lang>
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="mpark/wg21" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="dcterms.date" content="2020-08-14" />
+  <title>Bulk schedule</title>
+  <style>
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <style>
+code.sourceCode > span { display: inline-block; line-height: 1.25; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode { white-space: pre; position: relative; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+code.sourceCode { white-space: pre-wrap; }
+code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {  background-color: #f6f8fa; }
+@media screen {
+code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span. { } /* Normal */
+code span.al { color: #ff0000; } /* Alert */
+code span.an { } /* Annotation */
+code span.at { } /* Attribute */
+code span.bn { color: #9f6807; } /* BaseN */
+code span.bu { color: #9f6807; } /* BuiltIn */
+code span.cf { color: #00607c; } /* ControlFlow */
+code span.ch { color: #9f6807; } /* Char */
+code span.cn { } /* Constant */
+code span.co { color: #008000; font-style: italic; } /* Comment */
+code span.cv { color: #008000; font-style: italic; } /* CommentVar */
+code span.do { color: #008000; } /* Documentation */
+code span.dt { color: #00607c; } /* DataType */
+code span.dv { color: #9f6807; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #9f6807; } /* Float */
+code span.fu { } /* Function */
+code span.im { } /* Import */
+code span.in { color: #008000; } /* Information */
+code span.kw { color: #00607c; } /* Keyword */
+code span.op { color: #af1915; } /* Operator */
+code span.ot { } /* Other */
+code span.pp { color: #6f4e37; } /* Preprocessor */
+code span.re { } /* RegionMarker */
+code span.sc { color: #9f6807; } /* SpecialChar */
+code span.ss { color: #9f6807; } /* SpecialString */
+code span.st { color: #9f6807; } /* String */
+code span.va { } /* Variable */
+code span.vs { color: #9f6807; } /* VerbatimString */
+code span.wa { color: #008000; font-weight: bold; } /* Warning */
+code.diff {color: #898887}
+code.diff span.va {color: #006e28}
+code.diff span.st {color: #bf0303}
+  </style>
+  <style type="text/css">
+body {
+margin: 5em;
+font-family: serif;
+
+hyphens: auto;
+line-height: 1.35;
+}
+div.wrapper {
+max-width: 60em;
+margin: auto;
+}
+ul {
+list-style-type: none;
+padding-left: 2em;
+margin-top: -0.2em;
+margin-bottom: -0.2em;
+}
+a {
+text-decoration: none;
+color: #4183C4;
+}
+a.hidden_link {
+text-decoration: none;
+color: inherit;
+}
+li {
+margin-top: 0.6em;
+margin-bottom: 0.6em;
+}
+h1, h2, h3, h4 {
+position: relative;
+line-height: 1;
+}
+a.self-link {
+position: absolute;
+top: 0;
+left: calc(-1 * (3.5rem - 26px));
+width: calc(3.5rem - 26px);
+height: 2em;
+text-align: center;
+border: none;
+transition: opacity .2s;
+opacity: .5;
+font-family: sans-serif;
+font-weight: normal;
+font-size: 83%;
+}
+a.self-link:hover { opacity: 1; }
+a.self-link::before { content: "§"; }
+ul > li:before {
+content: "\2014";
+position: absolute;
+margin-left: -1.5em;
+}
+:target { background-color: #C9FBC9; }
+:target .codeblock { background-color: #C9FBC9; }
+:target ul { background-color: #C9FBC9; }
+.abbr_ref { float: right; }
+.folded_abbr_ref { float: right; }
+:target .folded_abbr_ref { display: none; }
+:target .unfolded_abbr_ref { float: right; display: inherit; }
+.unfolded_abbr_ref { display: none; }
+.secnum { display: inline-block; min-width: 35pt; }
+.header-section-number { display: inline-block; min-width: 35pt; }
+.annexnum { display: block; }
+div.sourceLinkParent {
+float: right;
+}
+a.sourceLink {
+position: absolute;
+opacity: 0;
+margin-left: 10pt;
+}
+a.sourceLink:hover {
+opacity: 1;
+}
+a.itemDeclLink {
+position: absolute;
+font-size: 75%;
+text-align: right;
+width: 5em;
+opacity: 0;
+}
+a.itemDeclLink:hover { opacity: 1; }
+span.marginalizedparent {
+position: relative;
+left: -5em;
+}
+li span.marginalizedparent { left: -7em; }
+li ul > li span.marginalizedparent { left: -9em; }
+li ul > li ul > li span.marginalizedparent { left: -11em; }
+li ul > li ul > li ul > li span.marginalizedparent { left: -13em; }
+div.footnoteNumberParent {
+position: relative;
+left: -4.7em;
+}
+a.marginalized {
+position: absolute;
+font-size: 75%;
+text-align: right;
+width: 5em;
+}
+a.enumerated_item_num {
+position: relative;
+left: -3.5em;
+display: inline-block;
+margin-right: -3em;
+text-align: right;
+width: 3em;
+}
+div.para { margin-bottom: 0.6em; margin-top: 0.6em; text-align: justify; }
+div.section { text-align: justify; }
+div.sentence { display: inline; }
+span.indexparent {
+display: inline;
+position: relative;
+float: right;
+right: -1em;
+}
+a.index {
+position: absolute;
+display: none;
+}
+a.index:before { content: "⟵"; }
+
+a.index:target {
+display: inline;
+}
+.indexitems {
+margin-left: 2em;
+text-indent: -2em;
+}
+div.itemdescr {
+margin-left: 3em;
+}
+.bnf {
+font-family: serif;
+margin-left: 40pt;
+margin-top: 0.5em;
+margin-bottom: 0.5em;
+}
+.ncbnf {
+font-family: serif;
+margin-top: 0.5em;
+margin-bottom: 0.5em;
+margin-left: 40pt;
+}
+.ncsimplebnf {
+font-family: serif;
+font-style: italic;
+margin-top: 0.5em;
+margin-bottom: 0.5em;
+margin-left: 40pt;
+background: inherit; 
+}
+span.textnormal {
+font-style: normal;
+font-family: serif;
+white-space: normal;
+display: inline-block;
+}
+span.rlap {
+display: inline-block;
+width: 0px;
+}
+span.descr { font-style: normal; font-family: serif; }
+span.grammarterm { font-style: italic; }
+span.term { font-style: italic; }
+span.terminal { font-family: monospace; font-style: normal; }
+span.nonterminal { font-style: italic; }
+span.tcode { font-family: monospace; font-style: normal; }
+span.textbf { font-weight: bold; }
+span.textsc { font-variant: small-caps; }
+a.nontermdef { font-style: italic; font-family: serif; }
+span.emph { font-style: italic; }
+span.techterm { font-style: italic; }
+span.mathit { font-style: italic; }
+span.mathsf { font-family: sans-serif; }
+span.mathrm { font-family: serif; font-style: normal; }
+span.textrm { font-family: serif; }
+span.textsl { font-style: italic; }
+span.mathtt { font-family: monospace; font-style: normal; }
+span.mbox { font-family: serif; font-style: normal; }
+span.ungap { display: inline-block; width: 2pt; }
+span.textit { font-style: italic; }
+span.texttt { font-family: monospace; }
+span.tcode_in_codeblock { font-family: monospace; font-style: normal; }
+span.phantom { color: white; }
+
+span.math { font-style: normal; }
+span.mathblock {
+display: block;
+margin-left: auto;
+margin-right: auto;
+margin-top: 1.2em;
+margin-bottom: 1.2em;
+text-align: center;
+}
+span.mathalpha {
+font-style: italic;
+}
+span.synopsis {
+font-weight: bold;
+margin-top: 0.5em;
+display: block;
+}
+span.definition {
+font-weight: bold;
+display: block;
+}
+.codeblock {
+margin-left: 1.2em;
+line-height: 127%;
+}
+.outputblock {
+margin-left: 1.2em;
+line-height: 127%;
+}
+div.itemdecl {
+margin-top: 2ex;
+}
+code.itemdeclcode {
+white-space: pre;
+display: block;
+}
+span.textsuperscript {
+vertical-align: super;
+font-size: smaller;
+line-height: 0;
+}
+.footnotenum { vertical-align: super; font-size: smaller; line-height: 0; }
+.footnote {
+font-size: small;
+margin-left: 2em;
+margin-right: 2em;
+margin-top: 0.6em;
+margin-bottom: 0.6em;
+}
+div.minipage {
+display: inline-block;
+margin-right: 3em;
+}
+div.numberedTable {
+text-align: center;
+margin: 2em;
+}
+div.figure {
+text-align: center;
+margin: 2em;
+}
+table {
+border: 1px solid black;
+border-collapse: collapse;
+margin-left: auto;
+margin-right: auto;
+margin-top: 0.8em;
+text-align: left;
+hyphens: none; 
+}
+td, th {
+padding-left: 1em;
+padding-right: 1em;
+vertical-align: top;
+}
+td.empty {
+padding: 0px;
+padding-left: 1px;
+}
+td.left {
+text-align: left;
+}
+td.right {
+text-align: right;
+}
+td.center {
+text-align: center;
+}
+td.justify {
+text-align: justify;
+}
+td.border {
+border-left: 1px solid black;
+}
+tr.rowsep, td.cline {
+border-top: 1px solid black;
+}
+tr.even, tr.odd {
+border-bottom: 1px solid black;
+}
+tr.capsep {
+border-top: 3px solid black;
+border-top-style: double;
+}
+tr.header {
+border-bottom: 3px solid black;
+border-bottom-style: double;
+}
+th {
+border-bottom: 1px solid black;
+}
+span.centry {
+font-weight: bold;
+}
+div.table {
+display: block;
+margin-left: auto;
+margin-right: auto;
+text-align: center;
+width: 90%;
+}
+span.indented {
+display: block;
+margin-left: 2em;
+margin-bottom: 1em;
+margin-top: 1em;
+}
+ol.enumeratea { list-style-type: none; background: inherit; }
+ol.enumerate { list-style-type: none; background: inherit; }
+
+code.sourceCode > span { display: inline; }
+
+div#refs p { padding-left: 32px; text-indent: -32px; }
+</style>
+  <link href="data:image/vnd.microsoft.icon;base64,AAABAAIAEBAAAAEAIABoBAAAJgAAACAgAAABACAAqBAAAI4EAAAoAAAAEAAAACAAAAABACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////AIJEAACCRAAAgkQAAIJEAACCRAAAgkQAVoJEAN6CRADegkQAWIJEAACCRAAAgkQAAIJEAACCRAAA////AP///wCCRAAAgkQAAIJEAACCRAAsgkQAvoJEAP+CRAD/gkQA/4JEAP+CRADAgkQALoJEAACCRAAAgkQAAP///wD///8AgkQAAIJEABSCRACSgkQA/IJEAP99PQD/dzMA/3czAP99PQD/gkQA/4JEAPyCRACUgkQAFIJEAAD///8A////AHw+AFiBQwDqgkQA/4BBAP9/PxP/uZd6/9rJtf/bybX/upd7/39AFP+AQQD/gkQA/4FDAOqAQgBc////AP///wDKklv4jlEa/3o7AP+PWC//8+3o///////////////////////z7un/kFox/35AAP+GRwD/mVYA+v///wD///8A0Zpk+NmibP+0d0T/8evj///////+/fv/1sKz/9bCs//9/fr//////+/m2/+NRwL/nloA/5xYAPj///8A////ANKaZPjRmGH/5cKh////////////k149/3UwAP91MQD/lmQ//86rhv+USg3/m1YA/5hSAP+bVgD4////AP///wDSmmT4zpJY/+/bx///////8+TV/8mLT/+TVx//gkIA/5lVAP+VTAD/x6B//7aEVv/JpH7/s39J+P///wD///8A0ppk+M6SWP/u2sf///////Pj1f/Nj1T/2KFs/8mOUv+eWhD/lEsA/8aee/+0glT/x6F7/7J8Rvj///8A////ANKaZPjRmGH/48Cf///////+/v7/2qt//82PVP/OkFX/37KJ/86siv+USg7/mVQA/5hRAP+bVgD4////AP///wDSmmT40ppk/9CVXP/69O////////7+/v/x4M//8d/P//7+/f//////9u7n/6tnJf+XUgD/nFgA+P///wD///8A0ppk+NKaZP/RmWL/1qNy//r07///////////////////////+vXw/9akdP/Wnmn/y5FY/6JfFvj///8A////ANKaZFTSmmTo0ppk/9GYYv/Ql1//5cWm//Hg0P/x4ND/5cWm/9GXYP/RmGH/0ppk/9KaZOjVnmpY////AP///wDSmmQA0ppkEtKaZI7SmmT60ppk/9CWX//OkVb/zpFW/9CWX//SmmT/0ppk/NKaZJDSmmQS0ppkAP///wD///8A0ppkANKaZADSmmQA0ppkKtKaZLrSmmT/0ppk/9KaZP/SmmT/0ppkvNKaZCrSmmQA0ppkANKaZAD///8A////ANKaZADSmmQA0ppkANKaZADSmmQA0ppkUtKaZNzSmmTc0ppkVNKaZADSmmQA0ppkANKaZADSmmQA////AP5/AAD4HwAA4AcAAMADAACAAQAAgAEAAIABAACAAQAAgAEAAIABAACAAQAAgAEAAMADAADgBwAA+B8AAP5/AAAoAAAAIAAAAEAAAAABACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA////AP///wCCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAAyCRACMgkQA6oJEAOqCRACQgkQAEIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAA////AP///wD///8A////AIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRABigkQA5oJEAP+CRAD/gkQA/4JEAP+CRADqgkQAZoJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAAD///8A////AP///wD///8AgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAA4gkQAwoJEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQAxIJEADyCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAAgkQAAP///wD///8A////AP///wCCRAAAgkQAAIJEAACCRAAAgkQAAIJEAACCRAAWgkQAmIJEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAJyCRAAYgkQAAIJEAACCRAAAgkQAAIJEAACCRAAA////AP///wD///8A////AIJEAACCRAAAgkQAAIJEAACCRAAAgkQAdIJEAPCCRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAP+CRAD/gkQA/4JEAPSCRAB4gkQAAIJEAACCRAAAgkQAAIJEAAD///8A////AP///wD///8AgkQAAIJEAACCRAAAgkQASoJEANKCRAD/gkQA/4JEAP+CRAD/g0YA/39AAP9zLgD/bSQA/2shAP9rIQD/bSQA/3MuAP9/PwD/g0YA/4JEAP+CRAD/gkQA/4JEAP+CRADUgkQAToJEAACCRAAAgkQAAP///wD///8A////AP///wB+PwAAgkUAIoJEAKiCRAD/gkQA/4JEAP+CRAD/hEcA/4BBAP9sIwD/dTAA/5RfKv+viF7/vp56/76ee/+wiF7/lWAr/3YxAP9sIwD/f0AA/4RHAP+CRAD/gkQA/4JEAP+CRAD/gkQArIJEACaBQwAA////AP///wD///8A////AIBCAEBzNAD6f0EA/4NFAP+CRAD/gkQA/4VIAP92MwD/bSUA/6N1Tv/ezsL/////////////////////////////////38/D/6V3Uv9uJgD/dTEA/4VJAP+CRAD/gkQA/4JEAP+BQwD/fUAA/4FDAEj///8A////AP///wD///8AzJRd5qBlKf91NgD/dDUA/4JEAP+FSQD/cy4A/3YyAP/PuKP//////////////////////////////////////////////////////9K7qP94NQD/ciwA/4VJAP+CRAD/fkEA/35BAP+LSwD/mlYA6v///wD///8A////AP///wDdpnL/4qx3/8KJUv+PUhf/cTMA/3AsAP90LgD/4dK+/////////////////////////////////////////////////////////////////+TYxf91MAD/dTIA/31CAP+GRwD/llQA/6FcAP+gWwD8////AP///wD///8A////ANGZY/LSm2X/4ap3/92mcP+wdT3/byQA/8mwj////////////////////////////////////////////////////////////////////////////+LYxv9zLgP/jUoA/59bAP+hXAD/nFgA/5xYAPL///8A////AP///wD///8A0ppk8tKaZP/RmWL/1p9q/9ubXv/XqXj////////////////////////////7+fD/vZyG/6BxS/+gcUr/vJuE//r37f//////////////////////3MOr/5dQBf+dVQD/nVkA/5xYAP+cWAD/nFgA8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/SmWP/yohJ//jo2P//////////////////////4NTG/4JDFf9lGAD/bSQA/20kAP9kGAD/fz8S/+Xb0f//////5NG9/6txN/+LOgD/m1QA/51aAP+cWAD/m1cA/5xYAP+cWADy////AP///wD///8A////ANKaZPLSmmT/0ppk/8+TWf/Unmv//v37//////////////////////+TWRr/VwsA/35AAP+ERgD/g0UA/4JGAP9lHgD/kFga/8KXX/+TRwD/jT4A/49CAP+VTQD/n10A/5xYAP+OQQD/lk4A/55cAPL///8A////AP///wD///8A0ppk8tKaZP/SmmT/y4tO/92yiP//////////////////////8NnE/8eCQP+rcTT/ez0A/3IyAP98PgD/gEMA/5FSAP+USwD/jj8A/5lUAP+JNwD/yqV2/694Mf+HNQD/jkAA/82rf/+laBj/jT4A8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/LiUr/4byY///////////////////////gupX/0I5P/+Wuev/Lklz/l1sj/308AP+QSwD/ol0A/59aAP+aVQD/k0oA/8yoh///////+fXv/6pwO//Lp3v///////Pr4f+oay7y////AP///wD///8A////ANKaZPLSmmT/0ppk/8uJSv/hvJj//////////////////////+G7l//Jhkb/0ppk/96nc//fqXX/x4xO/6dkFP+QSQD/llEA/5xXAP+USgD/yaOA///////38uv/qG05/8ijdv//////8efb/6ZpLPL///8A////AP///wD///8A0ppk8tKaZP/SmmT/zIxO/9yxh///////////////////////7dbA/8iEQf/Sm2X/0Zlj/9ScZv/eqHf/2KJv/7yAQf+XTgD/iToA/5lSAP+JNgD/yKFv/611LP+HNQD/jT8A/8qmeP+kZRT/jT4A8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/Pk1n/1J5q//78+//////////////////+/fv/1aFv/8iEQv/Tm2b/0ppl/9GZY//Wn2z/1pZc/9eldf/Bl2b/kUcA/4w9AP+OQAD/lUwA/59eAP+cWQD/jT8A/5ZOAP+eXADy////AP///wD///8A////ANKaZPLSmmT/0ppk/9KZY//KiEn/8d/P///////////////////////47+f/05tm/8iCP//KiEj/yohJ/8eCP//RmGH//vfy///////n1sP/rXQ7/4k4AP+TTAD/nVoA/5xYAP+cVwD/nFgA/5xYAPL///8A////AP///wD///8A0ppk8tKaZP/SmmT/0ptl/8uLTf/aq37////////////////////////////+/fz/6c2y/961jv/etY7/6Myx//78+v//////////////////////3MWv/5xXD/+ORAD/mFQA/51ZAP+cWAD/nFgA8v///wD///8A////AP///wDSmmTy0ppk/9KaZP/SmmT/0ppk/8mFRP/s1b//////////////////////////////////////////////////////////////////////////////+PD/0JFU/7NzMv+WUQD/kUsA/5tXAP+dWQDy////AP///wD///8A////ANKaZP/SmmT/0ppk/9KaZP/Sm2X/z5NZ/8yMT//z5NX/////////////////////////////////////////////////////////////////9Ofa/8yNUP/UmGH/36p5/8yTWv+qaSD/kksA/5ROAPz///8A////AP///wD///8A0ppk5NKaZP/SmmT/0ppk/9KaZP/TnGf/zY9T/82OUv/t1sD//////////////////////////////////////////////////////+7Yw//OkFX/zI5R/9OcZ//SmmP/26V0/9ymdf/BhUf/ol8R6P///wD///8A////AP///wDSmmQ80ppk9tKaZP/SmmT/0ppk/9KaZP/TnGj/zpFW/8qJSv/dson/8uHS//////////////////////////////////Lj0//etIv/y4lL/86QVf/TnGj/0ppk/9KaZP/RmWP/05xn/9ymdfjUnWdC////AP///wD///8A////ANKaZADSmmQc0ppkotKaZP/SmmT/0ppk/9KaZP/Tm2b/0Zli/8qJSf/NjlH/16Z3/+G8mP/myKr/5siq/+G8mP/Xp3f/zY5S/8qISf/RmGH/05tm/9KaZP/SmmT/0ppk/9KaZP/SmmSm0pljINWdaQD///8A////AP///wD///8A0ppkANKaZADSmmQA0ppkQtKaZMrSmmT/0ppk/9KaZP/SmmT/0ptl/9GYYf/Nj1P/y4lL/8qISP/KiEj/y4lK/82PU//RmGH/0ptl/9KaZP/SmmT/0ppk/9KaZP/SmmTO0ppkRtKaZADSmmQA0ppkAP///wD///8A////AP///wDSmmQA0ppkANKaZADSmmQA0ppkANKaZGzSmmTu0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmTw0ppkcNKaZADSmmQA0ppkANKaZADSmmQA////AP///wD///8A////ANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZBLSmmSQ0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppklNKaZBTSmmQA0ppkANKaZADSmmQA0ppkANKaZAD///8A////AP///wD///8A0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQy0ppkutKaZP/SmmT/0ppk/9KaZP/SmmT/0ppk/9KaZP/SmmT/0ppkvtKaZDbSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkAP///wD///8A////AP///wDSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkXNKaZODSmmT/0ppk/9KaZP/SmmT/0ppk5NKaZGDSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA////AP///wD///8A////ANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkBtKaZIbSmmTo0ppk6tKaZIrSmmQK0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZADSmmQA0ppkANKaZAD///8A////AP/8P///+B///+AH//+AAf//AAD//AAAP/AAAA/gAAAHwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA8AAAAPAAAADwAAAA+AAAAfwAAAP/AAAP/8AAP//gAH//+AH///4H////D//" rel="icon" />
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+  
+</head>
+<body>
+<div class="wrapper">
+<header id="title-block-header">
+<h1 class="title" style="text-align:center">Bulk schedule</h1>
+
+<table style="border:none;float:right">
+  <tr>
+    <td>Document #: </td>
+    <td>P2209R0</td>
+  </tr>
+  <tr>
+    <td>Date: </td>
+    <td>2020-08-14</td>
+  </tr>
+  <tr>
+    <td style="vertical-align:top">Project: </td>
+    <td>Programming Language C++<br>
+      SG1<br>
+    </td>
+  </tr>
+  <tr>
+    <td style="vertical-align:top">Reply-to: </td>
+    <td>
+      Lee Howes<br>&lt;<a href="mailto:lwh@fb.com" class="email">lwh@fb.com</a>&gt;<br>
+      Lewis Baker<br>&lt;<a href="mailto:lbaker@fb.com" class="email">lbaker@fb.com</a>&gt;<br>
+      Kirk Shoop<br>&lt;<a href="mailto:kirkshoop@fb.com" class="email">kirkshoop@fb.com</a>&gt;<br>
+      Eric Niebler<br>&lt;<a href="mailto:eniebler@fb.com" class="email">eniebler@fb.com</a>&gt;<br>
+    </td>
+  </tr>
+</table>
+
+</header>
+<div style="clear:both">
+<h1 id="introduction"><span class="header-section-number">1</span> Introduction<a href="#introduction" class="self-link"></a></h1>
+<p>The design of bulk execution for executors has continued to evolve. In <span class="citation" data-cites="P2181">[<a href="#ref-P2181" role="doc-biblioref">P2181</a>]</span> Jared Hoberock and Michael Garland have proposed the <code>bulk_schedule</code> operation. This approximates an idea that had been circulating around SG1 for a while, in discussions with Daisy Hollman and others. In the form in the paper it falls a little short on a couple of fronts, but is moving in the right direction we hope to satisfy all parties. This paper serves as an addendum to that design that we hope leads to wider agreement.</p>
+<h2 id="properties-of-senderreceiver"><span class="header-section-number">1.1</span> Properties of Sender/Receiver<a href="#properties-of-senderreceiver" class="self-link"></a></h2>
+<p>The sender/receiver work, in its most general discussed form in the group, aims for a few goals:</p>
+<ul>
+<li>Lazy by assumption: to allow implementations to remove shared state and synchronization.</li>
+<li>Inline allocated where possible: <code>connect</code>/<code>start</code> APIs so that all asynchronous work can be inlined into the caller’s state if that makes sense, rather than assuming heap allocations.</li>
+<li>Sequenced: <code>set_value</code> calls represent sequencing between asynchronous operations.</li>
+<li>Optimisable: <code>set_value</code> calls are not necessary if two chained operations can customise on each other’s types.</li>
+<li>Composable: rather than building out variants of an algorithm (<code>post</code>/<code>defer</code>, allocator parameter, different function signatures, per-algorithm shared state, timeouts) composition allows us to build more sophisticated algorthms from simple ones. With inline allocation and laziness we can do this at no cost.</li>
+<li>Interoperatable: by defining first the hooks between a <code>sender</code> and a <code>receiver</code> we define interfaces between different implementors’ libraries in the same way that a <code>range</code> defines a simple shared concept, irrespective of how an algorithm is implemented. This includes generic support for error handling, value propagation and cancellation.</li>
+<li>Cancellable: supporting cancellation in both bulk and non-bulk algorithms is important to a lot of use cases. In <span class="citation" data-cites="P0443">[<a href="#ref-P0443" role="doc-biblioref">P0443R13</a>]</span> the downstream part of cancellation is explicit in the inclusion of <code>set_done</code>. The upstream is a query on the receiver.</li>
+</ul>
+<p><code>bulk_schedule</code>, compared with <code>bulk_execute</code> gives us most of these features. This is its power. As a trivial example, if we want a blocking operation, we compose bulk_schedule with <code>sync_wait</code>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb1-1"><a href="#cb1-1"></a>sync_wait(bulk_join(bulk_transform(bulk_schedule(ex, 10), [](){...})));</span></code></pre></div>
+<p>this requires the <code>bulk_transform</code> algorithm, but that is a trivial pass through much like <span class="citation" data-cites="P1897">[<a href="#ref-P1897" role="doc-biblioref">P1897</a>]</span>’s <code>transform</code> and <code>bulk_join</code> converts a bulk operation into a single operation.</p>
+<p>If we want to wait with a timeout here, we can add that algorithm:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb2-1"><a href="#cb2-1"></a>timed_sync_wait(bulk_join(bulk_transform(bulk_schedule(ex, 10), [](){...}), 10s));</span></code></pre></div>
+<p>while maintaining a clearly written clue to what we are doing and where the caller will block.</p>
+<p>The gap in the <span class="citation" data-cites="P2181">[<a href="#ref-P2181" role="doc-biblioref">P2181</a>]</span> definition of <code>bulk_schedule</code> is in sequencing of operations. This is what we aim to close.</p>
+<h2 id="proposal-tldr"><span class="header-section-number">1.2</span> Proposal TL/DR<a href="#proposal-tldr" class="self-link"></a></h2>
+<p>Make <code>bulk_schedule</code> symmetric with <code>schedule</code> by:</p>
+<ul>
+<li>Adding a <code>set_next</code> operation alongside <code>set_value</code>. This roughly matches <span class="citation" data-cites="P2181">[<a href="#ref-P2181" role="doc-biblioref">P2181</a>]</span>’s definition of <code>set_value</code> without changing the semantic of the operation.</li>
+<li>Define <code>many_sender</code> and <code>many_receiver</code> to match these definitions.</li>
+<li>Propagating the forward progress requirements of <code>set_next</code> via a <code>get_execution_policy</code> query on the <code>many_receiver</code>, consistent with <code>get_scheduler</code> as defined in <span class="citation" data-cites="P1898">[<a href="#ref-P1898" role="doc-biblioref">P1898</a>]</span>.</li>
+<li>Propagating a stop_token via a <code>get_stop_token</code> query on the <code>many_receiver</code>, as defined in <span class="citation" data-cites="P2175">[<a href="#ref-P2175" role="doc-biblioref">P2175</a>]</span> and allowing the <code>many_sender</code> to abort early on cancellation.</li>
+</ul>
+<h1 id="sequencing"><span class="header-section-number">2</span> Sequencing<a href="#sequencing" class="self-link"></a></h1>
+<p>A sequence of executes is clearly a valuable thing. Let’s assume here that <code>func2</code> depends on <code>func1</code>. We want to support chaining of operations in some fashion:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb3-1"><a href="#cb3-1"></a>bulk_execution of func on exec</span>
+<span id="cb3-2"><a href="#cb3-2"></a>bulk_execution of func2 on exec</span></code></pre></div>
+<p>There are different ways we can enforce this ordering.</p>
+<h2 id="sequencing-using-blocking"><span class="header-section-number">2.1</span> Sequencing using blocking<a href="#sequencing-using-blocking" class="self-link"></a></h2>
+<p>One way is to make these blocking, either directly, or by manually using blocking algorithms to make it explicit at the call site:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb4-1"><a href="#cb4-1"></a>sync_wait(bulk_execute(exec, func));</span>
+<span id="cb4-2"><a href="#cb4-2"></a>sync_wait(bulk_execute(exec, func2));</span></code></pre></div>
+<p>Blocking has a huge disadvantage because it is viral. If we have some algorithm that calls these two:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb5-1"><a href="#cb5-1"></a>void bulk_algorithm(...) {</span>
+<span id="cb5-2"><a href="#cb5-2"></a>  sync_wait(bulk_execute(executor, func));</span>
+<span id="cb5-3"><a href="#cb5-3"></a>  sync_wait(bulk_execute(executor, func2));</span>
+<span id="cb5-4"><a href="#cb5-4"></a>}</span></code></pre></div>
+<p>then <code>bulk_algorithm</code> has to be blocking. For some algorithms this may be a valid design, but for asynchronous algorithms it is not, or at least not without launching a thread for each algorithm to do the blocking, so in general this is a poor solution. Blocking the caller would, after all, make the algorithm synchronous. We need true asynchronous algorithms, and so this cannot be the only way we provide work chaining.</p>
+<h2 id="sequencing-using-an-implicit-queue"><span class="header-section-number">2.2</span> Sequencing using an implicit queue<a href="#sequencing-using-an-implicit-queue" class="self-link"></a></h2>
+<p>Another approach is that we implicitly sequence, such that <code>executor</code> maintains an in-order queue in order of calls to bulk_execute. This is a common approach in runtime systems. The problem with it is that it does not interoperate, so it fails the <em>Interoperatable</em> goal. We need to use a second mechanism to bridge queues from different implementations.</p>
+<p>That is to say that in this code, the question remains open:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb6-1"><a href="#cb6-1"></a>void bulk_algorithm(...) {</span>
+<span id="cb6-2"><a href="#cb6-2"></a>  bulk_execute(facebook_executor, func);</span>
+<span id="cb6-3"><a href="#cb6-3"></a>  bulk_execute(nvidia, func2);</span>
+<span id="cb6-4"><a href="#cb6-4"></a>}</span></code></pre></div>
+<h2 id="sequencing-by-nesting"><span class="header-section-number">2.3</span> Sequencing by nesting<a href="#sequencing-by-nesting" class="self-link"></a></h2>
+<p>We can sequence by nesting, where the implementation of <code>func</code> triggers the enqueue of <code>func2</code>. For scalar work this makes a lot of sense:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb7-1"><a href="#cb7-1"></a>executor.execute([executor](){</span>
+<span id="cb7-2"><a href="#cb7-2"></a>    func();</span>
+<span id="cb7-3"><a href="#cb7-3"></a>    executor.execute(func2);</span>
+<span id="cb7-4"><a href="#cb7-4"></a>  });</span></code></pre></div>
+<p>It is a standard implementation strategy for Futures libraries, where the dependence graph is built outside of the executor library. The actual enqueue does not happen until the previous task completes. The implementation has no way to optimise this into an in-order queue, but for practical CPU libraries this generally works ok. It is how folly’s Futures are implemented, and it is how coroutines generally work.</p>
+<p>For a bulk algorithm this is more complicated. One way is that we maintain some mechanism to decide if we are in the last task to complete, maybe by incrementing an atomic:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb8-1"><a href="#cb8-1"></a>executor.bulk_execute([executor](){</span>
+<span id="cb8-2"><a href="#cb8-2"></a>    func();</span>
+<span id="cb8-3"><a href="#cb8-3"></a>    if(is_last_task()) {</span>
+<span id="cb8-4"><a href="#cb8-4"></a>      executor.bulk_execute(func2);</span>
+<span id="cb8-5"><a href="#cb8-5"></a>    }</span>
+<span id="cb8-6"><a href="#cb8-6"></a>  });</span></code></pre></div>
+<p>We also need to be sure we can enqueue more work from within the bulk task. That may be limited for weak forward progress situations - it has traditionally not been possible on GPUs, for example and is likely to disallow vectorisation in other cases, which would be unfortunate.</p>
+<h2 id="sequencing-using-synchronization-primitives"><span class="header-section-number">2.4</span> Sequencing using synchronization primitives<a href="#sequencing-using-synchronization-primitives" class="self-link"></a></h2>
+<p>We could instead explicitly order on a barrier.</p>
+<p>Either by having the caller block:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb9-1"><a href="#cb9-1"></a>some_barrier_type barrier(num_elements);</span>
+<span id="cb9-2"><a href="#cb9-2"></a>bulk_execute(executor.schedule(), [](){</span>
+<span id="cb9-3"><a href="#cb9-3"></a>    func();</span>
+<span id="cb9-4"><a href="#cb9-4"></a>    barrier.signal();</span>
+<span id="cb9-5"><a href="#cb9-5"></a>  });</span>
+<span id="cb9-6"><a href="#cb9-6"></a>barrier.wait();</span>
+<span id="cb9-7"><a href="#cb9-7"></a>bulk_execute(executor.schedule(), [](){</span>
+<span id="cb9-8"><a href="#cb9-8"></a>    func();</span>
+<span id="cb9-9"><a href="#cb9-9"></a>  });</span></code></pre></div>
+<p>But this is equivalent to blocking, with the same problems.</p>
+<p>Or by blocking within the task:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb10-1"><a href="#cb10-1"></a>some_barrier_type barrier(num_elements);</span>
+<span id="cb10-2"><a href="#cb10-2"></a>bulk_execute(executor.schedule(), [](){</span>
+<span id="cb10-3"><a href="#cb10-3"></a>    func();</span>
+<span id="cb10-4"><a href="#cb10-4"></a>    barrier.signal();</span>
+<span id="cb10-5"><a href="#cb10-5"></a>  });</span>
+<span id="cb10-6"><a href="#cb10-6"></a>bulk_execute(executor.schedule(), [](){</span>
+<span id="cb10-7"><a href="#cb10-7"></a>    barrier.wait();</span>
+<span id="cb10-8"><a href="#cb10-8"></a>    func();</span>
+<span id="cb10-9"><a href="#cb10-9"></a>  });</span></code></pre></div>
+<p>this has lifetime issues to consider with respect to <code>barrier</code>, fairly easily solved by reference counting and heap allocation. It also risks launching a wide fan out, blocking task, onto an execution context. This is an easy path to deadlock and so this is equivalent to blocking, in practice. Note that launching a scalar task in the middle is roughly the same, just moving the blocking elsewhere.</p>
+<h2 id="using-senders"><span class="header-section-number">2.5</span> Using senders<a href="#using-senders" class="self-link"></a></h2>
+<p>Finally, we can chain bulk algorithms the same way we chain scalar algorithms. This is the design we discussed in Prague for <span class="citation" data-cites="P0443">[<a href="#ref-P0443" role="doc-biblioref">P0443R13</a>]</span> where bulk_execute takes and returns a <code>Sender</code>:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb11-1"><a href="#cb11-1"></a>auto s1 = bulk_execute(executor.schedule(), func);</span>
+<span id="cb11-2"><a href="#cb11-2"></a>auto s2 = bulk_execute(s1, func2);</span></code></pre></div>
+<p>In this design the work has a well-defined generic underlying mechanism for signalling, using a <code>set_value</code> call when all instances of <code>func</code> complete and when <code>func2</code> should run. As this <code>set_value</code> call is well-defined as an interface, we can mix and match algorithms and mix and match authors without problems.</p>
+<p>The way this differs from the nesting design is that it is up to <code>executor</code> to decide how <code>set_value</code> is called:</p>
+<ul>
+<li>it may be fine to use the atomic-count last-worker-calls model.</li>
+<li>the runtime may wish to attach a callback to the work that is run on some runtime-controlled thread.</li>
+<li>if we have an underlying in-order queue or event DAG represention, of the sort that CUDA or OpenCL supports, we actually enqueue two tasks: one bulk task representing the set of <code>set_next</code> calls and one to call <code>set_value</code> to notify completion, potentially with a synchronization barrier in between if the model requires it.</li>
+</ul>
+<p>The <code>executor</code> is the right place to make that decision. Makign the decision anywhere else would be a pessimisation in generic code.</p>
+<p>As for the scalar case, we can also optimise away the <code>set_value</code> call when we know all these types and customise the algorithm, using the sequential queue underneath. For example, an OpenCL runtime might use events or an in-order queue to chain work on the same executor, and then use a host queue or an event callback to transition onto some other executor completely safely. Making this up to the implementation, rather than up to the user to inject code into the passed function, offers scope for more efficient implementations.</p>
+<h3 id="summary"><span class="header-section-number">2.5.1</span> Summary<a href="#summary" class="self-link"></a></h3>
+<p>The point here is that <strong>sequence points matter</strong> to bulk algorithms. Most importantly, completion sequence points matter. We can easily handle the start of a bulk algorithm by delaying enqueue, at some cost if we would have preferred to rely on FIFO queuing. It is much harder to notify the completion of a parallel operation without executor support. Completion is by far the more important sequence point to include, and both can be optimised away by overloading in the library.</p>
+<p>By encoding sequence points in the abstraction we put them under the control of the execution context. By default, because one of our goals is that this code be <em>Interoperable</em> of course this uses <code>set_value</code>, <code>set_done</code> or <code>set_error</code>; that’s the interface we have agreed for senders and receivers. In practice, though, we can customise on the intermediate sender types and avoid that cost. So a default of well-defined sequencing with optimisation is more practical as a model than no sequencing, custom sequencing for each executor type or, maybe worst of all, blocking algorithms.</p>
+<h1 id="the-changes"><span class="header-section-number">3</span> The changes<a href="#the-changes" class="self-link"></a></h1>
+<p>To maintain sequencing, we need <code>set_value</code> to have the same definition as in <code>sender</code> for the type returned by <code>bulk_schedule</code>. It should not be possible to accidentally chain scalar work onto bulk work.</p>
+<p>The list of clarifications necessary:</p>
+<ul>
+<li><code>set_value</code> will, like <code>set_error</code> or <code>set_done</code> be called at most once on the receiver.</li>
+<li>We add a <code>set_next</code> operation, that differentiates a <code>many_sender</code> or <code>many_receiver</code> from their original forms, that is called once for each element of the iteration space, and passes the index.</li>
+<li>After all necessary calls to <code>set_next</code> return, <code>set_value</code> will be called.</li>
+<li><code>set_error</code> or <code>set_done</code> indicate that some <code>set_next</code> calls may not have completed successfully.</li>
+<li>A query, <code>get_execution_policy</code> called on a <code>many_receiver</code> will return the policy that that receiver requires to be able to safely call <code>set_next</code> on the receiver. This may or may not be utilised by the scheduler, but it should be propagated through a chain of receivers and upgraded to a tighter policy if necessary.</li>
+<li>A query, <code>get_stop_token</code> called on a <code>many_receiver</code> will return a <code>stop_token</code> associated with that receiver such that the receiver or some downstream receiver may request cancellation of the operation.</li>
+<li>A <code>many_receiver</code> is-a <code>receiver</code> and when passed to a single <code>sender</code> behaves as if an iteration space of 0 was executed.</li>
+<li>A <code>sender</code> is-a <code>many_sender</code> by the same interpretation. It is a <code>many_sender</code> that does not call <code>set_next</code>.<br />
+</li>
+<li><code>bulk_schedule(s, size)</code> returns a <code>many_sender</code> that once connected to a <code>many_receiver</code> <code>r</code> will call <code>set_next(r, idx)</code> once for each in the range <code>0 &lt;= idx &lt; size</code> and subsequently call <code>set_value(r)</code>.</li>
+<li>A <code>many_sender</code> <strong>may</strong> obtain a <code>stop_token</code> via a call to <code>get_stop_token</code> on a <code>many_receiver</code> <code>r</code>. If stop is requested the <code>many_sender</code> <strong>may</strong> elide subsequent calls to <code>set_next</code> and call <code>set_done(r)</code>.</li>
+</ul>
+<h1 id="impact-on-the-standard"><span class="header-section-number">4</span> Impact on the Standard<a href="#impact-on-the-standard" class="self-link"></a></h1>
+<h2 id="executionset_next"><span class="header-section-number">4.1</span> execution::set_next<a href="#executionset_next" class="self-link"></a></h2>
+<p>The name execution::set_next denotes a customization point object. The expression <code>execution::set_next(R, Idx, Vs...)</code> for some subexpressions <code>R</code>, <code>Idx</code> and <code>Vs...</code> is expression-equivalent to:</p>
+<p><code>R.set_next(Idx, Vs...)</code>, if that expression is valid. If the function selected does not send the value(s) <code>Idx</code> and <code>Vs...</code> to the <code>many_receiver</code> <code>R</code>’s next operation, the program is ill-formed with no diagnostic required.</p>
+<p>Otherwise, <code>set_next(R, Idx, Vs...)</code>, if that expression is valid, with overload resolution performed in a context that includes the declaration</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb12-1"><a href="#cb12-1"></a>  void set_next();</span></code></pre></div>
+<p>and that does not include a declaration of <code>execution::set_next</code>. If the function selected by overload resolution does not send the value(s) <code>Idx</code> and <code>Vs...</code> to the receiver <code>R</code>’s next channel, the program is ill-formed with no diagnostic required.</p>
+<p>Otherwise, <code>execution::set_next(R, Idx, Vs...)</code> is ill-formed.</p>
+<p>[Editorial note: We should probably define what “send the value(s) Vs… to the many_receiver R’s next channel” means more carefully. –end editorial note]</p>
+<h2 id="executionbulk_schedule"><span class="header-section-number">4.2</span> execution::bulk_schedule<a href="#executionbulk_schedule" class="self-link"></a></h2>
+<p>The name <code>execution::bulk_schedule</code> denotes a customization point object. For some subexpressions <code>s</code> and <code>size</code>, let <code>S</code> be a type such that <code>decltype((s))</code> is <code>S</code> and <code>Size</code> be a type such that <code>decltype((size))</code> is <code>Size</code>. The expression <code>execution::bulk_schedule(s, size)</code> is expression-equivalent to:</p>
+<p><code>s.bulk_schedule(size)</code>, if that expression is valid and its type models sender.</p>
+<p>Otherwise, schedule(s), if that expression is valid and its type models sender with overload resolution performed in a context that includes the declaration</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb13-1"><a href="#cb13-1"></a>  void bulk_schedule();</span></code></pre></div>
+<p>and that does not include a declaration of <code>execution::bulk_schedule</code>.</p>
+<p>Otherwise, <code>execution::bulk_schedule(s)</code> is ill-formed.</p>
+<p>[NOTE: The defition of the default implementation of bulk_schedule is open to discussion]</p>
+<h2 id="concept-many_receiver_of"><span class="header-section-number">4.3</span> Concept many_receiver_of<a href="#concept-many_receiver_of" class="self-link"></a></h2>
+<p>A <code>many_receiver</code> represents the continuation of an asynchronous operation formed from a potentially unordered sequence of indexed suboperations. An asynchronous operation may complete with a (possibly empty) set of values, an error, or it may be cancelled. A <code>many_receiver</code> has one operation corresponding to one of the set of indexed suboperations: <code>set_next</code>. Like a <code>receiver</code>, a <code>many_receiver</code> has three principal operations corresponding to the three ways an asynchronous operation may complete: <code>set_value</code>, <code>set_error</code>, and <code>set_done</code>. These are collectively known as a <code>many_receiver</code>’s completion-signal operations.</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb14-1"><a href="#cb14-1"></a>    template&lt;class T, class Idx, class... An, class... Nn...&gt;</span>
+<span id="cb14-2"><a href="#cb14-2"></a>    concept many_receiver_of =</span>
+<span id="cb14-3"><a href="#cb14-3"></a>      receiver_of&lt;T, An...&gt; &amp;&amp;</span>
+<span id="cb14-4"><a href="#cb14-4"></a>      requires(remove_cvref_t&lt;T&gt;&amp;&amp; t, Idx idx, An&amp;&amp;... an, Nn&amp;&amp;... nn) {</span>
+<span id="cb14-5"><a href="#cb14-5"></a>        execution::set_value(std::move(t), (An&amp;&amp;) an...);</span>
+<span id="cb14-6"><a href="#cb14-6"></a>        execution::set_next(t&amp;, idx, (Nn&amp;&amp;) nn...);</span>
+<span id="cb14-7"><a href="#cb14-7"></a>      };</span></code></pre></div>
+<p>The <code>many_receiver</code>’s completion-signal operations have semantic requirements that are collectively known as the <code>many_receiver</code> contract, described below:</p>
+<p>None of a <code>many_receiver</code>’s completion-signal operations shall be invoked before <code>execution::start</code> has been called on the operation state object that was returned by <code>execution::connect</code> to connect that <code>many_receiver</code> to a <code>many_sender</code>.</p>
+<p>Once <code>execution::start</code> has been called on the operation state object, <code>set_next</code> shall be called for each index in some iteration space and parameterised with that index, under the restriction of the policy returned by a call to <code>get_execution_policy</code> on the <code>many_receiver</code>.</p>
+<p>All of the <code>many_receiver</code>’s <code>set_next</code> calls shall happen-before any of the <code>many_receiver</code>’s completion-signal operations. Exactly one of the receiver’s completion-signal operations shall complete non-exceptionally before the receiver is destroyed.</p>
+<p>If any call to <code>execution::set_next</code> or <code>execution::set_value</code> exits with an exception, it is still valid to call <code>execution::set_error</code> or <code>execution::set_done</code> on the <code>many_receiver</code>. If all calls to <code>execution::set_next</code> complete successfully, it is valid to call <code>execution::set_value</code> on the <code>many_receiver</code>.</p>
+<p>Once one of a <code>many_receiver</code>’s completion-signal operations has completed non-exceptionally, the <code>many_receiver</code> contract has been satisfied.</p>
+<h2 id="concepts-many_sender-many_sender_to-and-typed_many_sender"><span class="header-section-number">4.4</span> Concepts many_sender, many_sender_to and typed_many_sender<a href="#concepts-many_sender-many_sender_to-and-typed_many_sender" class="self-link"></a></h2>
+<p>XXX TODO The many_sender and many_sender_to concepts. If these are necessary, complete definitions along with sender, sender_to and typed_sender.</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb15-1"><a href="#cb15-1"></a>    template&lt;class S&gt;</span>
+<span id="cb15-2"><a href="#cb15-2"></a>      concept many_sender = ...</span>
+<span id="cb15-3"><a href="#cb15-3"></a></span>
+<span id="cb15-4"><a href="#cb15-4"></a>    template&lt;class S, class R&gt;</span>
+<span id="cb15-5"><a href="#cb15-5"></a>      concept many_sender_to = ...</span>
+<span id="cb15-6"><a href="#cb15-6"></a></span>
+<span id="cb15-7"><a href="#cb15-7"></a>    template&lt;class S&gt;</span>
+<span id="cb15-8"><a href="#cb15-8"></a>      concept typed_many_sender =</span>
+<span id="cb15-9"><a href="#cb15-9"></a>        many_sender&lt;S&gt; &amp;&amp;</span>
+<span id="cb15-10"><a href="#cb15-10"></a>        has-sender-types&lt;sender_traits&lt;remove_cvref_t&lt;S&gt;&gt;&gt;;</span></code></pre></div>
+<p>None of these operations shall introduce data races as a result of concurrent invocations of those functions from different threads.</p>
+<p>A <code>many_sender</code> type’s destructor shall not block pending completion of the submitted receiver. [Note: The ability to wait for completion of submitted function objects may be provided by the associated execution context. –end note]</p>
+<h2 id="extend-sender_traits"><span class="header-section-number">4.5</span> Extend sender_traits<a href="#extend-sender_traits" class="self-link"></a></h2>
+<p>Let has-sender-types be an implementation-defined concept equivalent to:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb16-1"><a href="#cb16-1"></a>  ...</span>
+<span id="cb16-2"><a href="#cb16-2"></a>  template&lt;template&lt;template&lt;class...&gt; class&gt; class&gt;</span>
+<span id="cb16-3"><a href="#cb16-3"></a>    struct has-next-types ; // exposition only</span>
+<span id="cb16-4"><a href="#cb16-4"></a></span>
+<span id="cb16-5"><a href="#cb16-5"></a>  ...</span>
+<span id="cb16-6"><a href="#cb16-6"></a></span>
+<span id="cb16-7"><a href="#cb16-7"></a>  template&lt;class S&gt;</span>
+<span id="cb16-8"><a href="#cb16-8"></a>    concept has-many-sender-types =</span>
+<span id="cb16-9"><a href="#cb16-9"></a>      requires {</span>
+<span id="cb16-10"><a href="#cb16-10"></a>        typename has-value-types &lt;S::template value_types&gt;;</span>
+<span id="cb16-11"><a href="#cb16-11"></a>        typename has-next-types &lt;S::template next_types&gt;;</span>
+<span id="cb16-12"><a href="#cb16-12"></a>        typename has-error-types &lt;S::template error_types&gt;;</span>
+<span id="cb16-13"><a href="#cb16-13"></a>        typename bool_constant&lt;S::sends_done&gt;;</span>
+<span id="cb16-14"><a href="#cb16-14"></a>      };</span></code></pre></div>
+<p>If <code>has-many-sender-types&lt;S&gt;</code> is true, <code>then many-sender-traits-base</code> is equivalent to:</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb17-1"><a href="#cb17-1"></a>  template&lt;class S&gt;</span>
+<span id="cb17-2"><a href="#cb17-2"></a>    struct sender-traits-base {</span>
+<span id="cb17-3"><a href="#cb17-3"></a>      template&lt;template&lt;class...&gt; class Tuple, template&lt;class...&gt; class Variant&gt;</span>
+<span id="cb17-4"><a href="#cb17-4"></a>        using value_types = typename S::template value_types&lt;Tuple, Variant&gt;;</span>
+<span id="cb17-5"><a href="#cb17-5"></a></span>
+<span id="cb17-6"><a href="#cb17-6"></a>      template&lt;template&lt;class...&gt; class Tuple, template&lt;class...&gt; class Variant&gt;</span>
+<span id="cb17-7"><a href="#cb17-7"></a>        using next_types = typename S::template next_types&lt;Tuple, Variant&gt;;</span>
+<span id="cb17-8"><a href="#cb17-8"></a></span>
+<span id="cb17-9"><a href="#cb17-9"></a>      template&lt;template&lt;class...&gt; class Variant&gt;</span>
+<span id="cb17-10"><a href="#cb17-10"></a>        using error_types = typename S::template error_types&lt;Variant&gt;;</span>
+<span id="cb17-11"><a href="#cb17-11"></a></span>
+<span id="cb17-12"><a href="#cb17-12"></a>      static constexpr bool sends_done = S::sends_done;</span>
+<span id="cb17-13"><a href="#cb17-13"></a>    };</span></code></pre></div>
+<p>Otherwise, let <code>void-many-receiver</code> be an implementation-defined class type equivalent to</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb18-1"><a href="#cb18-1"></a>  struct void-many-receiver { // exposition only</span>
+<span id="cb18-2"><a href="#cb18-2"></a>    void set_value() noexcept;</span>
+<span id="cb18-3"><a href="#cb18-3"></a>    void set_next(size_t) noexcept;</span>
+<span id="cb18-4"><a href="#cb18-4"></a>    void set_error(exception_ptr) noexcept;</span>
+<span id="cb18-5"><a href="#cb18-5"></a>    void set_done() noexcept;</span>
+<span id="cb18-6"><a href="#cb18-6"></a>  };</span></code></pre></div>
+<h1 id="why-use-get_execution_policy-on-the-receiver"><span class="header-section-number">5</span> Why use get_execution_policy on the receiver?<a href="#why-use-get_execution_policy-on-the-receiver" class="self-link"></a></h1>
+<p>There are two questions embedded in this:</p>
+<ul>
+<li>Why pass the policy into the bulk operation at all (with reference to the discussion point in <span class="citation" data-cites="P2181">[<a href="#ref-P2181" role="doc-biblioref">P2181</a>]</span>)?</li>
+<li>Why do it this way rather than as a parameter?</li>
+</ul>
+<h2 id="why-pass-a-policy-into-the-bulk-api"><span class="header-section-number">5.1</span> Why pass a policy into the bulk API?<a href="#why-pass-a-policy-into-the-bulk-api" class="self-link"></a></h2>
+<p>For a compound algorithm, it is unreasonable to assume that the policy passed to the algorithm need be the one applied to the executor. This is for a variety of reasons, but primarily that the author of the algorithm may not be in a position to match policies perfectly. We might implement sort:</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb19-1"><a href="#cb19-1"></a>output_sender std::execution::sort(input_sender, executor, policy, comparison_function, range);</span></code></pre></div>
+<p>where the policy passed to match comparison_function is <code>par_unseq</code> but where a complex multi-stage sort needs par internally. Here we end up with a question: do we have to restrict the interface to match the implementation? That might be hard. The alternative is to transform the executor inside the algorithm. Potentially using <code>require</code>, or a <code>with_policy</code> wrapper.</p>
+<p>The problem is that modifying the executor to provide a policy is semantically identical to passing it with the continuation, but it is less easy to read:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb20-1"><a href="#cb20-1"></a>output_sender std::execution::algorithm(input_sender, executor, policy) {</span>
+<span id="cb20-2"><a href="#cb20-2"></a>  auto seq_executor = with_policy(executor, seq);</span>
+<span id="cb20-3"><a href="#cb20-3"></a>  auto s1 = alg_stage_1(input_sender, seq_executor)</span>
+<span id="cb20-4"><a href="#cb20-4"></a></span>
+<span id="cb20-5"><a href="#cb20-5"></a>  auto par_executor = with_policy(executor, par);</span>
+<span id="cb20-6"><a href="#cb20-6"></a>  return alg_stage_2(s1, par_executor)</span>
+<span id="cb20-7"><a href="#cb20-7"></a>}</span></code></pre></div>
+<p>it is harder to read because the executor has been transformed and stored - it may drift far from the point of use, and thus create a risk of UB introduced during maintenance.</p>
+<p>The alternative would appear structurally similar, but note that if we have attached a policy to the algorithm <em>if the executor is incapable of executing that way it can report the error</em>. Whichever way we do this we have to decide what an executor is allowed to reject in terms of itself being associated with a policy, and the work being associated with a policy.</p>
+<h2 id="why-use-get_execution_policy-on-the-receiver-instead-of-a-parameter"><span class="header-section-number">5.2</span> Why use get_execution_policy on the receiver instead of a parameter?<a href="#why-use-get_execution_policy-on-the-receiver-instead-of-a-parameter" class="self-link"></a></h2>
+<p>This is a question both of scaling of compound algorithms and into the future. A compound algorithm may need to make policy decisions at each stage. For example, using async versions of <code>std::sort</code> and <code>std::transform</code></p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb21-1"><a href="#cb21-1"></a>output_sender std::execution::algorithm(input_sender, executor, policy) {</span>
+<span id="cb21-2"><a href="#cb21-2"></a>  auto s1 = sort(input_sender, executor, policy)</span>
+<span id="cb21-3"><a href="#cb21-3"></a>  return transform(s1, executor, policy)</span>
+<span id="cb21-4"><a href="#cb21-4"></a>}</span></code></pre></div>
+<p>based on prior work, each of these user-visible algorithms would take a policy. They are all user-facing as well as implementation-details. In the <code>get_execution_policy</code> model each of these can communicate a policy to the prior algorithm.</p>
+<p>We do realise that execution policy is a broader concept than just forward progress - it may be that we need to separate concerns here. The aspect of the execution policy that is a statement of what the most relaxed conditions in which the function is safe to callthe way they are used in the current set of defined policies on the parallel algorithms, may be abstracted in this way while the wider policy is separate and describing execution may be useful. In that case <code>get_forward_progress_requirement</code> might be a better name.</p>
+<p>Having said that, wider policy requirements still do not seem to be properties of the executor and so the above section about passing a property into the bulk API still apply. We should be careful to distinguish properties of an individual algorithm call: which may include the forward progress requirements of the operation, the allocator the operation wants to use, the cancellation token it wants to be able to cancel with, if it is following a continuation or run-anytime model of execution or even the executor it wants to have work run on (See <span class="citation" data-cites="P1898">[<a href="#ref-P1898" role="doc-biblioref">P1898</a>]</span>). These are distinct from properties that should be applied to an executor, such as how it is capable of running things, potentially also an allocator that it wants to use, and similar work.</p>
+<p>There is also an argument for needing a separate forward progress query representing the <code>set_value</code> call, in addition to the bulk <code>set_next</code> calls. Both propagating through a receiver chain via <code>tag_invoke</code> forwarding. If <code>set_value</code> is to be called on the last completing task, and we know that the next algorithm constructed a receiver that is safe to call in a <code>par_unseq</code> agent, then the prior agent is safe to call it from its last completing <code>par_unseq</code> agent. If not, then the executor has to setup a <code>par</code> agent to make that call from, because that is the most general method for chaining work across different contexts. However, this is a bigger problem to solve. If we want to implement nested parallelism, or to call any parallel algorithm, synchronous or asynchronous, from within a parallel algorithm then we need to understand the forward progress requiements that call places. For that matter, if we call any uncontrolled code from within a parallel algorithm, the same applies.</p>
+<p>Another future use case reason for doing it this way is the potential for compiler help. Imagine something like:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb22-1"><a href="#cb22-1"></a>bulk_schedule(exec, size, bulk_transform([]() [[with_compiler_generated_policy]] {...}))</span></code></pre></div>
+<p>where the compiler is allowed to analyse that code and wrap the lambda in a way that will expose the <code>get_execution_policy</code> query to <code>bulk_transform</code> and of course to <code>bulk_schedule</code>. If the compiler sees a <code>std::mutex</code> in here, it might strengthen the policy requirement such that executor can report a mismatch. We have provided a general mechanism, that future compilers can hook into, especially when generating custom accelerator code, to reduce the risk of mistakes on the part of the developer.</p>
+<h1 id="references"><span class="header-section-number">6</span> References<a href="#references" class="self-link"></a></h1>
+
+<div id="refs" role="doc-bibliography">
+<div id="ref-P0443">
+<p>[P0443R13] 2020. A Unified Executors Proposal for C++. <br />
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p0443R13.html">http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p0443R13.html</a></p>
+</div>
+<div id="ref-P1897">
+<p>[P1897] 2020. Towards C++23 executors: A proposal for an initial set of algorithms. <br />
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p1897r3.pdf">http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p1897r3.pdf</a></p>
+</div>
+<div id="ref-P1898">
+<p>[P1898] 2020. Forward progress delegation for executors. <br />
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p1898r1.pdf">http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p1898r1.pdf</a></p>
+</div>
+<div id="ref-P2175">
+<p>[P2175] 2020. Composable cancellation for sender-based async operations. <br />
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p2175r0.pdf">http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p2175r0.pdf</a></p>
+</div>
+<div id="ref-P2181">
+<p>[P2181] 2020. Correcting the Design of Bulk Execution. <br />
+<a href="http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p2181r0.pdf">http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2020/p2181r0.pdf</a></p>
+</div>
+</div>
+</div>
+</div>
+</body>
+</html>
