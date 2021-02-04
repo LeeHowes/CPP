@@ -13,18 +13,19 @@ geometry:
   - top=2.5cm
   - bottom=2.5cm
 
+block-headings: true
+link-citations: true
+reference-section-title: References
+strikeout: true
+
 citecolor: blue
 linkcolor: blue
 urlcolor: blue
 toccolor: black
 
-uccolor: 898887
-addcolor: 006e28
-rmcolor: bf0303
-
-block-headings: true
-link-citations: true
-strikeout: true
+uccolor: '898887'
+addcolor: '006e28'
+rmcolor: 'bf0303'
 
 header-includes:
   - |
