@@ -23,6 +23,7 @@ With only parallel forward progress, any created parallel context may be a view 
 
 # Design
 ## parallel_context
+
 The `parallel_context` creates a view on some underlying parallel forward progress execution context.
 It may share a system context, or it may own a context of its own.
 To support the owning implementation, a `parallel_context` must outlive any work launched on it.
@@ -55,6 +56,10 @@ public:
  - `get_scheduler_with_priotity` returns a `parallel_scheduler` instance that holds a reference to the `parallel_context`. The scheduler is created with the specified priority. Priorities offer a layering of tasks, with no guarantee.
 
 ## parallel_scheduler
+
+A `parallel_scheduler` is a copyable handle to a `parallel_context`. It is the means through which agents are launched on a `parallel_context`.
+The `parallel_scheduler` instance does not have to outlive work submitted to it.
+
 ```cpp
 class parallel_scheduler {
 public:
@@ -66,25 +71,45 @@ public:
   parallel_scheduler& operator=(const parallel_scheduler&);
   parallel_scheduler& operator=(parallel_scheduler&&);
 
-  friend _sender tag_invoke(std::execution::schedule_t, const inline_scheduler&) noexcept;
-  friend _sender tag_invoke(std::execution::get_completion_scheduler_t<set_value_t>, const inline_scheduler&) noexcept;
-  friend _sender tag_invoke(std::execution::get_completion_scheduler_t<set_error_t>, const inline_scheduler&) noexcept;
-  friend _sender tag_invoke(std::execution::get_completion_scheduler_t<set_done_t>, const inline_scheduler&) noexcept;
-  friend _sender tag_invoke(std::execution::get_forward_progress_guarantee_t, const inline_scheduler&) noexcept;
-  friend _sender tag_invoke(std::execution::bulk_t, const inline_scheduler&) noexcept;
-  friend _sender tag_invoke(std::execution::with_delegee_scheduler_t, const inline_scheduler&) noexcept;
-  friend _sender tag_invoke(std::execution::sync_wait_t, const inline_scheduler&) noexcept;
+  bool operator==(const parallel_scheduler&) const noexcept;
+
+  scheduler_priority get_priority() const noexcept;
+
+  friend implementation-defined-sender tag_invoke(
+    std::execution::schedule_t, const parallel_scheduler&) noexcept;
+  friend std::execution::parallel_scheduler tag_invoke(
+    std::execution::get_completion_scheduler_t<set_value_t>,
+    const parallel_scheduler&) noexcept;
+  friend std::execution::forward_progress_guarantee tag_invoke(
+    std::execution::get_forward_progress_guarantee_t,
+    const parallel_scheduler&) noexcept;
+  friend implementation-defined-bulk-sender tag_invoke(
+    std::execution::bulk_t,
+    const parallel_scheduler&,
+    Sh&& sh,
+    F&& f) noexcept;
+  friend parallel_scheduler tag_invoke(
+    std::execution::with_delegee_scheduler_t,
+    const scheduler auto &) noexcept;
 };
 ```
 
+ - `parallel_scheduler` is not independely constructable, and must be obtained from a `parallel_context`.
+It is both move and copy constructable and assignable.
+ - Two `parallel_scheduler`s compare equal if they share the same underlying `parallel_context` and if they have the same priority.
+ - The `parallel_scheduler`:
+   - satisfies the `scheduler` concept and implements the `schedule` customisation point to return an `implementation-defined` `sender` type.
+   - implements the `get_completion_scheduler` query for the value channel where it returns a type that compares equal to itself.
+   - implements the `get_forward_progress_guarantee` query to return `parallel`.
+   - implements the `bulk` CPO to customise the `bulk` sender adapter such that:
+     - When `execution::set_value(r, args...)` is called on the created `receiver`, an agent is created with parallel forward progress on the underlying `parallel_context` for each `i` of type `Shape` from `0` to `sh` that calls `f(i, args...)`.
+   - implements the `with_delegee_scheduler` scheduler mutator to pair the `parallel_scheduler` with a second `scheduler` that it will delegate to to ensure that it makes forward progress.
+
+
+
 TODO:
 
- * Bulk customisation
- * Priorities
- * with_delegee_scheduler to make sure that FP delegation works. Give async_scope example. see: https://github.com/brycelelbach/wg21_p2300_std_execution/issues/294
  * Link-time replacement. Should this be up to the standard library?
  * Cancellation
- * Get forward progress guarantee
  * Blocking property
- * sync_wait to support FP delegation
  * What should behaviour of parallel_scheduler's sender be if the context is destroyed. Is that UB or should that safely cancel on submit? If schedulers hold simple references to the context UB is the only option. If the context ref counts an underlying state we could cancel. There is a tradeoff there.
