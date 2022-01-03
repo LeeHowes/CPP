@@ -14,13 +14,21 @@ toc: false
 [@P2300R2] describes a rounded set of primitives for asynchronous and parallel execution that give a firm grounding for the future.
 However, the paper lacks a standard execution context and scheduler.
 As noted in [@P2079R1], the earlier `static_thread_pool` had many shortcomings and was not included in [@P2300R2] for that reason.
-The global execution context proposed in [@P2079R1] was an important start, but needs updating to match [@P2300R2] and we believe to simplify the design and focus on solving a very specific problem.
+The global execution context proposed in [@P2079R1] was an important start, but needs updating to match [@P2300R2].
 
 This paper proposes a specific solution: parallel execution context and scheduler.
-Lifetime management and other functionality is delegated to other papers.
+Lifetime management and other functionality is delegated to other papers, primarily to the `async_scope` defined in [$XXXXR0].
+
 This execution context is of undefined size, supporting explicitly parallel forward progress.
-As a result, it can build on top of a system thread pool, or on top of a static thread pool, with flexible semantics depending on the constraints that the underlying context offers.
+It can build on top of a system thread pool, or on top of a static thread pool, with flexible semantics depending on the constraints that the underlying context offers.
 With only parallel forward progress, any created parallel context may be a view onto the underlying shared global context.
+Multiple parallel contexts may share the same system thread pool.
+The same parallel context may have access to separate system thread pools, or queues to those pools, with different priorities to support priorities of returned schedulers.
+
+The minimal extensions to basic parallel forward progress are to support fundamental functionality that is necessary to make parallel algorithms work:
+
+ * Cancellation: work submitted through the parallel context must be cancellable if the underlying system facilities support it.
+ * Forward progress delegation: we must be able to implement a blocking operation that ensures forward progress of a complex parallel algorithm without special cases.
 
 # Design
 ## parallel_context
@@ -51,9 +59,10 @@ public:
 };
 ```
 
+ - On construction, the `parallel_context` may initialize a shared system context, if it has not been previously initialized.
  - The `parallel_context` is non-copyable and non-moveable.
  - The `parallel_context` must outlive work launched on it. If there is outstanding work at the point of destruction, `std::terminate` will be called.
- - The `parallel_context` must outlive schedulers obtained from it. If there are outstanding schedulers at destruction time, this is undefined behaviour.
+ - The `parallel_context` must outlive schedulers obtained from it. If there are outstanding schedulers at destruction time, this is undefined behavior.
  - `get_scheduler` returns a `parallel_scheduler` instance that holds a reference to the `parallel_context`.
  - `get_scheduler_with_priotity` returns a `parallel_scheduler` instance that holds a reference to the `parallel_context`. The scheduler is created with the specified priority. Priorities offer a layering of tasks, with no guarantee.
 
@@ -77,14 +86,8 @@ public:
 
   scheduler_priority get_priority() const noexcept;
 
-  friend implementation-defined-sender tag_invoke(
+  friend implementation-defined-parallel_sender tag_invoke(
     std::execution::schedule_t, const parallel_scheduler&) noexcept;
-  friend std::execution::parallel_scheduler tag_invoke(
-    std::execution::get_completion_scheduler_t<set_value_t>,
-    const parallel_scheduler&) noexcept;
-  friend std::execution::parallel_scheduler tag_invoke(
-    std::execution::get_completion_scheduler_t<set_done_t>,
-    const parallel_scheduler&) noexcept;
   friend std::execution::forward_progress_guarantee tag_invoke(
     std::execution::get_forward_progress_guarantee_t,
     const parallel_scheduler&) noexcept;
@@ -103,14 +106,38 @@ public:
    Calling any operation other than the destructor on a `parallel_scheduler` after the `parallel_context` it was created from is destroyed is undefined behavior, and that operation may access freed memory.
  - The `parallel_scheduler`:
    - satisfies the `scheduler` concept and implements the `schedule` customisation point to return an `implementation-defined` `sender` type.
-   - implements the `get_completion_scheduler` query for the value channel where it returns a type that compares equal to itself.
    - implements the `get_forward_progress_guarantee` query to return `parallel`.
    - implements the `bulk` CPO to customise the `bulk` sender adapter such that:
      - When `execution::set_value(r, args...)` is called on the created `receiver`, an agent is created with parallel forward progress on the underlying `parallel_context` for each `i` of type `Shape` from `0` to `sh` that calls `f(i, args...)`.
- - `schedule` calls on a `parallel_scheduler` and `start()` called on the operation state returned from `sender` obtained by connecting the `sender` returned from `schedule` on a `parallel_scheduler` with a `receiver` are non-blocking operations.
+ - `schedule` calls on a `parallel_scheduler` are non-blocking operations.
+ - If the underlying `parallel_context` is unable to make progress on work created through `parallel_scheduler` instances, and the sender retrieved from `scheduler` is connected to a `receiver` that supports the `get_delegee_scheduler` query, work may scheduled on the `scheduler` returned by `get_delegee_scheduler` at the time of the call to `start`, or any time later.
+
+## Parallel sender
+```cpp
+class implementation-defined-parallel_sender {
+public:
+  friend pair<std::execution::parallel_scheduler, delegee_scheduler> tag_invoke(
+    std::execution::get_completion_scheduler_t<set_value_t>,
+    const parallel_scheduler&) noexcept;
+  friend pair<std::execution::parallel_scheduler, delegee_scheduler> tag_invoke(
+    std::execution::get_completion_scheduler_t<set_done_t>,
+    const parallel_scheduler&) noexcept;
+
+  template&lt;receiver R>
+        requires receiver_of&lt;R>
+  friend implementation-defined-operation_state
+    tag_invoke(execution::connect_t, implementation-defined-parallel_sender&& j, R && r);
+
+  ...
+};
+```
+
+`schedule` on a `parallel_scheduler` returns some implementation-defined `sender` type.
+
+This sender satisfies the following properties:
+  - Implements the `get_completion_scheduler` query for the value and done channel where it returns a type that is a pair of an object that compares equal to itself, and a representation of delegee scheduler that may be obtained from receivers connected with the sender.
+  - If connected with a `receiver` that supports the `get_stop_token` query, if that `stop_token` is stopped, operations on which `start` has been called, but are not yet running (and are hence not yet guaranteed to make progress) should complete with `set_done`.
+  - `connect`ing the `sender` and calling `start()` on the resulting operation state are non-blocking operations.
 
 
-
-TODO:
-
- * Cancellation
+# Examples
