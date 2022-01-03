@@ -93,14 +93,11 @@ public:
     const parallel_scheduler&,
     Sh&& sh,
     F&& f) noexcept;
-  friend parallel_scheduler tag_invoke(
-    std::execution::with_delegee_scheduler_t,
-    const scheduler auto &) noexcept;
 };
 ```
 
  - `parallel_scheduler` is not independely constructable, and must be obtained from a `parallel_context`.
-It is both move and copy constructable and assignable.
+   It is both move and copy constructable and assignable.
  - Two `parallel_scheduler`s compare equal if they share the same underlying `parallel_context` and if they have the same priority.
  - A `parallel_scheduler` has reference semantics with respect to its `parallel_context`.
    Calling any operation other than the destructor on a `parallel_scheduler` after the `parallel_context` it was created from is destroyed is undefined behavior, and that operation may access freed memory.
@@ -110,11 +107,10 @@ It is both move and copy constructable and assignable.
    - implements the `get_forward_progress_guarantee` query to return `parallel`.
    - implements the `bulk` CPO to customise the `bulk` sender adapter such that:
      - When `execution::set_value(r, args...)` is called on the created `receiver`, an agent is created with parallel forward progress on the underlying `parallel_context` for each `i` of type `Shape` from `0` to `sh` that calls `f(i, args...)`.
+ - `schedule` calls on a `parallel_scheduler` and `start()` called on the operation state returned from `sender` obtained by connecting the `sender` returned from `schedule` on a `parallel_scheduler` with a `receiver` are non-blocking operations.
 
 
 
 TODO:
 
- * Link-time replacement. Should this be up to the standard library?
  * Cancellation
- * Blocking property
