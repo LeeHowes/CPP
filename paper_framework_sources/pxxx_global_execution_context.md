@@ -47,7 +47,7 @@ public:
   parallel_context& operator=(parallel_context&&) = delete;
 
   parallel_scheduler get_scheduler();
-  parallel_scheduler get_scheduler_with_priotity(scheduler_priority);
+  parallel_scheduler get_scheduler_with_priority(scheduler_priority);
 };
 ```
 
@@ -110,7 +110,6 @@ It is both move and copy constructable and assignable.
    - implements the `get_forward_progress_guarantee` query to return `parallel`.
    - implements the `bulk` CPO to customise the `bulk` sender adapter such that:
      - When `execution::set_value(r, args...)` is called on the created `receiver`, an agent is created with parallel forward progress on the underlying `parallel_context` for each `i` of type `Shape` from `0` to `sh` that calls `f(i, args...)`.
-
 
 
 
