@@ -11,13 +11,13 @@ toc: false
 
 
 # Introduction
-[@P2300R2] describes a rounded set of primitives for asynchronous and parallel execution that give a firm grounding for the future.
+[@P2300] describes a rounded set of primitives for asynchronous and parallel execution that give a firm grounding for the future.
 However, the paper lacks a standard execution context and scheduler.
-As noted in [@P2079R1], the earlier `static_thread_pool` had many shortcomings and was not included in [@P2300R2] for that reason.
-The global execution context proposed in [@P2079R1] was an important start, but needs updating to match [@P2300R2].
+As noted in [@P2079R1], the earlier `static_thread_pool` had many shortcomings and was not included in [@P2300] for that reason.
+The global execution context proposed in [@P2079R1] was an important start, but needs updating to match [@P2300].
 
 This paper proposes a specific solution: parallel execution context and scheduler.
-Lifetime management and other functionality is delegated to other papers, primarily to the `async_scope` defined in [$XXXXR0].
+Lifetime management and other functionality is delegated to other papers, primarily to the `async_scope` defined in [@PXXXX].
 
 This execution context is of undefined size, supporting explicitly parallel forward progress.
 It can build on top of a system thread pool, or on top of a static thread pool, with flexible semantics depending on the constraints that the underlying context offers.
@@ -126,7 +126,7 @@ public:
   template&lt;receiver R>
         requires receiver_of&lt;R>
   friend implementation-defined-operation_state
-    tag_invoke(execution::connect_t, implementation-defined-parallel_sender&& j, R && r);
+    tag_invoke(execution::connect_t, implementation-defined-parallel_sender&&, R &&);
 
   ...
 };
@@ -141,3 +141,82 @@ This sender satisfies the following properties:
 
 
 # Examples
+As a simple parallel scheduler we can use it locally, and `sync_wait` on the work to make sure that it is complete.
+With forward progress delegation this would also allow the scheduler to delegate work to the blocked thread.
+This example is derived from the Hello World example in [@P2300]. Note that it only adds a well-defined context object, and queries that for the scheduler.
+Everything else is unchanged.
+
+```c++
+using namespace std::execution;
+
+parallel_context ctx;
+scheduler auto sch = ctx.scheduler();
+
+sender auto begin = schedule(sch);
+sender auto hi = then(begin, []{
+    std::cout << "Hello world! Have an int.";
+    return 13;
+});
+sender auto add_42 = then(hi, [](int arg) { return arg + 42; });
+
+auto [i] = this_thread::sync_wait(add_42).value();
+```
+
+In real examples we would not always be calling `sync_wait`, we would have more structured code.
+For this we will often use the `async_scope` from [@PXXXX].
+`async_scope` provides a generalised mechanism for safely managing the lifetimes of tasks
+even when the results are not required.
+
+```c++
+using namespace std::execution;
+
+parallel_context ctx;
+int result = 0;
+
+{
+  async_scope scope;
+  scheduler auto sch = ctx.scheduler();
+
+  sender auto val = on(
+    sch, just() | then([sch, &scope](auto sched) {
+
+        int val = 13;
+
+        auto print_sender = just() | then([val]{
+          std::cout << "Hello world! Have an int with value: " << val << "\n";
+        });
+        // spawn the print sender on sched to make sure it
+        // completes before shutdown
+        scope.spawn_now(on(sch, std::move(print_sender)));
+
+        return val;
+    })
+  ) | then([&result](auto val){result = val});
+
+  scope.spawn_now(std::move(val));
+
+
+  // Safely wait for all nested work
+  this_thread::sync_wait(scope.empty());
+};
+
+// The scope ensured that all work is safely joined, so result contains 13
+std::cout << "Result: " << result << "\n";
+
+// and destruction of the context is now safe
+```
+
+---
+references:
+  - id: PXXXX
+    citation-label: PXXXX
+    title: "async_scope - Creating scopes for non-sequential concurrency"
+    issued:
+      year: 2022
+  - id: P2300
+    citation-label: P2300R3
+    title: "std::execution"
+    issued:
+      year: 2021
+    URL: http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2021/p2300r3.html
+---
