@@ -17,7 +17,7 @@ As noted in [@P2079R1], the earlier `static_thread_pool` had many shortcomings a
 The global execution context proposed in [@P2079R1] was an important start, but needs updating to match [@P2300].
 
 This paper proposes a specific solution: parallel execution context and scheduler.
-Lifetime management and other functionality is delegated to other papers, primarily to the `async_scope` defined in [@PXXXX].
+Lifetime management and other functionality is delegated to other papers, primarily to the `async_scope` defined in [@P2519].
 
 This execution context is of undefined size, supporting explicitly parallel forward progress.
 It can build on top of a system thread pool, or on top of a static thread pool, with flexible semantics depending on the constraints that the underlying context offers.
@@ -163,7 +163,7 @@ auto [i] = this_thread::sync_wait(add_42).value();
 ```
 
 In real examples we would not always be calling `sync_wait`, we would have more structured code.
-For this we will often use the `async_scope` from [@PXXXX].
+For this we will often use the `async_scope` from [@P2519].
 `async_scope` provides a generalised mechanism for safely managing the lifetimes of tasks
 even when the results are not required.
 
@@ -208,8 +208,8 @@ std::cout << "Result: " << result << "\n";
 
 ---
 references:
-  - id: PXXXX
-    citation-label: PXXXX
+  - id: P2519
+    citation-label: P2519R0
     title: "async_scope - Creating scopes for non-sequential concurrency"
     issued:
       year: 2022
