@@ -40,12 +40,6 @@ To support the owning implementation, a `parallel_context` must outlive any work
 ```cpp
 class parallel_context {
 public:
-  enum class scheduler_priority {
-    low,
-    medium,
-    high
-  };
-
   parallel_context();
    ~parallel_context();
 
@@ -55,7 +49,6 @@ public:
   parallel_context& operator=(parallel_context&&) = delete;
 
   parallel_scheduler get_scheduler();
-  parallel_scheduler get_scheduler_with_priority(scheduler_priority);
 };
 ```
 
@@ -64,7 +57,6 @@ public:
  - The `parallel_context` must outlive work launched on it. If there is outstanding work at the point of destruction, `std::terminate` will be called.
  - The `parallel_context` must outlive schedulers obtained from it. If there are outstanding schedulers at destruction time, this is undefined behavior.
  - `get_scheduler` returns a `parallel_scheduler` instance that holds a reference to the `parallel_context`.
- - `get_scheduler_with_priotity` returns a `parallel_scheduler` instance that holds a reference to the `parallel_context`. The scheduler is created with the specified priority. Priorities offer a layering of tasks, with no guarantee.
 
 ## parallel_scheduler
 
@@ -83,8 +75,6 @@ public:
   parallel_scheduler& operator=(parallel_scheduler&&);
 
   bool operator==(const parallel_scheduler&) const noexcept;
-
-  scheduler_priority get_priority() const noexcept;
 
   friend implementation-defined-parallel_sender tag_invoke(
     std::execution::schedule_t, const parallel_scheduler&) noexcept;
@@ -139,6 +129,40 @@ This sender satisfies the following properties:
   - If connected with a `receiver` that supports the `get_stop_token` query, if that `stop_token` is stopped, operations on which `start` has been called, but are not yet running (and are hence not yet guaranteed to make progress) should complete with `set_done`.
   - `connect`ing the `sender` and calling `start()` on the resulting operation state are non-blocking operations.
 
+## Priorities
+We implement priorities as a receiver query, `get_priority` that defaults to normal priority.
+Each task submitted can carry its own priority and be placed in the appropriate queue.
+The scheduler may maintain multiple queues for different priorities.
+
+The `with_priority` sender adaptor sets the priority on the receiver passed to the adapted sender to allow the priority to be increased.
+
+```cpp
+enum class scheduler_priority : int {
+  low,
+  medium,
+  high
+};
+
+struct get_priority_t {
+  template<typename Ctx>
+    requires tag_invocable<get_priority_t, const Ctx&>
+  priority operator()(const Ctx& ctx) const noexcept {
+    return tag_invoke(get_priority_t{}, ctx);
+  }
+  template<typename Ctx>
+    requires (!tag_invocable<get_priority_t, const Ctx&>)
+  priority operator()(const Ctx&) const noexcept {
+    return priority::normal;
+  }
+};
+inline constexpr get_priority_t get_priority{};
+}
+
+execution::sender auto with_priority(
+    execution::sender auto,
+    scheduler_priority
+);
+```
 
 # Examples
 As a simple parallel scheduler we can use it locally, and `sync_wait` on the work to make sure that it is complete.
