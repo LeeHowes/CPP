@@ -25,6 +25,9 @@ With only parallel forward progress, any created parallel context may be a view 
 Multiple parallel contexts may share the same system thread pool.
 The same parallel context may have access to separate system thread pools, or queues to those pools, with different priorities to support priorities of returned schedulers.
 
+It is for this reason that the context is named in terms of what it should be used for, execution that requires parallel forward progress, rather than its exposure of a system thread pool.
+It isn't a requirement in the design that two parallel contexts share an underlying thread pool, only that they guarantee parallel forward progress and thus *can* share a thread pool.
+
 The minimal extensions to basic parallel forward progress are to support fundamental functionality that is necessary to make parallel algorithms work:
 
  * Cancellation: work submitted through the parallel context must be cancellable if the underlying system facilities support it.
