@@ -94,7 +94,7 @@ public:
 
  - `parallel_scheduler` is not independely constructable, and must be obtained from a `parallel_context`.
    It is both move and copy constructable and assignable.
- - Two `parallel_scheduler`s compare equal if they share the same underlying `parallel_context` and if they have the same priority.
+ - Two `parallel_scheduler`s compare equal if they share the same underlying `parallel_context`.
  - A `parallel_scheduler` has reference semantics with respect to its `parallel_context`.
    Calling any operation other than the destructor on a `parallel_scheduler` after the `parallel_context` it was created from is destroyed is undefined behavior, and that operation may access freed memory.
  - The `parallel_scheduler`:
