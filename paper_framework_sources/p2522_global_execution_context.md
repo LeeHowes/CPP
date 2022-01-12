@@ -1,6 +1,6 @@
 ---
 title: "System execution context"
-document: PXXXXR0
+document: D2522R0
 date: 2021-12-30
 audience: SG1
 author:
@@ -103,17 +103,17 @@ public:
        underlying `system_context` for    each `i` of type `Shape` from `0` to `sh` that calls `f(i, args...)`.
  - `schedule` calls on a `system_scheduler` are non-blocking operations.
  - If the underlying `system_context` is unable to make progress on work created through `system_scheduler` instances, and the sender retrieved
-   from `scheduler` is connected to a `receiver` that supports the `get_delegee_scheduler` query, work may scheduled on the `scheduler`
-   returned by `get_delegee_scheduler` at the time of the call to `start`, or at any later point before the work completes.
+   from `scheduler` is connected to a `receiver` that supports the `get_delegatee_scheduler` query, work may scheduled on the `scheduler`
+   returned by `get_delegatee_scheduler` at the time of the call to `start`, or at any later point before the work completes.
 
 ## Parallel sender
 ```cpp
 class implementation-defined-system_sender {
 public:
-  friend pair<std::execution::system_scheduler, delegee_scheduler> tag_invoke(
+  friend pair<std::execution::system_scheduler, delegatee_scheduler> tag_invoke(
     std::execution::get_completion_scheduler_t<set_value_t>,
     const system_scheduler&) noexcept;
-  friend pair<std::execution::system_scheduler, delegee_scheduler> tag_invoke(
+  friend pair<std::execution::system_scheduler, delegatee_scheduler> tag_invoke(
     std::execution::get_completion_scheduler_t<set_done_t>,
     const system_scheduler&) noexcept;
 
@@ -130,7 +130,7 @@ public:
 
 This sender satisfies the following properties:
   - Implements the `get_completion_scheduler` query for the value and done channel where it returns a type that is a pair
-    of an object that compares equal to itself, and a representation of delegee scheduler that may be obtained from
+    of an object that compares equal to itself, and a representation of delegatee scheduler that may be obtained from
     receivers connected with the sender.
   - If connected with a `receiver` that supports the `get_stop_token` query, if that `stop_token` is stopped, operations
     on which `start` has been called, but are not yet running (and are hence not yet guaranteed to make progress) **must**
