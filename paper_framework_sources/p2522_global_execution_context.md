@@ -14,6 +14,20 @@ author:
 toc: false
 ---
 
+Changes
+=======
+## R2
+- Significant redesign to fit in P2300 model.
+- Remove priorities.
+- Strictly limit to parallel progress without control over the level of parallelism.
+- Remove direct support for task groups, delegating that to `async_scope`.
+
+## R1
+- Minor modifications
+
+## R0
+
+- first revision
 
 # Introduction
 [@P2300] describes a rounded set of primitives for asynchronous and parallel execution that give a firm grounding for the future.
@@ -166,41 +180,6 @@ This sender satisfies the following properties:
     on which `start` has been called, but are not yet running (and are hence not yet guaranteed to make progress) **must**
     complete with `set_done` as soon as is practical.
   - `connect`ing the `sender` and calling `start()` on the resulting operation state are non-blocking operations.
-
-## Priorities
-We implement priorities as a receiver query, `get_priority` that defaults to normal priority.
-Each task submitted can carry its own priority and be placed in the appropriate queue.
-The scheduler may maintain multiple queues for different priorities.
-
-The `with_priority` sender adaptor sets the priority on the receiver passed to the adapted sender to allow the priority to be increased.
-
-```cpp
-enum class scheduler_priority : int {
-  low,
-  medium,
-  high
-};
-
-struct get_priority_t {
-  template<typename Ctx>
-    requires tag_invocable<get_priority_t, const Ctx&>
-  priority operator()(const Ctx& ctx) const noexcept {
-    return tag_invoke(get_priority_t{}, ctx);
-  }
-  template<typename Ctx>
-    requires (!tag_invocable<get_priority_t, const Ctx&>)
-  priority operator()(const Ctx&) const noexcept {
-    return priority::normal;
-  }
-};
-inline constexpr get_priority_t get_priority{};
-}
-
-execution::sender auto with_priority(
-    execution::sender auto,
-    scheduler_priority
-);
-```
 
 # Examples
 As a simple parallel scheduler we can use it locally, and `sync_wait` on the work to make sure that it is complete.
