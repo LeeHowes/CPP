@@ -69,6 +69,8 @@ public:
 ```
 
  - On construction, the `system_context` may initialize a shared system context, if it has not been previously initialized.
+ - To support sharing of an underlying system context, two `system_context` objects do not guarantee task isolation.
+   If work submitted by one can consume the thread pool, that can block progress of another.
  - The `system_context` is non-copyable and non-moveable.
  - The `system_context` must outlive work launched on it. If there is outstanding work at the point of destruction, `std::terminate` will be called.
  - The `system_context` must outlive schedulers obtained from it. If there are outstanding schedulers at destruction time, this is undefined behavior.
