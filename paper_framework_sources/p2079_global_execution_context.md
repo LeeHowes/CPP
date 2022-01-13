@@ -1,16 +1,11 @@
 ---
 title: "System execution context"
-document: D2079R2
+document: D2522R0
 date: 2022-01-12
 audience: SG1, LEWG
 author:
   - name: Lee Howes
     email: <lwh@fb.com>
-  - name: Ruslan Arutyunyan
-    email: <uslan.arutyunyan@intel.com>
-  - name: Michael Voss
-    email: <michaelj.voss@intel.com>
-
 toc: false
 ---
 
@@ -23,7 +18,7 @@ It has been broadly accepted that we need some sort of standard scheduler.
 As noted in [@P2079R1], the earlier `static_thread_pool` had many shortcomings and was not included in [@P2300] for that reason.
 The global execution context proposed in [@P2079R1] was an important start, but needs updating to match [@P2300].
 
-This update to P2079 proposes a specific solution: parallel execution context and scheduler.
+This paper proposes a specific solution: parallel execution context and scheduler.
 Lifetime management and other functionality is delegated to other papers, primarily to the `async_scope` defined in [@P2519].
 
 This execution context is of undefined size, supporting explicitly *parallel forward progress*.
@@ -223,61 +218,57 @@ sender auto add_42 = then(hi, [](int arg) { return arg + 42; });
 auto [i] = this_thread::sync_wait(add_42).value();
 ```
 
-We can structure the same thing using `execution::on`, which better matches structured concurrency:
+In real examples we would not always be calling `sync_wait`, we would have more structured code.
+For this we will often use the `async_scope` from [@P2519].
+`async_scope` provides a generalised mechanism for safely managing the lifetimes of tasks
+even when the results are not required.
+
 ```c++
 using namespace std::execution;
 
 system_context ctx;
-scheduler auto sch = ctx.scheduler();
+int result = 0;
 
-sender auto hi = then(just(), []{
-    std::cout << "Hello world! Have an int.";
-    return 13;
-});
-sender auto add_42 = then(hi, [](int arg) { return arg + 42; });
-
-auto [i] = this_thread::sync_wait(on(sch, add_42)).value();
-```
-
-The `system_scheduler` customises bulk, so we can use bulk dependent on the scheduler.
-Here we use it in structured form using the parameterless `get_scheduler` that retrieves the scheduler from the receiver, combined with `on`:
-```c++
-auto bar() {
-  return
-    ex::let_value(
-      ex::get_scheduler(),          // Fetch scheduler from receiver.
-      [](auto current_sched) {
-        return bulk(
-          current_sched.schedule(),
-          1,                        // Only 1 bulk task as a lazy way of making cout safe
-          [](auto idx){
-            std::cout << "Index: " << idx << "\n";
-          })
-      });
-}
-
-void foo()
 {
-  using namespace std::execution;
+  async_scope scope;
+  scheduler auto sch = ctx.scheduler();
 
-  system_context ctx;
-  scheduler auto sch = ;
+  sender auto val = on(
+    sch, just() | then([sch, &scope](auto sched) {
 
-  auto [i] = this_thread::sync_wait(
-    on(
-      ctx.scheduler(),                // Start bar on the system_scheduler
-      bar()))                         // and propagate it through the receivers
-    .value();
-}
+        int val = 13;
+
+        auto print_sender = just() | then([val]{
+          std::cout << "Hello world! Have an int with value: " << val << "\n";
+        });
+        // spawn the print sender on sched to make sure it
+        // completes before shutdown
+        scope.spawn(on(sch, std::move(print_sender)));
+
+        return val;
+    })
+  ) | then([&result](auto val){result = val});
+
+  scope.spawn(std::move(val));
+
+
+  // Safely wait for all nested work
+  this_thread::sync_wait(scope.empty());
+};
+
+// The scope ensured that all work is safely joined, so result contains 13
+std::cout << "Result: " << result << "\n";
+
+// and destruction of the context is now safe
 ```
 
+We may use this in a single-threaded process by using `execute_chunk`:
 
-Use `async_scope` and the delegation functionality of the context to build a loop to drive the context.
-This will be important if the context has no threads and we have setup the system for a single-threaded process:
 ```c++
 using namespace std::execution;
 
 system_context ctx;
+assert(ctx.max_concurrency()==0);
 
 int result = 0;
 
@@ -285,23 +276,23 @@ int result = 0;
   async_scope scope;
   scheduler auto sch = ctx.scheduler();
 
-  sender auto work =
-    then(just(), [&](auto sched) {
+  sender auto val = on(
+    sch, just() | then([sch, &scope](auto sched) {
 
-      int val = 13;
+        int val = 13;
 
-      auto print_sender = then(just(), [val]{
-        std::cout << "Hello world! Have an int with value: " << val << "\n";
-      });
+        auto print_sender = just() | then([val]{
+          std::cout << "Hello world! Have an int with value: " << val << "\n";
+        });
+        // spawn the print sender on sched to make sure it
+        // completes before shutdown
+        scope.spawn(on(sch, std::move(print_sender)));
 
-      // spawn the print sender on sched to make sure it
-      // completes before shutdown
-      scope.spawn(on(sch, std::move(print_sender)));
+        return val;
+    })
+  ) | then([&result](auto val){result = val});
 
-      return val;
-    });
-
-  scope.spawn(on(sch, std::move(work)));
+  scope.spawn(std::move(val));
 
   // Loop to drain the context and subsequently check that the scope is empty
   // We need a repeat algorithm to do this correctly, the following logic
