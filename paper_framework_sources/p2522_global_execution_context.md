@@ -14,8 +14,10 @@ author:
 toc: false
 ---
 
-Changes
-=======
+# Abtract
+A `system_context` and `system_scheduler` that expose a simple parallel-forward-progress thread pool that may share and expose an underlying system thread pool and is intended to be the basic execution context and scheduler that we recommend to be used in combination with [@P2300].
+
+# Changes
 ## R2
 - Significant redesign to fit in P2300 model.
 - Remove priorities.
@@ -34,19 +36,23 @@ Changes
 However, the paper lacks a standard execution context and scheduler.
 It has been broadly accepted that we need some sort of standard scheduler.
 
-As noted in [@P2079R1], the earlier `static_thread_pool` had many shortcomings and was not included in [@P2300] for that reason.
-The global execution context proposed in [@P2079R1] was an important start, but needs updating to match [@P2300].
+As noted in [@P2079R1], an earlier revision of this paper, the earlier `static_thread_pool` had many shortcomings.
+This was removed from [@P2300] based on that and other input.
 
-This update to P2079 proposes a specific solution: parallel execution context and scheduler.
+This revision updates [@P2079R1] to match the structure of [@P2300].
+It aims to provide a simple, flexible, standard execution context that should be used as the basis for examples.
+It is a minimal design, with few constraints, and as such should be efficient to implement on top of something like a static thread pool, but also on top of system thread pools where fixing the number of threads diverges from efficient implementation goals.
+
 Lifetime management and other functionality is delegated to other papers, primarily to the `async_scope` defined in [@P2519].
+Unlike in earlier verisons of this paper, we do not provide support for waiting on groups of tasks, delegating that to the separate `async_scope` design in [@P2519], because that is not functionality specific to a system context.
 
-This execution context is of undefined size, supporting explicitly *parallel forward progress*.
-It can build on top of a system thread pool, or on top of a static thread pool, with flexible semantics depending on the constraints that the underlying context offers.
-
+The system context is of undefined size, supporting explicitly *parallel forward progress*.
 By requiring only parallel forward progress, any created parallel context is able to be a view onto the underlying shared global context.
 All instances of the `system_context` share the same underlying execution context.
 If the underlying context is a static thread pool, then all `system_context`s should reference that same static thread pool.
 This is important to ensure that applications can rely on constructing `system_context`s as necessary, without spawning an ever increasing number of threads.
+It also means that there is no isolation between `system_context` instances, which people should be aware of when they use this functionality.
+Note that if they rely strictly on parallel forward progress, this is not a problem, and is generally a safe way to develop applications.
 
 The minimal extensions to basic parallel forward progress are to support fundamental functionality that is necessary to make parallel algorithms work:
 
@@ -54,9 +60,9 @@ The minimal extensions to basic parallel forward progress are to support fundame
  * Forward progress delegation: we must be able to implement a blocking operation that ensures forward progress of a complex parallel algorithm without special cases.
 
 In addition, early feedback on the paper from Sean Parent suggested a need to allow the system context to carry no threads of its own, and take over the main thread.
-This led us to add the `execute_chunk` capability that makes forward progress delegation explicit such that in addition to the system context being able to delegate work when it needs to, we can build code that directly requests delegation of work such that an event loop can be constructed around this.
+This led us to add the `execute_chunk` and `execute_all` capability that makes forward progress delegation explicit such that in addition to the system context being able to delegate work when it needs to, we can build code that directly requests delegation of work such that an event loop can be constructed around this.
 
-An implementation of `system_context` *should* allow link-time replacement of the implementation such that the context may be replaced with an implementation that compiles and runs in a single-threaded process or that can be replaced with an appropriately configured system thread pool by an end-user.
+An implementation of `system_context` *should* allow link-time replacement of the implementation such that the context may be replaced with an implementation that compiles and runs in a single-threaded process or that can be replaced with an appropriately configured system thread pool by an end-user. We do not attempt to specify here the mechanism by which this should be implemented.
 
 # Design
 ## system_context
