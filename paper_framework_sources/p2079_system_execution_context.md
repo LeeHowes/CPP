@@ -7,7 +7,7 @@ author:
   - name: Lee Howes
     email: <lwh@fb.com>
   - name: Ruslan Arutyunyan
-    email: <uslan.arutyunyan@intel.com>
+    email: <ruslan.arutyunyan@intel.com>
   - name: Michael Voss
     email: <michaelj.voss@intel.com>
 
@@ -20,7 +20,6 @@ A `system_context` and `system_scheduler` that expose a simple parallel-forward-
 # Changes
 ## R2
 - Significant redesign to fit in P2300 model.
-- Remove priorities.
 - Strictly limit to parallel progress without control over the level of parallelism.
 - Remove direct support for task groups, delegating that to `async_scope`.
 
@@ -167,10 +166,10 @@ public:
     std::execution::get_completion_scheduler_t<set_done_t>,
     const system_scheduler&) noexcept;
 
-  template&lt;receiver R>
-        requires receiver_of&lt;R>
+  template<receiver R>
+        requires receiver_of<R>
   friend implementation-defined-operation_state
-    tag_invoke(execution::connect_t, implementation-defined-system_sender&&, R &&);
+    tag_invoke(execution::connect_t, implementation-defined-system_sender&&, R&&);
 
   ...
 };
