@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="mpark/wg21" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <meta name="dcterms.date" content="2022-01-12" />
+  <meta name="dcterms.date" content="2022-01-14" />
   <title>System execution context</title>
   <style>
       code{white-space: pre-wrap;}
@@ -423,11 +423,11 @@ code.sourceCode > span { display: inline; }
 <table style="border:none;float:right">
   <tr>
     <td>Document #:</td>
-    <td>D2079R2</td>
+    <td>P2079R2</td>
   </tr>
   <tr>
     <td>Date:</td>
-    <td>2022-01-12</td>
+    <td>2022-01-14</td>
   </tr>
   <tr>
     <td style="vertical-align:top">Project:</td>
@@ -443,7 +443,7 @@ code.sourceCode > span { display: inline; }
     <td style="vertical-align:top">Reply-to:</td>
     <td>
       Lee Howes<br>&lt;<a href="mailto:lwh@fb.com" class="email">lwh@fb.com</a>&gt;<br>
-      Ruslan Arutyunyan<br>&lt;<a href="mailto:uslan.arutyunyan@intel.com" class="email">uslan.arutyunyan@intel.com</a>&gt;<br>
+      Ruslan Arutyunyan<br>&lt;<a href="mailto:ruslan.arutyunyan@intel.com" class="email">ruslan.arutyunyan@intel.com</a>&gt;<br>
       Michael Voss<br>&lt;<a href="mailto:michaelj.voss@intel.com" class="email">michaelj.voss@intel.com</a>&gt;<br>
     </td>
   </tr>
@@ -457,7 +457,6 @@ code.sourceCode > span { display: inline; }
 <h2 data-number="2.1" id="r2"><span class="header-section-number">2.1</span> R2<a href="#r2" class="self-link"></a></h2>
 <ul>
 <li>Significant redesign to fit in P2300 model.</li>
-<li>Remove priorities.</li>
 <li>Strictly limit to parallel progress without control over the level of parallelism.</li>
 <li>Remove direct support for task groups, delegating that to <code class="sourceCode default">async_scope</code>.</li>
 </ul>
@@ -575,10 +574,10 @@ code.sourceCode > span { display: inline; }
 <span id="cb3-7"><a href="#cb3-7"></a>    std<span class="op">::</span>execution<span class="op">::</span>get_completion_scheduler_t<span class="op">&lt;</span>set_done_t<span class="op">&gt;</span>,</span>
 <span id="cb3-8"><a href="#cb3-8"></a>    <span class="kw">const</span> system_scheduler<span class="op">&amp;)</span> <span class="kw">noexcept</span>;</span>
 <span id="cb3-9"><a href="#cb3-9"></a></span>
-<span id="cb3-10"><a href="#cb3-10"></a>  <span class="kw">template</span><span class="op">&amp;</span>lt;receiver R<span class="op">&gt;</span></span>
-<span id="cb3-11"><a href="#cb3-11"></a>        <span class="kw">requires</span> receiver_of<span class="op">&amp;</span>lt;R<span class="op">&gt;</span></span>
+<span id="cb3-10"><a href="#cb3-10"></a>  <span class="kw">template</span><span class="op">&lt;</span>receiver R<span class="op">&gt;</span></span>
+<span id="cb3-11"><a href="#cb3-11"></a>        <span class="kw">requires</span> receiver_of<span class="op">&lt;</span>R<span class="op">&gt;</span></span>
 <span id="cb3-12"><a href="#cb3-12"></a>  <span class="kw">friend</span> implementation<span class="op">-</span>defined<span class="op">-</span>operation_state</span>
-<span id="cb3-13"><a href="#cb3-13"></a>    tag_invoke<span class="op">(</span>execution<span class="op">::</span>connect_t, implementation<span class="op">-</span>defined<span class="op">-</span>system_sender<span class="op">&amp;&amp;</span>, R <span class="op">&amp;&amp;)</span>;</span>
+<span id="cb3-13"><a href="#cb3-13"></a>    tag_invoke<span class="op">(</span>execution<span class="op">::</span>connect_t, implementation<span class="op">-</span>defined<span class="op">-</span>system_sender<span class="op">&amp;&amp;</span>, R<span class="op">&amp;&amp;)</span>;</span>
 <span id="cb3-14"><a href="#cb3-14"></a></span>
 <span id="cb3-15"><a href="#cb3-15"></a>  <span class="op">...</span></span>
 <span id="cb3-16"><a href="#cb3-16"></a><span class="op">}</span>;</span></code></pre></div>
@@ -687,10 +686,12 @@ code.sourceCode > span { display: inline; }
 <a href="https://wg21.link/p2079r1">https://wg21.link/p2079r1</a></p>
 </div>
 <div id="ref-P2300">
-<p>[P2300R4] 2021. std::execution. </p>
+<p>[P2300R4] 2022. std::execution. <br />
+<a href="https://wg21.link/p2300r4">https://wg21.link/p2300r4</a></p>
 </div>
 <div id="ref-P2519">
-<p>[P2519R0] 2022. async_scope - Creating scopes for non-sequential concurrency. </p>
+<p>[P2519R0] 2022. async_scope - Creating scopes for non-sequential concurrency. <br />
+<a href="https://wg21.link/p2519">https://wg21.link/p2519</a></p>
 </div>
 </div>
 </div>

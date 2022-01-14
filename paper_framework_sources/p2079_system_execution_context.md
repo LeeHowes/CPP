@@ -1,7 +1,7 @@
 ---
 title: "System execution context"
-document: D2079R2
-date: 2022-01-12
+document: P2079R2
+date: 2022-01-14
 audience: SG1, LEWG
 author:
   - name: Lee Howes
@@ -310,9 +310,11 @@ references:
     title: "async_scope - Creating scopes for non-sequential concurrency"
     issued:
       year: 2022
+    URL: https://wg21.link/p2519
   - id: P2300
     citation-label: P2300R4
     title: "std::execution"
     issued:
-      year: 2021
+      year: 2022
+    URL: https://wg21.link/p2300r4
 ---
