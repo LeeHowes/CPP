@@ -1,6 +1,6 @@
 ---
 title: "System execution context"
-document: P2079R2
+document: D2079R3
 date: 2022-01-14
 audience: SG1, LEWG
 author:
@@ -149,7 +149,8 @@ public:
    - implements the `get_forward_progress_guarantee` query to return `parallel`.
    - implements the `bulk` CPO to customise the `bulk` sender adapter such that:
      - When `execution::set_value(r, args...)` is called on the created `receiver`, an agent is created with parallel forward progress on the
-       underlying `system_context` for    each `i` of type `Shape` from `0` to `sh` that calls `f(i, args...)`.
+       underlying `system_context` for each `i` of type `Shape` from `0` to `sh`, where `sh` is the shape parameter to the bulk call,
+       that calls `f(i, args...)`.
  - `schedule` calls on a `system_scheduler` are non-blocking operations.
  - If the underlying `system_context` is unable to make progress on work created through `system_scheduler` instances, and the sender retrieved
    from `scheduler` is connected to a `receiver` that supports the `get_delegatee_scheduler` query, work may scheduled on the `scheduler`
@@ -247,7 +248,6 @@ void foo()
   using namespace std::execution;
 
   system_context ctx;
-  scheduler auto sch = ;
 
   auto [i] = this_thread::sync_wait(
     on(
