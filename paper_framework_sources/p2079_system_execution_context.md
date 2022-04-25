@@ -86,7 +86,7 @@ public:
   system_context& operator=(const system_context&) = delete;
   system_context& operator=(system_context&&) = delete;
 
-  system_scheduler get_scheduler();
+  implementation-defined-system_scheduler get_scheduler();
   size_t max_concurrency() noexcept;
 };
 ```
@@ -109,7 +109,7 @@ A `system_scheduler` is a copyable handle to a `system_context`. It is the means
 The `system_scheduler` instance does not have to outlive work submitted to it.
 
 ```cpp
-class system_scheduler {
+class implementation-defined-system_scheduler {
 public:
   system_scheduler() = delete;
   ~system_scheduler();
@@ -122,7 +122,7 @@ public:
   bool operator==(const system_scheduler&) const noexcept;
 
   friend implementation-defined-system_sender tag_invoke(
-    std::execution::schedule_t, const system_scheduler&) noexcept;
+    std::execution::schedule_t, const implementation-defined-system_scheduler&) noexcept;
   friend std::execution::forward_progress_guarantee tag_invoke(
     std::execution::get_forward_progress_guarantee_t,
     const system_scheduler&) noexcept;
