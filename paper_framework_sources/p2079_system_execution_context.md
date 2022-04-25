@@ -261,9 +261,12 @@ void foo()
 }
 ```
 
+Use `async_scope` and a custom system context implementation linked in to the process (through a mechanism undefined in the example).
+This might be how a given platform exposes a custom context.
+In this case we assume it has no threads of its own and has to take over the main thread through a `drive_chunk()` operation that can be looped until it returns `0`.
 
-Use `async_scope` and the delegation functionality of the context to build a loop to drive the context.
-This will be important if the context has no threads and we have setup the system for a single-threaded process:
+TODO: This uses try_on_empty, which isn't defined. Another way of doing it would be assume this is single threaded so we don't actually care about completion of the async_scope or we replace the structure with a let_async_scope to nest it properly
+
 ```c++
 using namespace std::execution;
 
@@ -296,8 +299,9 @@ int result = 0;
   // Loop to drain the context and subsequently check that the scope is empty
   // We need a repeat algorithm to do this correctly, the following logic
   // approximates what a repeat algorithm would achieve.
-  while(this_thread::sync_wait(ctx.execute_chunk()).value != 0);
-  this_thread::sync_wait(when_all(scope.empty(), ctx.execute_all()));
+  while(
+    my_os::drive_chunk(ctx) != 0 ||
+    this_thread::sync_wait(scope.try_on_empty()) != 0);
 };
 
 // The scope ensured that all work is safely joined, so result contains 13
