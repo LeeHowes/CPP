@@ -186,10 +186,49 @@ This sender satisfies the following properties:
 
 # Design discussion
 ## Making system_context implementation-defined
-TODO: Other classes are implementation-defined, but this is nameable. how do we make this work?
+The system context aims to allow people to implement an application dependent only on parallel forward progress and port it to a wide range of systems.
+That is, as long as an application does not rely on concurrency, and restricts itself to only the system context, we should be able to scale from highly parallel systems to single threaded systems.
+
+In the extreme, this might mean porting to an embedded system with a very specific idea of a context.
+Such a system might not have a multi-threading support at all, and thus the system context not only need run as a single thread, but also run on a single thraed.
+The main thread must drive the context.
+We do not want to always ask the main thread to drive the context, however, and we do not expose a generic operation on the context to be driven in this way, because the mechanism might vary.
+On some systems we might want a blocking call in `main()`.
+On others we might need the system context to expose a single threaded event loop built into the system runtime.
+
+We then need to allow customisation of the context on such systems.
+For a whole platform this is relatively simple.
+We assume that everything is an implementation-defined type.
+The `system_context` itself is a named type, but in practice is implementation-defined.
+
+Other situations may offer a little less control.
+It would make sense, for example, for Intel to be able to swap out the default context from the standard library with one implemented using TBB.
+Or for an organisation to do the same to customise behaviour globally.
+
+To achieve this we see options:
+ * Link-time replaceability. This could be achieved using weak symbols, or by chosing a runtime library to pull in using build options.
+ * Compile-time replacability. This could be achieved by importing different headers, by macro definitions on the command line or various other mechanisms.
+ * Run-time replaceability. This could be achieved by subclassing and requiring certain calls to be made early in the process.
+
+Link-time replaceability is more predictable, in that it can be guaranteed to be application-global.
+The downside of link-time replaceability is that it requires defining the ABI and thus would require significant type erasure and inefficiency.
+
+Compile-time is simpler but would be easy to get wrong by mixing flags across the objects in the build.
+Both link-time and compile-time are harder to describe in the standard.
+
+Run-time is easy for us to describe in the standard, using interfaces and dynamic dispatch with well-defined mechanisms for setting the implementation.
+The downsides are that it is hard to ensure that the right context is set early enough in the process and that, like link-time replacement, it requires type erasure.
+
+The other question is to what extent we expect to specify this.
+We could simply say that implementations should allow customization and leave it up to QOI.
+For a fully controlled implementation with its own standard library, this is trivial.
+For a widespread OS where a vendor wants to replace the implementation that can rely on an agreement between the system vendor and the runtime vendor.
+
+Assuming we take that simpler approach, what wording would be appropriate for the specification?
 
 ## Need for the system_context class
 TODO: We could just have a global getter that returns a scheduler. This would become the customizable object.
+
 
 # Examples
 As a simple parallel scheduler we can use it locally, and `sync_wait` on the work to make sure that it is complete.
