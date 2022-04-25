@@ -107,6 +107,8 @@ public:
 
 A `system_scheduler` is a copyable handle to a `system_context`. It is the means through which agents are launched on a `system_context`.
 The `system_scheduler` instance does not have to outlive work submitted to it.
+The `system_scheduler` is technically implementation-defined, but must be nameable.
+See later discussion for how this might work.
 
 ```cpp
 class implementation-defined-system_scheduler {
@@ -181,6 +183,13 @@ This sender satisfies the following properties:
     on which `start` has been called, but are not yet running (and are hence not yet guaranteed to make progress) **must**
     complete with `set_done` as soon as is practical.
   - `connect`ing the `sender` and calling `start()` on the resulting operation state are non-blocking operations.
+
+# Design discussion
+## Making system_context implementation-defined
+TODO: Other classes are implementation-defined, but this is nameable. how do we make this work?
+
+## Need for the system_context class
+TODO: We could just have a global getter that returns a scheduler. This would become the customizable object.
 
 # Examples
 As a simple parallel scheduler we can use it locally, and `sync_wait` on the work to make sure that it is complete.
