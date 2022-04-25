@@ -1,7 +1,7 @@
 ---
 title: "System execution context"
 document: D2079R3
-date: 2022-01-14
+date: 2022-04-24
 audience: SG1, LEWG
 author:
   - name: Lee Howes
@@ -18,6 +18,9 @@ toc: false
 A `system_context` and `system_scheduler` that expose a simple parallel-forward-progress thread pool that may share and expose an underlying system thread pool and is intended to be the basic execution context and scheduler that we recommend to be used in combination with [@P2300].
 
 # Changes
+## R3
+- Remove `execute_all` and `execute_chunk`. Replace with compile-time customization and a design discussion.
+
 ## R2
 - Significant redesign to fit in P2300 model.
 - Strictly limit to parallel progress without control over the level of parallelism.
@@ -42,8 +45,8 @@ This revision updates [@P2079R1] to match the structure of [@P2300].
 It aims to provide a simple, flexible, standard execution context that should be used as the basis for examples.
 It is a minimal design, with few constraints, and as such should be efficient to implement on top of something like a static thread pool, but also on top of system thread pools where fixing the number of threads diverges from efficient implementation goals.
 
-Lifetime management and other functionality is delegated to other papers, primarily to the `async_scope` defined in [@P2519].
 Unlike in earlier verisons of this paper, we do not provide support for waiting on groups of tasks, delegating that to the separate `async_scope` design in [@P2519], because that is not functionality specific to a system context.
+Lifetime management in general should be considered delegated to `async_scope`.
 
 The system context is of undefined size, supporting explicitly *parallel forward progress*.
 By requiring only parallel forward progress, any created parallel context is able to be a view onto the underlying shared global context.
@@ -58,10 +61,13 @@ The minimal extensions to basic parallel forward progress are to support fundame
  * Cancellation: work submitted through the parallel context must be cancellable.
  * Forward progress delegation: we must be able to implement a blocking operation that ensures forward progress of a complex parallel algorithm without special cases.
 
-In addition, early feedback on the paper from Sean Parent suggested a need to allow the system context to carry no threads of its own, and take over the main thread.
-This led us to add the `execute_chunk` and `execute_all` capability that makes forward progress delegation explicit such that in addition to the system context being able to delegate work when it needs to, we can build code that directly requests delegation of work such that an event loop can be constructed around this.
+An implementation of `system_context` *should* allow or other compile-time replacement of the implementation such that the context may be replaced with an implementation that compiles and runs in a single-threaded process or that can be replaced with an appropriately configured system thread pool by an end-user. We do not attempt to specify here the mechanism by which this should be implemented.
 
-An implementation of `system_context` *should* allow link-time replacement of the implementation such that the context may be replaced with an implementation that compiles and runs in a single-threaded process or that can be replaced with an appropriately configured system thread pool by an end-user. We do not attempt to specify here the mechanism by which this should be implemented.
+Early feedback on the paper from Sean Parent suggested a need to allow the system context to carry no threads of its own, and take over the main thread.
+While in [@P2079R2] we proposed `execute_chunk` and `execute_all`, these enforce a particular implementation on the underlying execution context.
+Instead we simplify the proposal by removing this functionality and assume that is implmented by link-time or compile-time replacement of the context.
+We assume that the underlying mechanism to drive the context, should one be necessary, is implementation-defined.
+This allows custom hooks for an OS thread pool, or a simple `drive()` method in main.
 
 # Design
 ## system_context
@@ -81,8 +87,6 @@ public:
   system_context& operator=(system_context&&) = delete;
 
   system_scheduler get_scheduler();
-  implementation-defined_delegation_sender execute_chunk() noexcept;
-  implementation-defined_delegation_sender execute_all() noexcept;
   size_t max_concurrency() noexcept;
 };
 ```
@@ -91,22 +95,13 @@ public:
  - To support sharing of an underlying system context, two `system_context` objects do not guarantee task isolation.
    If work submitted by one can consume the thread pool, that can block progress of another.
  - The `system_context` is non-copyable and non-moveable.
- - The `system_context` must outlive work launched on it. If there is outstanding work at the point of destruction, `std::terminate` will be called.
- - The `system_context` must outlive schedulers obtained from it. If there are outstanding schedulers at destruction time, this is undefined behavior.
+ - The `system_context` must outlive work launched on it.
+   If there is outstanding work at the point of destruction, `std::terminate` will be called.
+ - The `system_context` must outlive schedulers obtained from it.
+   If there are outstanding schedulers at destruction time, this is undefined behavior.
  - `get_scheduler` returns a `system_scheduler` instance that holds a reference to the `system_context`.
- - `execute_chunk` returns a sender that will:
-   - If connected to a receiver that provides a scheduler in response to `get_delegatee_scheduler` report non-blocking if submitting work to that scheduler is non-blocking.
-     - When `start()` an implementation-defined number of tasks will be moved from the `system_context`'s internal queue and scheduled on the delegatee scheduler.
-   - Otherwise will report blocking.
-     - When `start()` is called on its operation state it will execute a chunk of work of implementation-defined size provided by the system_context.
-   - If connected to a receiver that provides a `stop_token`, will respond to stop requests by not executing or delegating further tasks from its queue and completing with `set_done`.
-   - On success completes with the number of tasks that were executed or delegated.
-   - Completes immediately with the value 0 if no tasks are available to run.
- - `execute_all` behaves like `execute_chunk` except that it will run or delegate all tasks in the context.
-    After the sender returned by `execute_all` completes, and no tasks were added after that completion, a subsequent attempt must complete with `0`
  - `max_concurrency` will return a value representing the maximum number of threads the context may support.
    This is not a snapshot of the current number of threads, and may return `numeric_limits<size_t>::max`.
-   If the return value is 0, then `execute_chunk` must be used by at least 1 thread to drive the context.
 
 ## system_scheduler
 
