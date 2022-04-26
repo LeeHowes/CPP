@@ -184,7 +184,9 @@ This sender satisfies the following properties:
     complete with `set_done` as soon as is practical.
   - `connect`ing the `sender` and calling `start()` on the resulting operation state are non-blocking operations.
 
-# Design discussion
+# Design discussion and decisions
+## To drive or not to drive
+
 ## Making system_context implementation-defined
 The system context aims to allow people to implement an application dependent only on parallel forward progress and port it to a wide range of systems.
 That is, as long as an application does not rely on concurrency, and restricts itself to only the system context, we should be able to scale from highly parallel systems to single threaded systems.
@@ -304,8 +306,6 @@ Use `async_scope` and a custom system context implementation linked in to the pr
 This might be how a given platform exposes a custom context.
 In this case we assume it has no threads of its own and has to take over the main thread through a `drive_chunk()` operation that can be looped until it returns `0`.
 
-TODO: This uses try_on_empty, which isn't defined. Another way of doing it would be assume this is single threaded so we don't actually care about completion of the async_scope or we replace the structure with a let_async_scope to nest it properly
-
 ```c++
 using namespace std::execution;
 
@@ -335,12 +335,19 @@ int result = 0;
 
   scope.spawn(on(sch, std::move(work)));
 
-  // Loop to drain the context and subsequently check that the scope is empty
-  // We need a repeat algorithm to do this correctly, the following logic
-  // approximates what a repeat algorithm would achieve.
-  while(
-    my_os::drive_chunk(ctx) != 0 ||
-    this_thread::sync_wait(scope.try_on_empty()) != 0);
+  // This is custom code for a single-threaded context that we have replaced
+  // at compile-time (see discussion options).
+  // We need to drive it in main.
+  // It is not directly sender-aware, like any pre-existing work loop, but
+  // does provide an exit operation. We may call this from a callback chained
+  // after the scope becomes empty.
+  // We use a temporary terminal_scope here to separate the shut down
+  // operation and block for it at the end of main, knowing it will complete.
+  async_scope terminal_scope;
+  terminal_scope.spawn(
+    scope.on_empty() | then([](my_os::exit(ctx))));
+  my_os::drive(ctx);
+  this_thread::sync_wait(terminal_scope);
 };
 
 // The scope ensured that all work is safely joined, so result contains 13
