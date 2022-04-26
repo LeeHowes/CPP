@@ -304,7 +304,7 @@ void foo()
 
 Use `async_scope` and a custom system context implementation linked in to the process (through a mechanism undefined in the example).
 This might be how a given platform exposes a custom context.
-In this case we assume it has no threads of its own and has to take over the main thread through a `drive_chunk()` operation that can be looped until it returns `0`.
+In this case we assume it has no threads of its own and has to take over the main thread through an custom `drive()` operation that can be looped until a callback requests `exit` on the context.
 
 ```c++
 using namespace std::execution;
