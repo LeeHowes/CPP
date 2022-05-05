@@ -236,27 +236,25 @@ We do not in general need to on Windows, Linux, MacOS and similar systems with t
 When we do need it, we have explicitly opted in to compiling or linking against a specific implementation of the `system_context` for the environment in question.
 On that basis, given the amount of other work we'd have to do to make the system work, like driving the UI loop, the small addition of also driving the `system_context` seems minor.
 
+The authors recommendation here is that we allow `drive` to be unspecified in the standard, and to appear as a result of customisation of the system context where needed.
+However, this is a question we should answer.
 
 
 ## Making system_context implementation-defined
-The system context aims to allow people to implement an application dependent only on parallel forward progress and port it to a wide range of systems.
-That is, as long as an application does not rely on concurrency, and restricts itself to only the system context, we should be able to scale from highly parallel systems to single threaded systems.
+The system context aims to allow people to implement an application that is dependent only on parallel forward progress and to port it to a wide range of systems.
+As long as an application does not rely on concurrency, and restricts itself to only the system context, we should be able to scale from single threaded systems to highly parallel systems.
 
-In the extreme, this might mean porting to an embedded system with a very specific idea of a context.
-Such a system might not have a multi-threading support at all, and thus the system context not only need run as a single thread, but also run on a single thraed.
-The main thread must drive the context.
-We do not want to always ask the main thread to drive the context, however, and we do not expose a generic operation on the context to be driven in this way, because the mechanism might vary.
-On some systems we might want a blocking call in `main()`.
-On others we might need the system context to expose a single threaded event loop built into the system runtime.
+In the extreme, this might mean porting to an embedded system with a very specific idea of an execution context.
+Such a system might not have a multi-threading support at all, and thus the system context not only need run with single thread, but actually run on the system's only thraed.
+We might build the context on top of a UI thread, or we might want to swap out the system-provided implementation with one from a vendor like Intel with experience writing optimised threading runtimes.
 
-We then need to allow customisation of the context on such systems.
+We need to allow customisation of the system context to cover this full range of cases.
 For a whole platform this is relatively simple.
 We assume that everything is an implementation-defined type.
-The `system_context` itself is a named type, but in practice is implementation-defined.
+The `system_context` itself is a named type, but in practice is implementation-defined, in the same way that `std::vector` is implementation-defined at the platform level.
 
 Other situations may offer a little less control.
-It would make sense, for example, for Intel to be able to swap out the default context from the standard library with one implemented using TBB.
-Or for an organisation to do the same to customise behaviour globally.
+If we wish Intel to be able to replace the system thread pool with TBB, or Adobe to customise the runtime that they use for all of Photoshop to adapt to their needs, we need  a different customisation mechanism.
 
 To achieve this we see options:
  * Link-time replaceability. This could be achieved using weak symbols, or by chosing a runtime library to pull in using build options.
@@ -265,22 +263,27 @@ To achieve this we see options:
 
 Link-time replaceability is more predictable, in that it can be guaranteed to be application-global.
 The downside of link-time replaceability is that it requires defining the ABI and thus would require significant type erasure and inefficiency.
+Some of that ineffienciency can be removed in practice with link-time optimisation.
 
 Compile-time is simpler but would be easy to get wrong by mixing flags across the objects in the build.
-Both link-time and compile-time are harder to describe in the standard.
+Both link-time and compile-time maybe difficult to describe in the standard.
 
 Run-time is easy for us to describe in the standard, using interfaces and dynamic dispatch with well-defined mechanisms for setting the implementation.
 The downsides are that it is hard to ensure that the right context is set early enough in the process and that, like link-time replacement, it requires type erasure.
 
-The other question is to what extent we expect to specify this.
+The other question is to what extent we need to specify this.
 We could simply say that implementations should allow customization and leave it up to QOI.
-For a fully controlled implementation with its own standard library, this is trivial.
-For a widespread OS where a vendor wants to replace the implementation that can rely on an agreement between the system vendor and the runtime vendor.
+We already know that full platform customisations are possible.
+This approach would delegate the decision of how to allow Intel to replace the platform context with TBB up to the platform implementor.
+It would rely on an agreement between the system vendor and the runtime vendor.
 
-Assuming we take that simpler approach, what wording would be appropriate for the specification?
+The authors do not have a recommendation, only a wish to see customisation available.
+We should decide how best to achieve it within the standard.
+Assuming we delegate customisation to the platform implementor, what wording would be appropriate for the specification, if any?
 
 ## Need for the system_context class
 TODO: We could just have a global getter that returns a scheduler. This would become the customizable object.
+
 
 
 # Examples
