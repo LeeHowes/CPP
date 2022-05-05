@@ -196,10 +196,10 @@ We can simplify this discussion to a single function:
 ```
 
 Let's assume we have a single-threaded environment, and a means of customising the `system_context` for this environment.
-We know we need a way to donate `main`'s thread to this context.
-It is the only thread we have available:
- * Either we define our `drive` operation, so that it is standard, and we use it on this system.
- * Or we allow the customisation to define a drive operation related to the specific single-threaded environment.
+We know we need a way to donate `main`'s thread to this context, it is the only thread we have available.
+Assuming that we want a `drive` operation in some form, our choices are to:
+ * define our `drive` operation, so that it is standard, and we use it on this system.
+ * or allow the customisation to define a custom `drive` operation related to the specific single-threaded environment.
 
 With a standard `drive` of this sort (or of the more complex design in [@P2079R2]) we might write an example to use it directly:
 ```
@@ -227,7 +227,7 @@ Whether that drive call is needed is a function of whether the environment is si
 If it is not, say we have a normal Windows system with threads, we simply don't need to call it and the thread pool may not even have a way to process the donated `main` thread.
 
 Further, we don't know the full set of single threaded environments.
-If this is a UI we may not want `main` to call the `system_context`'s drive, but rather that it will drive some UI event loop directly and `system_context` is simply a window onto that event loop.
+If this is a UI we may not want `main` to call the `system_context`'s drive, but rather that it will drive some UI event loop directly and `system_context` is simply a window to add tasks to that event loop.
 `drive` in this context is a confusing complication and might be harmful.
 
 From the other angle, is an entirely custom `drive` operation, pulled in through whatever mechanism we have for swapping out the `system_context` portable?
@@ -235,6 +235,8 @@ Most systems will not need such a function to be called.
 We do not in general need to on Windows, Linux, MacOS and similar systems with thread pool support.
 When we do need it, we have explicitly opted in to compiling or linking against a specific implementation of the `system_context` for the environment in question.
 On that basis, given the amount of other work we'd have to do to make the system work, like driving the UI loop, the small addition of also driving the `system_context` seems minor.
+
+
 
 ## Making system_context implementation-defined
 The system context aims to allow people to implement an application dependent only on parallel forward progress and port it to a wide range of systems.
