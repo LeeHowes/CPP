@@ -282,8 +282,48 @@ We should decide how best to achieve it within the standard.
 Assuming we delegate customisation to the platform implementor, what wording would be appropriate for the specification, if any?
 
 ## Need for the system_context class
-TODO: We could just have a global getter that returns a scheduler. This would become the customizable object.
+Our goal is to expose a global shared context to avoid oversubscription of threads in the system and to efficiently share a system thread pool.
+Underneath the `system_context` there is a singleton of some sort, potentially owned by the OS.
 
+The question is how we expose the singleton.
+We have a few obvious options:
+ * Explicit context objects, as we've described in R2 and R3 of this paper, where a `system_context` is constructed as any other context might be, and refers to a singleton underneath.
+ * A global `get_system_context()` function that obtains a `system_context` object, or a reference to one, representing the singleton explicitly.
+ * A global `get_system_scheduler()` function that obtains a scheduler from some singleton system context, but does not explicitly expose the context.
+
+The `get_system_context()` function adds little value unless there are context-specific operations we want to define, or multiple different schedulers we want to obtain.
+The difference between the constructable `system_context` object and the two global functions is a little more fundamental.
+
+The two global functions suggest a pattern wherein people obtain a scheduler from the `system_context` anywhere, potentially deep in the code.
+This is convenient, but also leads to patterns where the scheduler is hidden and the code is unstructured.
+It also means that the lifetime of the context is the union of the lifetimes of schedulers obtained from it, which likely leads to lazy construction and lazy destruction, with potential inefficiencies if cleanup is too eager, or construction is too late.
+Schedulers in this model also have to hold active references to the context because there is no other way to signal when it is safe to clean up, adding reference counting cost even in release mode builds.
+
+The explicit `system_context` object gives clearer structured concurrent and lifetime semantics.
+The common use case will be to construct one in `main` and propagate it through receivers or through coroutines directly, from root to leaf.
+By requiring that the `system_context` object outlive any tasks launched through schedulers obtained from it, some of the lifetime management responsibility is handed to the developer, to the benefit of efficiency in release builds where less reference counting is required.
+
+Both solutions are possible, we have opted for an explicit `system_context` objects in R2 and R3 of this paper.
+
+## Priorities
+It's broadly accepted that we need some form of priorities to tweak the behaviour of the system context.
+This paper does not include priorities, though early drafts of R2 did.
+We had different designs in flight for how to achieve priorities and decided they could be added later in either approach.
+
+The first approach is to expand one or more of the APIs.
+The obvious way to do this would be to add a priority-taking version of `system_context::get_scheduler()`:
+
+```c++
+implementation-defined-system_scheduler get_scheduler();
+implementation-defined-system_scheduler get_scheduler(priority_t priority);
+```
+
+This approach would offer priorities at scheduler granularity and apply to large sections of a program at once.
+
+The other approach, which matches the receiver query approach taken elsewhere in [@P2300] is to add a `get_priority()` query on the receiver, which, if available, passes a priority to the scheduler in the same way that we pass an `allocator` or a `stop_token`.
+This would work at task granularity, for each `schedule()` call that we connect a receiver to we might pass a different priority.
+
+In either case we can add the priority in a separate paper.
 
 
 # Examples

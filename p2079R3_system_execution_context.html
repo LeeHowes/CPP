@@ -484,7 +484,7 @@ code.sourceCode > span { display: inline; }
 <li>Forward progress delegation: we must be able to implement a blocking operation that ensures forward progress of a complex parallel algorithm without special cases.</li>
 </ul>
 <p>An implementation of <code class="sourceCode default">system_context</code> <em>should</em> allow or other compile-time replacement of the implementation such that the context may be replaced with an implementation that compiles and runs in a single-threaded process or that can be replaced with an appropriately configured system thread pool by an end-user. We do not attempt to specify here the mechanism by which this should be implemented.</p>
-<p>Early feedback on the paper from Sean Parent suggested a need to allow the system context to carry no threads of its own, and take over the main thread. While in <span class="citation" data-cites="P2079R2">[<span class="citeproc-not-found" data-reference-id="P2079R2"><strong>???</strong></span>]</span> we proposed <code class="sourceCode default">execute_chunk</code> and <code class="sourceCode default">execute_all</code>, these enforce a particular implementation on the underlying execution context. Instead we simplify the proposal by removing this functionality and assume that is implmented by link-time or compile-time replacement of the context. We assume that the underlying mechanism to drive the context, should one be necessary, is implementation-defined. This allows custom hooks for an OS thread pool, or a simple <code class="sourceCode default">drive()</code> method in main.</p>
+<p>Early feedback on the paper from Sean Parent suggested a need to allow the system context to carry no threads of its own, and take over the main thread. While in <span class="citation" data-cites="P2079R2">[<a href="#ref-P2079R2" role="doc-biblioref">P2079R2</a>]</span> we proposed <code class="sourceCode default">execute_chunk</code> and <code class="sourceCode default">execute_all</code>, these enforce a particular implementation on the underlying execution context. Instead we simplify the proposal by removing this functionality and assume that is implmented by link-time or compile-time replacement of the context. We assume that the underlying mechanism to drive the context, should one be necessary, is implementation-defined. This allows custom hooks for an OS thread pool, or a simple <code class="sourceCode default">drive()</code> method in main.</p>
 <h1 data-number="4" id="design"><span class="header-section-number">4</span> Design<a href="#design" class="self-link"></a></h1>
 <h2 data-number="4.1" id="system_context"><span class="header-section-number">4.1</span> system_context<a href="#system_context" class="self-link"></a></h2>
 <p>The <code class="sourceCode default">system_context</code> creates a view on some underlying execution context supporting <em>parallel forward progress</em>. A <code class="sourceCode default">system_context</code> must outlive any work launched on it.</p>
@@ -572,11 +572,11 @@ code.sourceCode > span { display: inline; }
 <p>This sender satisfies the following properties: - Implements the <code class="sourceCode default">get_completion_scheduler</code> query for the value and done channel where it returns a type that is a pair of an object that compares equal to itself, and a representation of delegatee scheduler that may be obtained from receivers connected with the sender. - If connected with a <code class="sourceCode default">receiver</code> that supports the <code class="sourceCode default">get_stop_token</code> query, if that <code class="sourceCode default">stop_token</code> is stopped, operations on which <code class="sourceCode default">start</code> has been called, but are not yet running (and are hence not yet guaranteed to make progress) <strong>must</strong> complete with <code class="sourceCode default">set_done</code> as soon as is practical. - <code class="sourceCode default">connect</code>ing the <code class="sourceCode default">sender</code> and calling <code class="sourceCode default">start()</code> on the resulting operation state are non-blocking operations.</p>
 <h1 data-number="5" id="design-discussion-and-decisions"><span class="header-section-number">5</span> Design discussion and decisions<a href="#design-discussion-and-decisions" class="self-link"></a></h1>
 <h2 data-number="5.1" id="to-drive-or-not-to-drive"><span class="header-section-number">5.1</span> To drive or not to drive<a href="#to-drive-or-not-to-drive" class="self-link"></a></h2>
-<p>The earlier version of this paper, <span class="citation" data-cites="P2079R2">[<span class="citeproc-not-found" data-reference-id="P2079R2"><strong>???</strong></span>]</span>, included <code class="sourceCode default">execute_all</code> and <code class="sourceCode default">execute_chunk</code> operations to integrate with senders. In this version we have removed them because they imply certain requirements of forward progress delegation on the system context and it is not clear whether or not they should be called.</p>
+<p>The earlier version of this paper, <span class="citation" data-cites="P2079R2">[<a href="#ref-P2079R2" role="doc-biblioref">P2079R2</a>]</span>, included <code class="sourceCode default">execute_all</code> and <code class="sourceCode default">execute_chunk</code> operations to integrate with senders. In this version we have removed them because they imply certain requirements of forward progress delegation on the system context and it is not clear whether or not they should be called.</p>
 <p>It is still an open question whether or not having such a standard operation makes the system context more or less portable. We can simplify this discussion to a single function:</p>
 <div class="sourceCode" id="cb4"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb4-1"><a href="#cb4-1"></a>  void drive(system_context&amp; ctx, sender auto snd);</span></code></pre></div>
-<p>Let’s assume we have a single-threaded environment, and a means of customising the <code class="sourceCode default">system_context</code> for this environment. We know we need a way to donate <code class="sourceCode default">main</code>’s thread to this context. It is the only thread we have available: * Either we define our <code class="sourceCode default">drive</code> operation, so that it is standard, and we use it on this system. * Or we allow the customisation to define a drive operation related to the specific single-threaded environment.</p>
-<p>With a standard <code class="sourceCode default">drive</code> of this sort (or of the more complex design in <span class="citation" data-cites="P2079R2">[<span class="citeproc-not-found" data-reference-id="P2079R2"><strong>???</strong></span>]</span>) we might write an example to use it directly:</p>
+<p>Let’s assume we have a single-threaded environment, and a means of customising the <code class="sourceCode default">system_context</code> for this environment. We know we need a way to donate <code class="sourceCode default">main</code>’s thread to this context, it is the only thread we have available. Assuming that we want a <code class="sourceCode default">drive</code> operation in some form, our choices are to: * define our <code class="sourceCode default">drive</code> operation, so that it is standard, and we use it on this system. * or allow the customisation to define a custom <code class="sourceCode default">drive</code> operation related to the specific single-threaded environment.</p>
+<p>With a standard <code class="sourceCode default">drive</code> of this sort (or of the more complex design in <span class="citation" data-cites="P2079R2">[<a href="#ref-P2079R2" role="doc-biblioref">P2079R2</a>]</span>) we might write an example to use it directly:</p>
 <div class="sourceCode" id="cb5"><pre class="sourceCode default"><code class="sourceCode default"><span id="cb5-1"><a href="#cb5-1"></a>system_context ctx;</span>
 <span id="cb5-2"><a href="#cb5-2"></a>auto snd = on(ctx, doWork());</span>
 <span id="cb5-3"><a href="#cb5-3"></a>drive(ctx, std::move(snd));</span></code></pre></div>
@@ -588,129 +588,147 @@ code.sourceCode > span { display: inline; }
 <span id="cb6-5"><a href="#cb6-5"></a>custom_drive_operation(ctx);</span></code></pre></div>
 <p>The question is: what is more portable? It seems at first sight that a general <code class="sourceCode default">drive</code> function is more portable. Without it, how can we write a fully portable “hello world” example?</p>
 <p>More broadly, it may not be more portable. First, we don’t know whether or not we need to call it. Whether that drive call is needed is a function of whether the environment is single threaded or not. If it is not, say we have a normal Windows system with threads, we simply don’t need to call it and the thread pool may not even have a way to process the donated <code class="sourceCode default">main</code> thread.</p>
-<p>Further, we don’t know the full set of single threaded environments. If this is a UI we may not want <code class="sourceCode default">main</code> to call the <code class="sourceCode default">system_context</code>’s drive, but rather that it will drive some UI event loop directly and <code class="sourceCode default">system_context</code> is simply a window onto that event loop. <code class="sourceCode default">drive</code> in this context is a confusing complication and might be harmful.</p>
+<p>Further, we don’t know the full set of single threaded environments. If this is a UI we may not want <code class="sourceCode default">main</code> to call the <code class="sourceCode default">system_context</code>’s drive, but rather that it will drive some UI event loop directly and <code class="sourceCode default">system_context</code> is simply a window to add tasks to that event loop. <code class="sourceCode default">drive</code> in this context is a confusing complication and might be harmful.</p>
 <p>From the other angle, is an entirely custom <code class="sourceCode default">drive</code> operation, pulled in through whatever mechanism we have for swapping out the <code class="sourceCode default">system_context</code> portable? Most systems will not need such a function to be called. We do not in general need to on Windows, Linux, MacOS and similar systems with thread pool support. When we do need it, we have explicitly opted in to compiling or linking against a specific implementation of the <code class="sourceCode default">system_context</code> for the environment in question. On that basis, given the amount of other work we’d have to do to make the system work, like driving the UI loop, the small addition of also driving the <code class="sourceCode default">system_context</code> seems minor.</p>
+<p>The authors recommendation here is that we allow <code class="sourceCode default">drive</code> to be unspecified in the standard, and to appear as a result of customisation of the system context where needed. However, this is a question we should answer.</p>
 <h2 data-number="5.2" id="making-system_context-implementation-defined"><span class="header-section-number">5.2</span> Making system_context implementation-defined<a href="#making-system_context-implementation-defined" class="self-link"></a></h2>
-<p>The system context aims to allow people to implement an application dependent only on parallel forward progress and port it to a wide range of systems. That is, as long as an application does not rely on concurrency, and restricts itself to only the system context, we should be able to scale from highly parallel systems to single threaded systems.</p>
-<p>In the extreme, this might mean porting to an embedded system with a very specific idea of a context. Such a system might not have a multi-threading support at all, and thus the system context not only need run as a single thread, but also run on a single thraed. The main thread must drive the context. We do not want to always ask the main thread to drive the context, however, and we do not expose a generic operation on the context to be driven in this way, because the mechanism might vary. On some systems we might want a blocking call in <code class="sourceCode default">main()</code>. On others we might need the system context to expose a single threaded event loop built into the system runtime.</p>
-<p>We then need to allow customisation of the context on such systems. For a whole platform this is relatively simple. We assume that everything is an implementation-defined type. The <code class="sourceCode default">system_context</code> itself is a named type, but in practice is implementation-defined.</p>
-<p>Other situations may offer a little less control. It would make sense, for example, for Intel to be able to swap out the default context from the standard library with one implemented using TBB. Or for an organisation to do the same to customise behaviour globally.</p>
+<p>The system context aims to allow people to implement an application that is dependent only on parallel forward progress and to port it to a wide range of systems. As long as an application does not rely on concurrency, and restricts itself to only the system context, we should be able to scale from single threaded systems to highly parallel systems.</p>
+<p>In the extreme, this might mean porting to an embedded system with a very specific idea of an execution context. Such a system might not have a multi-threading support at all, and thus the system context not only need run with single thread, but actually run on the system’s only thraed. We might build the context on top of a UI thread, or we might want to swap out the system-provided implementation with one from a vendor like Intel with experience writing optimised threading runtimes.</p>
+<p>We need to allow customisation of the system context to cover this full range of cases. For a whole platform this is relatively simple. We assume that everything is an implementation-defined type. The <code class="sourceCode default">system_context</code> itself is a named type, but in practice is implementation-defined, in the same way that <code class="sourceCode default">std::vector</code> is implementation-defined at the platform level.</p>
+<p>Other situations may offer a little less control. If we wish Intel to be able to replace the system thread pool with TBB, or Adobe to customise the runtime that they use for all of Photoshop to adapt to their needs, we need a different customisation mechanism.</p>
 <p>To achieve this we see options: * Link-time replaceability. This could be achieved using weak symbols, or by chosing a runtime library to pull in using build options. * Compile-time replacability. This could be achieved by importing different headers, by macro definitions on the command line or various other mechanisms. * Run-time replaceability. This could be achieved by subclassing and requiring certain calls to be made early in the process.</p>
-<p>Link-time replaceability is more predictable, in that it can be guaranteed to be application-global. The downside of link-time replaceability is that it requires defining the ABI and thus would require significant type erasure and inefficiency.</p>
-<p>Compile-time is simpler but would be easy to get wrong by mixing flags across the objects in the build. Both link-time and compile-time are harder to describe in the standard.</p>
+<p>Link-time replaceability is more predictable, in that it can be guaranteed to be application-global. The downside of link-time replaceability is that it requires defining the ABI and thus would require significant type erasure and inefficiency. Some of that ineffienciency can be removed in practice with link-time optimisation.</p>
+<p>Compile-time is simpler but would be easy to get wrong by mixing flags across the objects in the build. Both link-time and compile-time maybe difficult to describe in the standard.</p>
 <p>Run-time is easy for us to describe in the standard, using interfaces and dynamic dispatch with well-defined mechanisms for setting the implementation. The downsides are that it is hard to ensure that the right context is set early enough in the process and that, like link-time replacement, it requires type erasure.</p>
-<p>The other question is to what extent we expect to specify this. We could simply say that implementations should allow customization and leave it up to QOI. For a fully controlled implementation with its own standard library, this is trivial. For a widespread OS where a vendor wants to replace the implementation that can rely on an agreement between the system vendor and the runtime vendor.</p>
-<p>Assuming we take that simpler approach, what wording would be appropriate for the specification?</p>
+<p>The other question is to what extent we need to specify this. We could simply say that implementations should allow customization and leave it up to QOI. We already know that full platform customisations are possible. This approach would delegate the decision of how to allow Intel to replace the platform context with TBB up to the platform implementor. It would rely on an agreement between the system vendor and the runtime vendor.</p>
+<p>The authors do not have a recommendation, only a wish to see customisation available. We should decide how best to achieve it within the standard. Assuming we delegate customisation to the platform implementor, what wording would be appropriate for the specification, if any?</p>
 <h2 data-number="5.3" id="need-for-the-system_context-class"><span class="header-section-number">5.3</span> Need for the system_context class<a href="#need-for-the-system_context-class" class="self-link"></a></h2>
-<p>TODO: We could just have a global getter that returns a scheduler. This would become the customizable object.</p>
+<p>Our goal is to expose a global shared context to avoid oversubscription of threads in the system and to efficiently share a system thread pool. Underneath the <code class="sourceCode default">system_context</code> there is a singleton of some sort, potentially owned by the OS.</p>
+<p>The question is how we expose the singleton. We have a few obvious options: * Explicit context objects, as we’ve described in R2 and R3 of this paper, where a <code class="sourceCode default">system_context</code> is constructed as any other context might be, and refers to a singleton underneath. * A global <code class="sourceCode default">get_system_context()</code> function that obtains a <code class="sourceCode default">system_context</code> object, or a reference to one, representing the singleton explicitly. * A global <code class="sourceCode default">get_system_scheduler()</code> function that obtains a scheduler from some singleton system context, but does not explicitly expose the context.</p>
+<p>The <code class="sourceCode default">get_system_context()</code> function adds little value unless there are context-specific operations we want to define, or multiple different schedulers we want to obtain. The difference between the constructable <code class="sourceCode default">system_context</code> object and the two global functions is a little more fundamental.</p>
+<p>The two global functions suggest a pattern wherein people obtain a scheduler from the <code class="sourceCode default">system_context</code> anywhere, potentially deep in the code. This is convenient, but also leads to patterns where the scheduler is hidden and the code is unstructured. It also means that the lifetime of the context is the union of the lifetimes of schedulers obtained from it, which likely leads to lazy construction and lazy destruction, with potential inefficiencies if cleanup is too eager, or construction is too late. Schedulers in this model also have to hold active references to the context because there is no other way to signal when it is safe to clean up, adding reference counting cost even in release mode builds.</p>
+<p>The explicit <code class="sourceCode default">system_context</code> object gives clearer structured concurrent and lifetime semantics. The common use case will be to construct one in <code class="sourceCode default">main</code> and propagate it through receivers or through coroutines directly, from root to leaf. By requiring that the <code class="sourceCode default">system_context</code> object outlive any tasks launched through schedulers obtained from it, some of the lifetime management responsibility is handed to the developer, to the benefit of efficiency in release builds where less reference counting is required.</p>
+<p>Both solutions are possible, we have opted for an explicit <code class="sourceCode default">system_context</code> objects in R2 and R3 of this paper.</p>
+<h2 data-number="5.4" id="priorities"><span class="header-section-number">5.4</span> Priorities<a href="#priorities" class="self-link"></a></h2>
+<p>It’s broadly accepted that we need some form of priorities to tweak the behaviour of the system context. This paper does not include priorities, though early drafts of R2 did. We had different designs in flight for how to achieve priorities and decided they could be added later in either approach.</p>
+<p>The first approach is to expand one or more of the APIs. The obvious way to do this would be to add a priority-taking version of <code class="sourceCode default">system_context::get_scheduler()</code>:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb7-1"><a href="#cb7-1"></a>implementation<span class="op">-</span>defined<span class="op">-</span>system_scheduler get_scheduler<span class="op">()</span>;</span>
+<span id="cb7-2"><a href="#cb7-2"></a>implementation<span class="op">-</span>defined<span class="op">-</span>system_scheduler get_scheduler<span class="op">(</span>priority_t priority<span class="op">)</span>;</span></code></pre></div>
+<p>This approach would offer priorities at scheduler granularity and apply to large sections of a program at once.</p>
+<p>The other approach, which matches the receiver query approach taken elsewhere in <span class="citation" data-cites="P2300">[<a href="#ref-P2300" role="doc-biblioref">P2300R4</a>]</span> is to add a <code class="sourceCode default">get_priority()</code> query on the receiver, which, if available, passes a priority to the scheduler in the same way that we pass an <code class="sourceCode default">allocator</code> or a <code class="sourceCode default">stop_token</code>. This would work at task granularity, for each <code class="sourceCode default">schedule()</code> call that we connect a receiver to we might pass a different priority.</p>
+<p>In either case we can add the priority in a separate paper.</p>
 <h1 data-number="6" id="examples"><span class="header-section-number">6</span> Examples<a href="#examples" class="self-link"></a></h1>
 <p>As a simple parallel scheduler we can use it locally, and <code class="sourceCode default">sync_wait</code> on the work to make sure that it is complete. With forward progress delegation this would also allow the scheduler to delegate work to the blocked thread. This example is derived from the Hello World example in <span class="citation" data-cites="P2300">[<a href="#ref-P2300" role="doc-biblioref">P2300R4</a>]</span>. Note that it only adds a well-defined context object, and queries that for the scheduler. Everything else is unchanged about the example.</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb7-1"><a href="#cb7-1"></a><span class="kw">using</span> <span class="kw">namespace</span> std<span class="op">::</span>execution;</span>
-<span id="cb7-2"><a href="#cb7-2"></a></span>
-<span id="cb7-3"><a href="#cb7-3"></a>system_context ctx;</span>
-<span id="cb7-4"><a href="#cb7-4"></a>scheduler <span class="kw">auto</span> sch <span class="op">=</span> ctx<span class="op">.</span>scheduler<span class="op">()</span>;</span>
-<span id="cb7-5"><a href="#cb7-5"></a></span>
-<span id="cb7-6"><a href="#cb7-6"></a>sender <span class="kw">auto</span> begin <span class="op">=</span> schedule<span class="op">(</span>sch<span class="op">)</span>;</span>
-<span id="cb7-7"><a href="#cb7-7"></a>sender <span class="kw">auto</span> hi <span class="op">=</span> then<span class="op">(</span>begin, <span class="op">[]{</span></span>
-<span id="cb7-8"><a href="#cb7-8"></a>    std<span class="op">::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Hello world! Have an int.&quot;</span>;</span>
-<span id="cb7-9"><a href="#cb7-9"></a>    <span class="cf">return</span> <span class="dv">13</span>;</span>
-<span id="cb7-10"><a href="#cb7-10"></a><span class="op">})</span>;</span>
-<span id="cb7-11"><a href="#cb7-11"></a>sender <span class="kw">auto</span> add_42 <span class="op">=</span> then<span class="op">(</span>hi, <span class="op">[](</span><span class="dt">int</span> arg<span class="op">)</span> <span class="op">{</span> <span class="cf">return</span> arg <span class="op">+</span> <span class="dv">42</span>; <span class="op">})</span>;</span>
-<span id="cb7-12"><a href="#cb7-12"></a></span>
-<span id="cb7-13"><a href="#cb7-13"></a><span class="kw">auto</span> <span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> this_thread<span class="op">::</span>sync_wait<span class="op">(</span>add_42<span class="op">).</span>value<span class="op">()</span>;</span></code></pre></div>
-<p>We can structure the same thing using <code class="sourceCode default">execution::on</code>, which better matches structured concurrency:</p>
 <div class="sourceCode" id="cb8"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb8-1"><a href="#cb8-1"></a><span class="kw">using</span> <span class="kw">namespace</span> std<span class="op">::</span>execution;</span>
 <span id="cb8-2"><a href="#cb8-2"></a></span>
 <span id="cb8-3"><a href="#cb8-3"></a>system_context ctx;</span>
 <span id="cb8-4"><a href="#cb8-4"></a>scheduler <span class="kw">auto</span> sch <span class="op">=</span> ctx<span class="op">.</span>scheduler<span class="op">()</span>;</span>
 <span id="cb8-5"><a href="#cb8-5"></a></span>
-<span id="cb8-6"><a href="#cb8-6"></a>sender <span class="kw">auto</span> hi <span class="op">=</span> then<span class="op">(</span>just<span class="op">()</span>, <span class="op">[]{</span></span>
-<span id="cb8-7"><a href="#cb8-7"></a>    std<span class="op">::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Hello world! Have an int.&quot;</span>;</span>
-<span id="cb8-8"><a href="#cb8-8"></a>    <span class="cf">return</span> <span class="dv">13</span>;</span>
-<span id="cb8-9"><a href="#cb8-9"></a><span class="op">})</span>;</span>
-<span id="cb8-10"><a href="#cb8-10"></a>sender <span class="kw">auto</span> add_42 <span class="op">=</span> then<span class="op">(</span>hi, <span class="op">[](</span><span class="dt">int</span> arg<span class="op">)</span> <span class="op">{</span> <span class="cf">return</span> arg <span class="op">+</span> <span class="dv">42</span>; <span class="op">})</span>;</span>
-<span id="cb8-11"><a href="#cb8-11"></a></span>
-<span id="cb8-12"><a href="#cb8-12"></a><span class="kw">auto</span> <span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> this_thread<span class="op">::</span>sync_wait<span class="op">(</span>on<span class="op">(</span>sch, add_42<span class="op">)).</span>value<span class="op">()</span>;</span></code></pre></div>
+<span id="cb8-6"><a href="#cb8-6"></a>sender <span class="kw">auto</span> begin <span class="op">=</span> schedule<span class="op">(</span>sch<span class="op">)</span>;</span>
+<span id="cb8-7"><a href="#cb8-7"></a>sender <span class="kw">auto</span> hi <span class="op">=</span> then<span class="op">(</span>begin, <span class="op">[]{</span></span>
+<span id="cb8-8"><a href="#cb8-8"></a>    std<span class="op">::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Hello world! Have an int.&quot;</span>;</span>
+<span id="cb8-9"><a href="#cb8-9"></a>    <span class="cf">return</span> <span class="dv">13</span>;</span>
+<span id="cb8-10"><a href="#cb8-10"></a><span class="op">})</span>;</span>
+<span id="cb8-11"><a href="#cb8-11"></a>sender <span class="kw">auto</span> add_42 <span class="op">=</span> then<span class="op">(</span>hi, <span class="op">[](</span><span class="dt">int</span> arg<span class="op">)</span> <span class="op">{</span> <span class="cf">return</span> arg <span class="op">+</span> <span class="dv">42</span>; <span class="op">})</span>;</span>
+<span id="cb8-12"><a href="#cb8-12"></a></span>
+<span id="cb8-13"><a href="#cb8-13"></a><span class="kw">auto</span> <span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> this_thread<span class="op">::</span>sync_wait<span class="op">(</span>add_42<span class="op">).</span>value<span class="op">()</span>;</span></code></pre></div>
+<p>We can structure the same thing using <code class="sourceCode default">execution::on</code>, which better matches structured concurrency:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb9-1"><a href="#cb9-1"></a><span class="kw">using</span> <span class="kw">namespace</span> std<span class="op">::</span>execution;</span>
+<span id="cb9-2"><a href="#cb9-2"></a></span>
+<span id="cb9-3"><a href="#cb9-3"></a>system_context ctx;</span>
+<span id="cb9-4"><a href="#cb9-4"></a>scheduler <span class="kw">auto</span> sch <span class="op">=</span> ctx<span class="op">.</span>scheduler<span class="op">()</span>;</span>
+<span id="cb9-5"><a href="#cb9-5"></a></span>
+<span id="cb9-6"><a href="#cb9-6"></a>sender <span class="kw">auto</span> hi <span class="op">=</span> then<span class="op">(</span>just<span class="op">()</span>, <span class="op">[]{</span></span>
+<span id="cb9-7"><a href="#cb9-7"></a>    std<span class="op">::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Hello world! Have an int.&quot;</span>;</span>
+<span id="cb9-8"><a href="#cb9-8"></a>    <span class="cf">return</span> <span class="dv">13</span>;</span>
+<span id="cb9-9"><a href="#cb9-9"></a><span class="op">})</span>;</span>
+<span id="cb9-10"><a href="#cb9-10"></a>sender <span class="kw">auto</span> add_42 <span class="op">=</span> then<span class="op">(</span>hi, <span class="op">[](</span><span class="dt">int</span> arg<span class="op">)</span> <span class="op">{</span> <span class="cf">return</span> arg <span class="op">+</span> <span class="dv">42</span>; <span class="op">})</span>;</span>
+<span id="cb9-11"><a href="#cb9-11"></a></span>
+<span id="cb9-12"><a href="#cb9-12"></a><span class="kw">auto</span> <span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> this_thread<span class="op">::</span>sync_wait<span class="op">(</span>on<span class="op">(</span>sch, add_42<span class="op">)).</span>value<span class="op">()</span>;</span></code></pre></div>
 <p>The <code class="sourceCode default">system_scheduler</code> customises bulk, so we can use bulk dependent on the scheduler. Here we use it in structured form using the parameterless <code class="sourceCode default">get_scheduler</code> that retrieves the scheduler from the receiver, combined with <code class="sourceCode default">on</code>:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb9-1"><a href="#cb9-1"></a><span class="kw">auto</span> bar<span class="op">()</span> <span class="op">{</span></span>
-<span id="cb9-2"><a href="#cb9-2"></a>  <span class="cf">return</span></span>
-<span id="cb9-3"><a href="#cb9-3"></a>    ex<span class="op">::</span>let_value<span class="op">(</span></span>
-<span id="cb9-4"><a href="#cb9-4"></a>      ex<span class="op">::</span>get_scheduler<span class="op">()</span>,          <span class="co">// Fetch scheduler from receiver.</span></span>
-<span id="cb9-5"><a href="#cb9-5"></a>      <span class="op">[](</span><span class="kw">auto</span> current_sched<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb9-6"><a href="#cb9-6"></a>        <span class="cf">return</span> bulk<span class="op">(</span></span>
-<span id="cb9-7"><a href="#cb9-7"></a>          current_sched<span class="op">.</span>schedule<span class="op">()</span>,</span>
-<span id="cb9-8"><a href="#cb9-8"></a>          <span class="dv">1</span>,                        <span class="co">// Only 1 bulk task as a lazy way of making cout safe</span></span>
-<span id="cb9-9"><a href="#cb9-9"></a>          <span class="op">[](</span><span class="kw">auto</span> idx<span class="op">){</span></span>
-<span id="cb9-10"><a href="#cb9-10"></a>            std<span class="op">::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Index: &quot;</span> <span class="op">&lt;&lt;</span> idx <span class="op">&lt;&lt;</span> <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>;</span>
-<span id="cb9-11"><a href="#cb9-11"></a>          <span class="op">})</span></span>
-<span id="cb9-12"><a href="#cb9-12"></a>      <span class="op">})</span>;</span>
-<span id="cb9-13"><a href="#cb9-13"></a><span class="op">}</span></span>
-<span id="cb9-14"><a href="#cb9-14"></a></span>
-<span id="cb9-15"><a href="#cb9-15"></a><span class="dt">void</span> foo<span class="op">()</span></span>
-<span id="cb9-16"><a href="#cb9-16"></a><span class="op">{</span></span>
-<span id="cb9-17"><a href="#cb9-17"></a>  <span class="kw">using</span> <span class="kw">namespace</span> std<span class="op">::</span>execution;</span>
-<span id="cb9-18"><a href="#cb9-18"></a></span>
-<span id="cb9-19"><a href="#cb9-19"></a>  system_context ctx;</span>
-<span id="cb9-20"><a href="#cb9-20"></a></span>
-<span id="cb9-21"><a href="#cb9-21"></a>  <span class="kw">auto</span> <span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> this_thread<span class="op">::</span>sync_wait<span class="op">(</span></span>
-<span id="cb9-22"><a href="#cb9-22"></a>    on<span class="op">(</span></span>
-<span id="cb9-23"><a href="#cb9-23"></a>      ctx<span class="op">.</span>scheduler<span class="op">()</span>,                <span class="co">// Start bar on the system_scheduler</span></span>
-<span id="cb9-24"><a href="#cb9-24"></a>      bar<span class="op">()))</span>                         <span class="co">// and propagate it through the receivers</span></span>
-<span id="cb9-25"><a href="#cb9-25"></a>    <span class="op">.</span>value<span class="op">()</span>;</span>
-<span id="cb9-26"><a href="#cb9-26"></a><span class="op">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb10"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb10-1"><a href="#cb10-1"></a><span class="kw">auto</span> bar<span class="op">()</span> <span class="op">{</span></span>
+<span id="cb10-2"><a href="#cb10-2"></a>  <span class="cf">return</span></span>
+<span id="cb10-3"><a href="#cb10-3"></a>    ex<span class="op">::</span>let_value<span class="op">(</span></span>
+<span id="cb10-4"><a href="#cb10-4"></a>      ex<span class="op">::</span>get_scheduler<span class="op">()</span>,          <span class="co">// Fetch scheduler from receiver.</span></span>
+<span id="cb10-5"><a href="#cb10-5"></a>      <span class="op">[](</span><span class="kw">auto</span> current_sched<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb10-6"><a href="#cb10-6"></a>        <span class="cf">return</span> bulk<span class="op">(</span></span>
+<span id="cb10-7"><a href="#cb10-7"></a>          current_sched<span class="op">.</span>schedule<span class="op">()</span>,</span>
+<span id="cb10-8"><a href="#cb10-8"></a>          <span class="dv">1</span>,                        <span class="co">// Only 1 bulk task as a lazy way of making cout safe</span></span>
+<span id="cb10-9"><a href="#cb10-9"></a>          <span class="op">[](</span><span class="kw">auto</span> idx<span class="op">){</span></span>
+<span id="cb10-10"><a href="#cb10-10"></a>            std<span class="op">::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Index: &quot;</span> <span class="op">&lt;&lt;</span> idx <span class="op">&lt;&lt;</span> <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>;</span>
+<span id="cb10-11"><a href="#cb10-11"></a>          <span class="op">})</span></span>
+<span id="cb10-12"><a href="#cb10-12"></a>      <span class="op">})</span>;</span>
+<span id="cb10-13"><a href="#cb10-13"></a><span class="op">}</span></span>
+<span id="cb10-14"><a href="#cb10-14"></a></span>
+<span id="cb10-15"><a href="#cb10-15"></a><span class="dt">void</span> foo<span class="op">()</span></span>
+<span id="cb10-16"><a href="#cb10-16"></a><span class="op">{</span></span>
+<span id="cb10-17"><a href="#cb10-17"></a>  <span class="kw">using</span> <span class="kw">namespace</span> std<span class="op">::</span>execution;</span>
+<span id="cb10-18"><a href="#cb10-18"></a></span>
+<span id="cb10-19"><a href="#cb10-19"></a>  system_context ctx;</span>
+<span id="cb10-20"><a href="#cb10-20"></a></span>
+<span id="cb10-21"><a href="#cb10-21"></a>  <span class="kw">auto</span> <span class="op">[</span>i<span class="op">]</span> <span class="op">=</span> this_thread<span class="op">::</span>sync_wait<span class="op">(</span></span>
+<span id="cb10-22"><a href="#cb10-22"></a>    on<span class="op">(</span></span>
+<span id="cb10-23"><a href="#cb10-23"></a>      ctx<span class="op">.</span>scheduler<span class="op">()</span>,                <span class="co">// Start bar on the system_scheduler</span></span>
+<span id="cb10-24"><a href="#cb10-24"></a>      bar<span class="op">()))</span>                         <span class="co">// and propagate it through the receivers</span></span>
+<span id="cb10-25"><a href="#cb10-25"></a>    <span class="op">.</span>value<span class="op">()</span>;</span>
+<span id="cb10-26"><a href="#cb10-26"></a><span class="op">}</span></span></code></pre></div>
 <p>Use <code class="sourceCode default">async_scope</code> and a custom system context implementation linked in to the process (through a mechanism undefined in the example). This might be how a given platform exposes a custom context. In this case we assume it has no threads of its own and has to take over the main thread through an custom <code class="sourceCode default">drive()</code> operation that can be looped until a callback requests <code class="sourceCode default">exit</code> on the context.</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb10-1"><a href="#cb10-1"></a><span class="kw">using</span> <span class="kw">namespace</span> std<span class="op">::</span>execution;</span>
-<span id="cb10-2"><a href="#cb10-2"></a></span>
-<span id="cb10-3"><a href="#cb10-3"></a>system_context ctx;</span>
-<span id="cb10-4"><a href="#cb10-4"></a></span>
-<span id="cb10-5"><a href="#cb10-5"></a><span class="dt">int</span> result <span class="op">=</span> <span class="dv">0</span>;</span>
-<span id="cb10-6"><a href="#cb10-6"></a></span>
-<span id="cb10-7"><a href="#cb10-7"></a><span class="op">{</span></span>
-<span id="cb10-8"><a href="#cb10-8"></a>  async_scope scope;</span>
-<span id="cb10-9"><a href="#cb10-9"></a>  scheduler <span class="kw">auto</span> sch <span class="op">=</span> ctx<span class="op">.</span>scheduler<span class="op">()</span>;</span>
-<span id="cb10-10"><a href="#cb10-10"></a></span>
-<span id="cb10-11"><a href="#cb10-11"></a>  sender <span class="kw">auto</span> work <span class="op">=</span></span>
-<span id="cb10-12"><a href="#cb10-12"></a>    then<span class="op">(</span>just<span class="op">()</span>, <span class="op">[&amp;](</span><span class="kw">auto</span> sched<span class="op">)</span> <span class="op">{</span></span>
-<span id="cb10-13"><a href="#cb10-13"></a></span>
-<span id="cb10-14"><a href="#cb10-14"></a>      <span class="dt">int</span> val <span class="op">=</span> <span class="dv">13</span>;</span>
-<span id="cb10-15"><a href="#cb10-15"></a></span>
-<span id="cb10-16"><a href="#cb10-16"></a>      <span class="kw">auto</span> print_sender <span class="op">=</span> then<span class="op">(</span>just<span class="op">()</span>, <span class="op">[</span>val<span class="op">]{</span></span>
-<span id="cb10-17"><a href="#cb10-17"></a>        std<span class="op">::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Hello world! Have an int with value: &quot;</span> <span class="op">&lt;&lt;</span> val <span class="op">&lt;&lt;</span> <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>;</span>
-<span id="cb10-18"><a href="#cb10-18"></a>      <span class="op">})</span>;</span>
-<span id="cb10-19"><a href="#cb10-19"></a></span>
-<span id="cb10-20"><a href="#cb10-20"></a>      <span class="co">// spawn the print sender on sched to make sure it</span></span>
-<span id="cb10-21"><a href="#cb10-21"></a>      <span class="co">// completes before shutdown</span></span>
-<span id="cb10-22"><a href="#cb10-22"></a>      scope<span class="op">.</span>spawn<span class="op">(</span>on<span class="op">(</span>sch, std<span class="op">::</span>move<span class="op">(</span>print_sender<span class="op">)))</span>;</span>
-<span id="cb10-23"><a href="#cb10-23"></a></span>
-<span id="cb10-24"><a href="#cb10-24"></a>      <span class="cf">return</span> val;</span>
-<span id="cb10-25"><a href="#cb10-25"></a>    <span class="op">})</span>;</span>
-<span id="cb10-26"><a href="#cb10-26"></a></span>
-<span id="cb10-27"><a href="#cb10-27"></a>  scope<span class="op">.</span>spawn<span class="op">(</span>on<span class="op">(</span>sch, std<span class="op">::</span>move<span class="op">(</span>work<span class="op">)))</span>;</span>
-<span id="cb10-28"><a href="#cb10-28"></a></span>
-<span id="cb10-29"><a href="#cb10-29"></a>  <span class="co">// This is custom code for a single-threaded context that we have replaced</span></span>
-<span id="cb10-30"><a href="#cb10-30"></a>  <span class="co">// at compile-time (see discussion options).</span></span>
-<span id="cb10-31"><a href="#cb10-31"></a>  <span class="co">// We need to drive it in main.</span></span>
-<span id="cb10-32"><a href="#cb10-32"></a>  <span class="co">// It is not directly sender-aware, like any pre-existing work loop, but</span></span>
-<span id="cb10-33"><a href="#cb10-33"></a>  <span class="co">// does provide an exit operation. We may call this from a callback chained</span></span>
-<span id="cb10-34"><a href="#cb10-34"></a>  <span class="co">// after the scope becomes empty.</span></span>
-<span id="cb10-35"><a href="#cb10-35"></a>  <span class="co">// We use a temporary terminal_scope here to separate the shut down</span></span>
-<span id="cb10-36"><a href="#cb10-36"></a>  <span class="co">// operation and block for it at the end of main, knowing it will complete.</span></span>
-<span id="cb10-37"><a href="#cb10-37"></a>  async_scope terminal_scope;</span>
-<span id="cb10-38"><a href="#cb10-38"></a>  terminal_scope<span class="op">.</span>spawn<span class="op">(</span></span>
-<span id="cb10-39"><a href="#cb10-39"></a>    scope<span class="op">.</span>on_empty<span class="op">()</span> <span class="op">|</span> then<span class="op">([](</span>my_os<span class="op">::</span>exit<span class="op">(</span>ctx<span class="op">))))</span>;</span>
-<span id="cb10-40"><a href="#cb10-40"></a>  my_os<span class="op">::</span>drive<span class="op">(</span>ctx<span class="op">)</span>;</span>
-<span id="cb10-41"><a href="#cb10-41"></a>  this_thread<span class="op">::</span>sync_wait<span class="op">(</span>terminal_scope<span class="op">)</span>;</span>
-<span id="cb10-42"><a href="#cb10-42"></a><span class="op">}</span>;</span>
-<span id="cb10-43"><a href="#cb10-43"></a></span>
-<span id="cb10-44"><a href="#cb10-44"></a><span class="co">// The scope ensured that all work is safely joined, so result contains 13</span></span>
-<span id="cb10-45"><a href="#cb10-45"></a>std<span class="op">::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Result: &quot;</span> <span class="op">&lt;&lt;</span> result <span class="op">&lt;&lt;</span> <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>;</span>
-<span id="cb10-46"><a href="#cb10-46"></a></span>
-<span id="cb10-47"><a href="#cb10-47"></a><span class="co">// and destruction of the context is now safe</span></span></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb11-1"><a href="#cb11-1"></a><span class="kw">using</span> <span class="kw">namespace</span> std<span class="op">::</span>execution;</span>
+<span id="cb11-2"><a href="#cb11-2"></a></span>
+<span id="cb11-3"><a href="#cb11-3"></a>system_context ctx;</span>
+<span id="cb11-4"><a href="#cb11-4"></a></span>
+<span id="cb11-5"><a href="#cb11-5"></a><span class="dt">int</span> result <span class="op">=</span> <span class="dv">0</span>;</span>
+<span id="cb11-6"><a href="#cb11-6"></a></span>
+<span id="cb11-7"><a href="#cb11-7"></a><span class="op">{</span></span>
+<span id="cb11-8"><a href="#cb11-8"></a>  async_scope scope;</span>
+<span id="cb11-9"><a href="#cb11-9"></a>  scheduler <span class="kw">auto</span> sch <span class="op">=</span> ctx<span class="op">.</span>scheduler<span class="op">()</span>;</span>
+<span id="cb11-10"><a href="#cb11-10"></a></span>
+<span id="cb11-11"><a href="#cb11-11"></a>  sender <span class="kw">auto</span> work <span class="op">=</span></span>
+<span id="cb11-12"><a href="#cb11-12"></a>    then<span class="op">(</span>just<span class="op">()</span>, <span class="op">[&amp;](</span><span class="kw">auto</span> sched<span class="op">)</span> <span class="op">{</span></span>
+<span id="cb11-13"><a href="#cb11-13"></a></span>
+<span id="cb11-14"><a href="#cb11-14"></a>      <span class="dt">int</span> val <span class="op">=</span> <span class="dv">13</span>;</span>
+<span id="cb11-15"><a href="#cb11-15"></a></span>
+<span id="cb11-16"><a href="#cb11-16"></a>      <span class="kw">auto</span> print_sender <span class="op">=</span> then<span class="op">(</span>just<span class="op">()</span>, <span class="op">[</span>val<span class="op">]{</span></span>
+<span id="cb11-17"><a href="#cb11-17"></a>        std<span class="op">::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Hello world! Have an int with value: &quot;</span> <span class="op">&lt;&lt;</span> val <span class="op">&lt;&lt;</span> <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>;</span>
+<span id="cb11-18"><a href="#cb11-18"></a>      <span class="op">})</span>;</span>
+<span id="cb11-19"><a href="#cb11-19"></a></span>
+<span id="cb11-20"><a href="#cb11-20"></a>      <span class="co">// spawn the print sender on sched to make sure it</span></span>
+<span id="cb11-21"><a href="#cb11-21"></a>      <span class="co">// completes before shutdown</span></span>
+<span id="cb11-22"><a href="#cb11-22"></a>      scope<span class="op">.</span>spawn<span class="op">(</span>on<span class="op">(</span>sch, std<span class="op">::</span>move<span class="op">(</span>print_sender<span class="op">)))</span>;</span>
+<span id="cb11-23"><a href="#cb11-23"></a></span>
+<span id="cb11-24"><a href="#cb11-24"></a>      <span class="cf">return</span> val;</span>
+<span id="cb11-25"><a href="#cb11-25"></a>    <span class="op">})</span>;</span>
+<span id="cb11-26"><a href="#cb11-26"></a></span>
+<span id="cb11-27"><a href="#cb11-27"></a>  scope<span class="op">.</span>spawn<span class="op">(</span>on<span class="op">(</span>sch, std<span class="op">::</span>move<span class="op">(</span>work<span class="op">)))</span>;</span>
+<span id="cb11-28"><a href="#cb11-28"></a></span>
+<span id="cb11-29"><a href="#cb11-29"></a>  <span class="co">// This is custom code for a single-threaded context that we have replaced</span></span>
+<span id="cb11-30"><a href="#cb11-30"></a>  <span class="co">// at compile-time (see discussion options).</span></span>
+<span id="cb11-31"><a href="#cb11-31"></a>  <span class="co">// We need to drive it in main.</span></span>
+<span id="cb11-32"><a href="#cb11-32"></a>  <span class="co">// It is not directly sender-aware, like any pre-existing work loop, but</span></span>
+<span id="cb11-33"><a href="#cb11-33"></a>  <span class="co">// does provide an exit operation. We may call this from a callback chained</span></span>
+<span id="cb11-34"><a href="#cb11-34"></a>  <span class="co">// after the scope becomes empty.</span></span>
+<span id="cb11-35"><a href="#cb11-35"></a>  <span class="co">// We use a temporary terminal_scope here to separate the shut down</span></span>
+<span id="cb11-36"><a href="#cb11-36"></a>  <span class="co">// operation and block for it at the end of main, knowing it will complete.</span></span>
+<span id="cb11-37"><a href="#cb11-37"></a>  async_scope terminal_scope;</span>
+<span id="cb11-38"><a href="#cb11-38"></a>  terminal_scope<span class="op">.</span>spawn<span class="op">(</span></span>
+<span id="cb11-39"><a href="#cb11-39"></a>    scope<span class="op">.</span>on_empty<span class="op">()</span> <span class="op">|</span> then<span class="op">([](</span>my_os<span class="op">::</span>exit<span class="op">(</span>ctx<span class="op">))))</span>;</span>
+<span id="cb11-40"><a href="#cb11-40"></a>  my_os<span class="op">::</span>drive<span class="op">(</span>ctx<span class="op">)</span>;</span>
+<span id="cb11-41"><a href="#cb11-41"></a>  this_thread<span class="op">::</span>sync_wait<span class="op">(</span>terminal_scope<span class="op">)</span>;</span>
+<span id="cb11-42"><a href="#cb11-42"></a><span class="op">}</span>;</span>
+<span id="cb11-43"><a href="#cb11-43"></a></span>
+<span id="cb11-44"><a href="#cb11-44"></a><span class="co">// The scope ensured that all work is safely joined, so result contains 13</span></span>
+<span id="cb11-45"><a href="#cb11-45"></a>std<span class="op">::</span>cout <span class="op">&lt;&lt;</span> <span class="st">&quot;Result: &quot;</span> <span class="op">&lt;&lt;</span> result <span class="op">&lt;&lt;</span> <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>;</span>
+<span id="cb11-46"><a href="#cb11-46"></a></span>
+<span id="cb11-47"><a href="#cb11-47"></a><span class="co">// and destruction of the context is now safe</span></span></code></pre></div>
 <h1 data-number="7" id="bibliography"><span class="header-section-number">7</span> References<a href="#bibliography" class="self-link"></a></h1>
 <div id="refs" class="references hanging-indent" role="doc-bibliography">
 <div id="ref-P2079R1">
 <p>[P2079R1] Ruslan Arutyunyan, Michael Voss. 2020-08-15. Parallel Executor. <br />
 <a href="https://wg21.link/p2079r1">https://wg21.link/p2079r1</a></p>
+</div>
+<div id="ref-P2079R2">
+<p>[P2079R2] Lee Howes, Ruslan Arutyunyan, Michael Voss. 2022-01-15. System execution context. <br />
+<a href="https://wg21.link/p2079r2">https://wg21.link/p2079r2</a></p>
 </div>
 <div id="ref-P2300">
 <p>[P2300R4] 2022. std::execution. <br />
