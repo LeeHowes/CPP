@@ -20,6 +20,9 @@ A `system_context` and `system_scheduler` that expose a simple parallel-forward-
 # Changes
 ## R3
 - Remove `execute_all` and `execute_chunk`. Replace with compile-time customization and a design discussion.
+- Add design discussion about the approach we should take for customization and the extent to which the context should be implementation-defined.
+- Add design discussion for an explicit `system_context` class.
+- Add design discussion about priorities.
 
 ## R2
 - Significant redesign to fit in P2300 model.
