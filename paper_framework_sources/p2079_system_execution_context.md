@@ -15,7 +15,8 @@ toc: false
 ---
 
 # Abtract
-A `system_context` and `system_scheduler` that expose a simple parallel-forward-progress thread pool that may share and expose an underlying system thread pool and is intended to be the basic execution context and scheduler that we recommend to be used in combination with [@P2300].
+A standard execution context based on the facilities in [@P2300] that implements parallel-forward-progress to maximise portability.
+A set of `system_context`s share an underlying shared thread pool implementation, and may provide an interface to an OS-provided system thread pool.
 
 # Changes
 ## R3
