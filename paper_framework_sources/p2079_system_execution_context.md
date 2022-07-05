@@ -181,8 +181,9 @@ public:
 `schedule` on a `system_scheduler` returns some implementation-defined `sender` type.
 
 This sender satisfies the following properties:
-  - Implements the `get_completion_scheduler` query for the value and done channel where it returns a type that is a pair
-    of an object that compares equal to itself, and a representation of delegatee scheduler that may be obtained from
+
+  - Implements the `get_completion_scheduler` query for the value and done channel where it returns a type that is logically
+    a pair of an object that compares equal to itself, and a representation of delegatee scheduler that may be obtained from
     receivers connected with the sender.
   - If connected with a `receiver` that supports the `get_stop_token` query, if that `stop_token` is stopped, operations
     on which `start` has been called, but are not yet running (and are hence not yet guaranteed to make progress) **must**
@@ -203,18 +204,19 @@ We can simplify this discussion to a single function:
 Let's assume we have a single-threaded environment, and a means of customising the `system_context` for this environment.
 We know we need a way to donate `main`'s thread to this context, it is the only thread we have available.
 Assuming that we want a `drive` operation in some form, our choices are to:
- * define our `drive` operation, so that it is standard, and we use it on this system.
- * or allow the customisation to define a custom `drive` operation related to the specific single-threaded environment.
+
+ - define our `drive` operation, so that it is standard, and we use it on this system.
+ - or allow the customisation to define a custom `drive` operation related to the specific single-threaded environment.
 
 With a standard `drive` of this sort (or of the more complex design in [@P2079R2]) we might write an example to use it directly:
-```
+```c++
 system_context ctx;
 auto snd = on(ctx, doWork());
 drive(ctx, std::move(snd));
 ```
 
 Without drive, we rely on an `async_scope` to spawn the work and some system-specific drive operation:
-```
+```c++
 system_context ctx;
 async_scope scope;
 auto snd = on(ctx, doWork());
@@ -250,7 +252,7 @@ The system context aims to allow people to implement an application that is depe
 As long as an application does not rely on concurrency, and restricts itself to only the system context, we should be able to scale from single threaded systems to highly parallel systems.
 
 In the extreme, this might mean porting to an embedded system with a very specific idea of an execution context.
-Such a system might not have a multi-threading support at all, and thus the system context not only need run with single thread, but actually run on the system's only thraed.
+Such a system might not have a multi-threading support at all, and thus the system context not only need run with single thread, but actually run on the system's only thread.
 We might build the context on top of a UI thread, or we might want to swap out the system-provided implementation with one from a vendor like Intel with experience writing optimised threading runtimes.
 
 We need to allow customisation of the system context to cover this full range of cases.
@@ -262,9 +264,10 @@ Other situations may offer a little less control.
 If we wish Intel to be able to replace the system thread pool with TBB, or Adobe to customise the runtime that they use for all of Photoshop to adapt to their needs, we need  a different customisation mechanism.
 
 To achieve this we see options:
- * Link-time replaceability. This could be achieved using weak symbols, or by chosing a runtime library to pull in using build options.
- * Compile-time replacability. This could be achieved by importing different headers, by macro definitions on the command line or various other mechanisms.
- * Run-time replaceability. This could be achieved by subclassing and requiring certain calls to be made early in the process.
+
+ - Link-time replaceability. This could be achieved using weak symbols, or by chosing a runtime library to pull in using build options.
+ - Compile-time replacability. This could be achieved by importing different headers, by macro definitions on the command line or various other mechanisms.
+ - Run-time replaceability. This could be achieved by subclassing and requiring certain calls to be made early in the process.
 
 Link-time replaceability is more predictable, in that it can be guaranteed to be application-global.
 The downside of link-time replaceability is that it requires defining the ABI and thus would require significant type erasure and inefficiency.
@@ -292,9 +295,10 @@ Underneath the `system_context` there is a singleton of some sort, potentially o
 
 The question is how we expose the singleton.
 We have a few obvious options:
- * Explicit context objects, as we've described in R2 and R3 of this paper, where a `system_context` is constructed as any other context might be, and refers to a singleton underneath.
- * A global `get_system_context()` function that obtains a `system_context` object, or a reference to one, representing the singleton explicitly.
- * A global `get_system_scheduler()` function that obtains a scheduler from some singleton system context, but does not explicitly expose the context.
+
+ - Explicit context objects, as we've described in R2 and R3 of this paper, where a `system_context` is constructed as any other context might be, and refers to a singleton underneath.
+ - A global `get_system_context()` function that obtains a `system_context` object, or a reference to one, representing the singleton explicitly.
+ - A global `get_system_scheduler()` function that obtains a scheduler from some singleton system context, but does not explicitly expose the context.
 
 The `get_system_context()` function adds little value unless there are context-specific operations we want to define, or multiple different schedulers we want to obtain.
 The difference between the constructable `system_context` object and the two global functions is a little more fundamental.
@@ -465,9 +469,15 @@ references:
       year: 2022
     URL: https://wg21.link/p2519
   - id: P2300
-    citation-label: P2300R4
+    citation-label: P2300
     title: "std::execution"
     issued:
       year: 2022
-    URL: https://wg21.link/p2300r4
+    URL: https://wg21.link/p2300
+  - id: P0443
+    citation-label: P0443
+    title: "A Unified Executors Proposal for C++"
+    issued:
+      year: 2020
+    URL: https://wg21.link/p0443
 ---
