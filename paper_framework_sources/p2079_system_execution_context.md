@@ -42,11 +42,11 @@ A set of `system_context`s share an underlying shared thread pool implementation
 However, the paper lacks a standard execution context and scheduler.
 It has been broadly accepted that we need some sort of standard scheduler.
 
-As noted in [@P2079R1], an earlier revision of this paper, the earlier `static_thread_pool` had many shortcomings.
+As noted in [@P2079R1], an earlier revision of this paper, the `static_thread_pool` included in later revisions of [@P0443] had many shortcomings.
 This was removed from [@P2300] based on that and other input.
 
 This revision updates [@P2079R1] to match the structure of [@P2300].
-It aims to provide a simple, flexible, standard execution context that should be used as the basis for examples.
+It aims to provide a simple, flexible, standard execution context that should be used as the basis for examples but should also scale for practical use cases.
 It is a minimal design, with few constraints, and as such should be efficient to implement on top of something like a static thread pool, but also on top of system thread pools where fixing the number of threads diverges from efficient implementation goals.
 
 Unlike in earlier verisons of this paper, we do not provide support for waiting on groups of tasks, delegating that to the separate `async_scope` design in [@P2519], because that is not functionality specific to a system context.
@@ -65,11 +65,12 @@ The minimal extensions to basic parallel forward progress are to support fundame
  * Cancellation: work submitted through the parallel context must be cancellable.
  * Forward progress delegation: we must be able to implement a blocking operation that ensures forward progress of a complex parallel algorithm without special cases.
 
-An implementation of `system_context` *should* allow or other compile-time replacement of the implementation such that the context may be replaced with an implementation that compiles and runs in a single-threaded process or that can be replaced with an appropriately configured system thread pool by an end-user. We do not attempt to specify here the mechanism by which this should be implemented.
+An implementation of `system_context` *should* allow link-time or compile-time replacement of the implementation such that the context may be replaced with an implementation that compiles and runs in a single-threaded process or that can be replaced with an appropriately configured system thread pool by an end-user.
+We do not attempt to specify here the mechanism by which this should be implemented.
 
 Early feedback on the paper from Sean Parent suggested a need to allow the system context to carry no threads of its own, and take over the main thread.
 While in [@P2079R2] we proposed `execute_chunk` and `execute_all`, these enforce a particular implementation on the underlying execution context.
-Instead we simplify the proposal by removing this functionality and assume that is implmented by link-time or compile-time replacement of the context.
+Instead we simplify the proposal by removing this functionality and assume that it is implemented by link-time or compile-time replacement of the context.
 We assume that the underlying mechanism to drive the context, should one be necessary, is implementation-defined.
 This allows custom hooks for an OS thread pool, or a simple `drive()` method in main.
 
