@@ -300,19 +300,21 @@ We have a few obvious options:
  - A global `get_system_context()` function that obtains a `system_context` object, or a reference to one, representing the singleton explicitly.
  - A global `get_system_scheduler()` function that obtains a scheduler from some singleton system context, but does not explicitly expose the context.
 
-The `get_system_context()` function adds little value unless there are context-specific operations we want to define, or multiple different schedulers we want to obtain.
-The difference between the constructable `system_context` object and the two global functions is a little more fundamental.
+The `get_system_context()` function returning by value adds little, it's equivalent to direct construction.
+`get_system_context()` returning by reference and `get_system_scheduler()` have a different lifetime semantic from directly constructed `system_context`.
 
-The two global functions suggest a pattern wherein people obtain a scheduler from the `system_context` anywhere, potentially deep in the code.
-This is convenient, but also leads to patterns where the scheduler is hidden and the code is unstructured.
-It also means that the lifetime of the context is the union of the lifetimes of schedulers obtained from it, which likely leads to lazy construction and lazy destruction, with potential inefficiencies if cleanup is too eager, or construction is too late.
-Schedulers in this model also have to hold active references to the context because there is no other way to signal when it is safe to clean up, adding reference counting cost even in release mode builds.
+The main reason for having an explicit by-value context is that we can reason about lifetimes.
+If we only have schedulers, from `get_system_context().get_scheduler()` or from `get_system_scheduler()` then we have to think about how they affect the context lifetime.
+We might want to reference count the context, to ensure it outlives the schedulers, but this adds cost to each scheduler use, and to any downstream sender produced from the scheduler as well that is logically dependent on the scheduler.
+We could alternatively not reference count and assume the context outlives everything in the system, but that leads quickly to shutdown order questions and potential surprises.
 
-The explicit `system_context` object gives clearer structured concurrent and lifetime semantics.
-The common use case will be to construct one in `main` and propagate it through receivers or through coroutines directly, from root to leaf.
-By requiring that the `system_context` object outlive any tasks launched through schedulers obtained from it, some of the lifetime management responsibility is handed to the developer, to the benefit of efficiency in release builds where less reference counting is required.
+By making the context explicit we require users to drain their work before they drain the context.
+In debug builds, at least, we can also add reference counting so that descruction of the context before work completes reports a clear error to ensure that people clean up.
+That is harder to do if the context is destroyed at some point after main completes.
+This lifetime question also applies to construction: we can lazily construct a thread pool before we first use a scheduler to it.
 
-Both solutions are possible, we have opted for an explicit `system_context` objects in R2 and R3 of this paper.
+For this reason, and consistency with other discussions about structured concurrency, we opt for an explicit context object here.
+
 
 ## Priorities
 It's broadly accepted that we need some form of priorities to tweak the behaviour of the system context.
@@ -333,6 +335,7 @@ The other approach, which matches the receiver query approach taken elsewhere in
 This would work at task granularity, for each `schedule()` call that we connect a receiver to we might pass a different priority.
 
 In either case we can add the priority in a separate paper.
+It is thus not urgent that we answer this question, but we include the discussion point to explain why they were removed from the paper.
 
 
 # Examples
