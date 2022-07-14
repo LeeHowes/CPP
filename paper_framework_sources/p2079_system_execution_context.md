@@ -1,7 +1,7 @@
 ---
 title: "System execution context"
 document: P2079R3
-date: 2022-07-11
+date: 2022-07-14
 audience: SG1, LEWG
 author:
   - name: Lee Howes
@@ -92,7 +92,7 @@ public:
   system_context& operator=(system_context&&) = delete;
 
   implementation-defined-system_scheduler get_scheduler();
-  size_t max_concurrency() noexcept;
+  size_t max_concurrency() const noexcept;
 };
 ```
 

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="generator" content="mpark/wg21" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <meta name="dcterms.date" content="2022-07-11" />
+  <meta name="dcterms.date" content="2022-07-14" />
   <title>System execution context</title>
   <style>
       code{white-space: pre-wrap;}
@@ -427,7 +427,7 @@ code.sourceCode > span { display: inline; }
   </tr>
   <tr>
     <td>Date:</td>
-    <td>2022-07-11</td>
+    <td>2022-07-14</td>
   </tr>
   <tr>
     <td style="vertical-align:top">Project:</td>
@@ -502,7 +502,7 @@ code.sourceCode > span { display: inline; }
 <span id="cb1-9"><a href="#cb1-9"></a>  system_context<span class="op">&amp;</span> <span class="kw">operator</span><span class="op">=(</span>system_context<span class="op">&amp;&amp;)</span> <span class="op">=</span> <span class="kw">delete</span>;</span>
 <span id="cb1-10"><a href="#cb1-10"></a></span>
 <span id="cb1-11"><a href="#cb1-11"></a>  implementation<span class="op">-</span>defined<span class="op">-</span>system_scheduler get_scheduler<span class="op">()</span>;</span>
-<span id="cb1-12"><a href="#cb1-12"></a>  <span class="dt">size_t</span> max_concurrency<span class="op">()</span> <span class="kw">noexcept</span>;</span>
+<span id="cb1-12"><a href="#cb1-12"></a>  <span class="dt">size_t</span> max_concurrency<span class="op">()</span> <span class="kw">const</span> <span class="kw">noexcept</span>;</span>
 <span id="cb1-13"><a href="#cb1-13"></a><span class="op">}</span>;</span></code></pre></div>
 <ul>
 <li>On construction, the <code class="sourceCode default">system_context</code> may initialize a shared system context, if it has not been previously initialized.</li>
