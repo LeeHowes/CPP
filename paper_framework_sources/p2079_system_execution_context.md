@@ -1,7 +1,7 @@
 ---
 title: "System execution context"
-document: P2079R3
-date: 2022-07-14
+document: P2079R4
+date: 2024-03-17
 audience: SG1, LEWG
 author:
   - name: Lee Howes
@@ -14,11 +14,14 @@ author:
 toc: false
 ---
 
-# Abtract
+# Abstract
 A standard execution context based on the facilities in [@P2300] that implements parallel-forward-progress to maximise portability.
 A set of `system_context`s share an underlying shared thread pool implementation, and may provide an interface to an OS-provided system thread pool.
 
 # Changes
+## R4
+TODO
+
 ## R3
 - Remove `execute_all` and `execute_chunk`. Replace with compile-time customization and a design discussion.
 - Add design discussion about the approach we should take for customization and the extent to which the context should be implementation-defined.
@@ -42,14 +45,20 @@ A set of `system_context`s share an underlying shared thread pool implementation
 However, the paper lacks a standard execution context and scheduler.
 It has been broadly accepted that we need some sort of standard scheduler.
 
+As part of [@P3109], `system_context` was voted as a must-have for the initial release of senders/receivers.
+It provides a convenient and scalable way of spawning concurrent work for the users of senders/receivers.
+
 As noted in [@P2079R1], an earlier revision of this paper, the `static_thread_pool` included in later revisions of [@P0443] had many shortcomings.
 This was removed from [@P2300] based on that and other input.
+
+One of the biggest problems with local thread pools is that they lead to thread oversubscription.
+This introduces a performance problem for complex systems that are composed from many independent parts.
 
 This revision updates [@P2079R1] to match the structure of [@P2300].
 It aims to provide a simple, flexible, standard execution context that should be used as the basis for examples but should also scale for practical use cases.
 It is a minimal design, with few constraints, and as such should be efficient to implement on top of something like a static thread pool, but also on top of system thread pools where fixing the number of threads diverges from efficient implementation goals.
 
-Unlike in earlier verisons of this paper, we do not provide support for waiting on groups of tasks, delegating that to the separate `async_scope` design in [@P2519], because that is not functionality specific to a system context.
+Unlike in earlier versions of this paper, we do not provide support for waiting on groups of tasks, delegating that to the separate `async_scope` design in [@P2519], because that is not functionality specific to a system context.
 Lifetime management in general should be considered delegated to `async_scope`.
 
 The system context is of undefined size, supporting explicitly *parallel forward progress*.
@@ -68,11 +77,12 @@ The minimal extensions to basic parallel forward progress are to support fundame
 An implementation of `system_context` *should* allow link-time or compile-time replacement of the implementation such that the context may be replaced with an implementation that compiles and runs in a single-threaded process or that can be replaced with an appropriately configured system thread pool by an end-user.
 We do not attempt to specify here the mechanism by which this should be implemented.
 
-Early feedback on the paper from Sean Parent suggested a need to allow the system context to carry no threads of its own, and take over the main thread.
-While in [@P2079R2] we proposed `execute_chunk` and `execute_all`, these enforce a particular implementation on the underlying execution context.
-Instead we simplify the proposal by removing this functionality and assume that it is implemented by link-time or compile-time replacement of the context.
-We assume that the underlying mechanism to drive the context, should one be necessary, is implementation-defined.
-This allows custom hooks for an OS thread pool, or a simple `drive()` method in main.
+Some key concerns of this design are:
+* Extensibility: being able to extend the design to work with new additions to the senders/receivers framework.
+* Replaceability: allowing users to replace the default behavior provided by `system_context`.
+* Shareability: being able to share this system context across all binaries in the same process.
+* Lifetime: as `system_context` is a global resource, we need to pay attention to the lifetime of this resource.
+* Performance: as we envision this to be used in many cases to spawn concurrent work, performance considerations are important.
 
 # Design
 ## system_context
@@ -104,6 +114,7 @@ public:
    If there is outstanding work at the point of destruction, `std::terminate` will be called.
  - The `system_context` must outlive schedulers obtained from it.
    If there are outstanding schedulers at destruction time, this is undefined behavior.
+ - The lifetime of a `system_context` must end prior to the end of `main()`.
  - `get_scheduler` returns a `system_scheduler` instance that holds a reference to the `system_context`.
  - `max_concurrency` will return a value representing the maximum number of threads the context may support.
    This is not a snapshot of the current number of threads, and may return `numeric_limits<size_t>::max`.
@@ -247,7 +258,7 @@ The authors recommendation here is that we allow `drive` to be unspecified in th
 However, this is a question we should answer.
 
 
-## Making system_context implementation-defined
+## Making system_context implementation-defined and replaceability
 The system context aims to allow people to implement an application that is dependent only on parallel forward progress and to port it to a wide range of systems.
 As long as an application does not rely on concurrency, and restricts itself to only the system context, we should be able to scale from single threaded systems to highly parallel systems.
 
@@ -288,6 +299,48 @@ It would rely on an agreement between the system vendor and the runtime vendor.
 The authors do not have a recommendation, only a wish to see customisation available.
 We should decide how best to achieve it within the standard.
 Assuming we delegate customisation to the platform implementor, what wording would be appropriate for the specification, if any?
+
+
+## Extensibility
+
+The `std::execution` framework is expected to grow over time.
+We may need to add time-based scheduling, async I/O, priority-based scheduling, etc.
+The `system_context` framework needs to be designed in such a way that it allows for extensibility.
+
+Whatever the replaceability mechanism is, we need to ensure that new features can be added to the system context in a backwards-compatible manner.
+
+As the authors recommend an implementation-defined approach, the exact mechanism to allow for extensibility cannot be detailed here.
+
+
+## Shareability
+
+One of the motivations of this paper is to stop the proliferation of local thread pools, which can lead to thread oversubscription.
+If multiple binaries are used in the same process, we don't want each binary to have its own implementation of system context.
+Instead, we would want to share the same underlying implementation.
+
+The recommendation of this paper is to leave the details of shareability to be implementation-defined.
+
+## Performance
+
+As discussed above, one possible approach to the system context is to implement link-time replaceability.
+This implies moving across binary boundaries, over some defined API (which should be extensible).
+A common approach for this is to have COM-like objects.
+However, the problem with that approach is that it requires memory allocation, and memory allocation is a costly operation.
+This becomes problematic if we aim to encourage programmers to use the system context for spawning work in a concurrent system.
+
+While there are some costs associated with implementing all the goals stated here, we want the implementation of the system context to be as efficient as possible.
+For example, a good implementation should avoid memory allocation for the common case in which the default implementation is utilized for a platform.
+
+This paper cannot recommend the specific implementation techniques that should be used to maximize performance; these are considered Quality of Implementation (QOI) details.
+
+
+## Lifetime
+
+Underneath the `system_context`, there is a singleton of some sort. We need to specify the lifetime of this object and everything that derives from it.
+
+It makes sense to mandate that the lifetime of `system_context` underlying object should encompass the lifetime of `main()`.
+Using the `system_context` objects after the end of `main()` constitutes undefined behavior.
+
 
 ## Need for the system_context class
 Our goal is to expose a global shared context to avoid oversubscription of threads in the system and to efficiently share a system thread pool.
@@ -336,6 +389,61 @@ This would work at task granularity, for each `schedule()` call that we connect 
 
 In either case we can add the priority in a separate paper.
 It is thus not urgent that we answer this question, but we include the discussion point to explain why they were removed from the paper.
+
+## Reference implementation
+
+The authors prepared a reference implementation in [`stdexec`](https://github.com/NVIDIA/stdexec).
+
+A few key points of the implementation:
+* The implementation is divided into two parts: "host" and "backend". The host part implements the API defined in this paper and calls the backend for the actual implementation. The backend provides the actual implementation of the system context.
+* Allows link-time replaceability for `system_scheduler` (link time). Provides examples on doing this.
+* Defines a simple C API between the host and backend parts. This way, one can easily extend this interface when new features need to be added to `system_context`.
+* Uses preallocated storage on the host side, so that the default implementation doesn't need to allocate memory on the heap when adding new work to `system_scheduler`.
+* Guarantees a lifetime of at least the duration of `main()`.
+* As the default implementation is created outside of the host part, it can be shared between multiple binaries in the same process.
+* IN PROGRESS: Provides an example on implementing the `drive()` behavior by replacing the default implementation.
+* TODO: Use OS scheduler for implementation.
+
+## Addressing received feedback
+
+### Allow for system context to borrow threads
+Early feedback on the paper from Sean Parent suggested a need for the system context to carry no threads of its own and to take over the main thread.
+While in [@P2079R2] we proposed `execute_chunk` and `execute_all`, these enforce a particular implementation on the underlying execution context.
+Instead, we simplify the proposal by removing this functionality and assuming that it is implemented by link-time or compile-time replacement of the context.
+We assume that the underlying mechanism to drive the context, should one be necessary, is implementation-defined.
+This allows for custom hooks into an OS thread pool, or a simple `drive()` method in main.
+
+### Allow implementations to use Grand Central Dispatch and Windows Thread Pool
+
+In the current form of the paper, we allow implementations to define the best choice for implementing the system context for a particular system.
+This includes using Grand Central Dispatch on Apple platforms and Windows Thread Pool on Windows.
+
+In addition, we encourage implementations to allow the replaceability of the system context implementation.
+This means that users should be allowed to write their own system context implementations that depend on OS facilities.
+
+### Priorities and elastic pools
+
+Feedback from Sean Parent:
+> There is so much in that proposal that is not specified. What requirements are placed on the system scheduler? Most system schedulers support priorities and are elastic (i.e., blocking in the system thread pool will spin up additional threads to some limit).
+
+The lack of details in the specification is intentional, allowing implementers to make the best compromises for each platform.
+As different platforms have different needs, constraints, and optimization goals, the authors believe that it is in the best interest of the users to leave some of these details as Quality of Implementation (QOI) details.
+
+
+
+# Questions to ask LEWG
+
+## Do we want to standardize the "replaceability" aspect of `system_context` (as opposed to leaving this to be implementation defined)?
+
+Proposed answer: NO.
+We want to allow vendors the flexibility of choosing the best implementation.
+At the same time, the authors of this paper are willing to contribute to creating an informal basis for implementing replaceability in a common way among major vendors.
+
+## Do we want to add explicit support for `drive()` functionality in `system_context` (as opposed to letting this be implementation-defined)?
+
+Proposed answer: NO.
+We would prefer this to be implementation-defined.
+For most platforms, a `drive()` functionality doesn't make sense.
 
 
 # Examples
@@ -483,4 +591,10 @@ references:
     issued:
       year: 2020
     URL: https://wg21.link/p0443
+  - id: P3109
+    citation-label: P3109
+    title: "A plan for std::execution for C++26"
+    issued:
+      year: 2024
+    URL: https://wg21.link/P3109
 ---
