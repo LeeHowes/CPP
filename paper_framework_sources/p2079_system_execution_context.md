@@ -154,7 +154,7 @@ public:
 
  - `system_scheduler` is not independely constructable, and must be obtained from a `system_context`.
    It is both move and copy constructable and assignable.
- - Two `system_scheduler`s compare equal if they share the same underlying `system_context`.
+ - Two `system_scheduler`s compare equal if they share the same underlying implementation of `system_context` (e.g., they can compare equal, even if they were generated from two different `system_context` objects).
  - A `system_scheduler` has reference semantics with respect to its `system_context`.
    Calling any operation other than the destructor on a `system_scheduler` after the `system_context` it was created from is destroyed is undefined behavior, and that operation may access freed memory.
  - The `system_scheduler`:
