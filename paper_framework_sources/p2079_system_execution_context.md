@@ -258,7 +258,7 @@ The authors recommendation here is that we allow `drive` to be unspecified in th
 However, this is a question we should answer.
 
 
-## Making system_context implementation-defined and replaceability
+## Making system_context implementation-defined and replaceable
 The system context aims to allow people to implement an application that is dependent only on parallel forward progress and to port it to a wide range of systems.
 As long as an application does not rely on concurrency, and restricts itself to only the system context, we should be able to scale from single threaded systems to highly parallel systems.
 
@@ -304,7 +304,7 @@ Assuming we delegate customisation to the platform implementor, what wording wou
 ## Extensibility
 
 The `std::execution` framework is expected to grow over time.
-We may need to add time-based scheduling, async I/O, priority-based scheduling, etc.
+We expect to add time-based scheduling, async I/O, priority-based scheduling, and other for now unforeseen functionality.
 The `system_context` framework needs to be designed in such a way that it allows for extensibility.
 
 Whatever the replaceability mechanism is, we need to ensure that new features can be added to the system context in a backwards-compatible manner.
@@ -407,7 +407,7 @@ A few key points of the implementation:
 ## Addressing received feedback
 
 ### Allow for system context to borrow threads
-Early feedback on the paper from Sean Parent suggested a need for the system context to carry no threads of its own and to take over the main thread.
+Early feedback on the paper from Sean Parent suggested a need for the system context to support a configuration where it carries no threads of its own and takes over the main thread.
 While in [@P2079R2] we proposed `execute_chunk` and `execute_all`, these enforce a particular implementation on the underlying execution context.
 Instead, we simplify the proposal by removing this functionality and assuming that it is implemented by link-time or compile-time replacement of the context.
 We assume that the underlying mechanism to drive the context, should one be necessary, is implementation-defined.
