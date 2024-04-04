@@ -54,7 +54,7 @@ It provides a convenient and scalable way of spawning concurrent work for the us
 As noted in [@P2079R1], an earlier revision of this paper, the `static_thread_pool` included in later revisions of [@P0443] had many shortcomings.
 This was removed from [@P2300] based on that and other input.
 
-One of the biggest problems with local thread pools is that they lead to thread oversubscription.
+One of the biggest problems with local thread pools is that they lead to CPU oversubscription.
 This introduces a performance problem for complex systems that are composed from many independent parts.
 
 This revision updates [@P2079R1] to match the structure of [@P2300].
@@ -240,7 +240,7 @@ scope.spawn(std::move(snd));
 custom_drive_operation(ctx);
 ```
 
-Neither of the two variants are very portable.
+Neither of the two variants is very portable.
 The first variant requires applications that don't care about drive-ability to call `drive`, while the second variant requires custom pluming to tie the main thread with the system scheduler.
 
 We do not wish to solve this problem in this paper.
@@ -248,7 +248,7 @@ We envision a new paper that adds support for a *main scheduler* similar to the 
 The main scheduler, for hosted implementations would be typically different than the system scheduler.
 On the other hand, on freestanding implementations, the main scheduler and system scheduler can share the same underlying implementation, and both of them can execute work on the main thread; in this mode, the main scheduler is required to be driven, so that system scheduler can execute work.
 
-We do have people volunteering to work on the main scheduler paper, but keeping the two papers separately increases the chances of making progress in this area.
+Keeping those two topic as separate papers allows to make progress independently.
 
 ## Freestanding implementations
 
@@ -340,7 +340,7 @@ The authors would like to obtain feedback from the implementers before advancing
 
 ## Shareability
 
-One of the motivations of this paper is to stop the proliferation of local thread pools, which can lead to thread oversubscription.
+One of the motivations of this paper is to stop the proliferation of local thread pools, which can lead to CPU oversubscription.
 If multiple binaries are used in the same process, we don't want each binary to have its own implementation of system context.
 Instead, we would want to share the same underlying implementation.
 
@@ -351,7 +351,7 @@ The recommendation of this paper is to leave the details of shareability to be i
 As discussed above, one possible approach to the system context is to implement link-time replaceability.
 This implies moving across binary boundaries, over some defined API (which should be extensible).
 A common approach for this is to have COM-like objects.
-However, the problem with that approach is that it requires memory allocation, and memory allocation is a costly operation.
+However, the problem with that approach is that it requires memory allocation, which might be a costly operation.
 This becomes problematic if we aim to encourage programmers to use the system context for spawning work in a concurrent system.
 
 While there are some costs associated with implementing all the goals stated here, we want the implementation of the system context to be as efficient as possible.
@@ -366,7 +366,7 @@ Underneath the `system_context`, there is a singleton of some sort. We need to s
 
 The paper mandates that the lifetime of any `system_context` to fully be contained the lifetime of `main()`.
 
-During the design of this paper the authors considered a more relaxed model: allow the `system_context` to be created before `main()` (as part of static initialization), but still mandate that all access to cease before the end of `main()`; this model is somehow similar to the Intel TBB model. While the relaxed model can prove sometime useful, we considered it to be a dangerous path, for the following reasons:
+During the design of this paper the authors considered a more relaxed model: allow the `system_context` to be created before `main()` (as part of static initialization), but still mandate that all access to cease before the end of `main()`; this model is somehow similar to the Intel Threading building blocks (oneTBB) model. While the relaxed model can prove sometime useful, we considered it to be a dangerous path, for the following reasons:
 * The scope of `system_context` should be deterministic with respect to global static objects and main; this allows people to reason about the application.
 * We want to guarantee the access to static objects to all the work spawned on `system_context`.
 * A global static constructor may add work on the `system_context`, thus, it may block on the completion of that work anytime until destruction; this would imply possibly blocking the termination of the program, after `main()` is complete.
@@ -453,7 +453,7 @@ As we discussed previously, we want to have a second paper taking care of the dr
 In the current form of the paper, we allow implementations to define the best choice for implementing the system context for a particular system.
 This includes using Grand Central Dispatch on Apple platforms and Windows Thread Pool on Windows.
 
-In addition, we encourage implementations to allow the replaceability of the system context implementation.
+In addition, we propose implementations to allow the replaceability of the system context implementation.
 This means that users should be allowed to write their own system context implementations that depend on OS facilities.
 
 ### Priorities and elastic pools
