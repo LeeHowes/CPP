@@ -61,7 +61,7 @@ This revision updates [@P2079R1] to match the structure of [@P2300].
 It aims to provide a simple, flexible, standard execution context that should be used as the basis for examples but should also scale for practical use cases.
 It is a minimal design, with few constraints, and as such should be efficient to implement on top of something like a static thread pool, but also on top of system thread pools where fixing the number of threads diverges from efficient implementation goals.
 
-Unlike in earlier versions of this paper, we do not provide support for waiting on groups of tasks, delegating that to the separate `async_scope` design in [@P2519], because that is not functionality specific to a system context.
+Unlike in earlier versions of this paper, we do not provide support for waiting on groups of tasks, delegating that to the separate `async_scope` design in [@P3149], because that is not functionality specific to a system context.
 Lifetime management in general should be considered delegated to `async_scope`.
 
 The system context is of undefined size, supporting explicitly *parallel forward progress*.
@@ -89,7 +89,7 @@ Some key concerns of this design are:
 # Design
 ## system_context
 
-The `system_context` creates a view on some underlying execution context supporting *parallel forward progress*, with at least one thread.
+The `system_context` creates a view on some underlying execution context supporting *parallel forward progress*, with at least one thread of execution (which may be the main thread).
 A `system_context` must outlive any work launched on it.
 
 ```cpp
@@ -243,7 +243,6 @@ custom_drive_operation(ctx);
 Neither of the two variants is very portable.
 The first variant requires applications that don't care about drive-ability to call `drive`, while the second variant requires custom pluming to tie the main thread with the system scheduler.
 
-We do not wish to solve this problem in this paper.
 We envision a new paper that adds support for a *main scheduler* similar to the *system scheduler*.
 The main scheduler, for hosted implementations would be typically different than the system scheduler.
 On the other hand, on freestanding implementations, the main scheduler and system scheduler can share the same underlying implementation, and both of them can execute work on the main thread; in this mode, the main scheduler is required to be driven, so that system scheduler can execute work.
@@ -254,7 +253,6 @@ Keeping those two topic as separate papers allows to make progress independently
 
 This paper payed attention to freestanding implementations, but doesn't make any wording proposals for them.
 We express a strong desire for the system scheduler to work on freestanding implementations, but leave the details to a different paper.
-In this paper, we keep the details of system context to be implementation-defined, allowing it to be better specified later.
 
 We envision that, a followup specification will ensure that the system scheduler will work in freestanding implementations by sharing the implementation with the main scheduler, which is driven by the main thread.
 
@@ -483,9 +481,20 @@ Do we want link-time replaceability or run-time replaceability?
 
 ## Do we want to standardize an ABI for system scheduler (as opposed to leaving this to be implementation defined)?
 
-Proposed answer: NO.
-We want to allow vendors the flexibility of choosing the best implementation.
-At the same time, the authors of this paper are willing to contribute to creating an informal basis for implementing replaceability in a common way among major vendors.
+Proposed answer: YES.
+
+To allow users to easily change on the scheduler, they need to know how to replace the system scheduler backend.
+The best way to do that is if we standardize the interface that the system scheduler has.
+
+Tradeoffs:
+* Pro: allow users to replace the default implementation.
+* Pro: allow users to react faster to new technologies (without needing to wait for a new C++ release cycle).
+  * I.e., similar to adopting io_uring, which got heavy adoption in a short amount of time
+* Pro: increased portability
+* Con: slightly larger interface needed to be standardized, and this is not something common for the C++ standard.
+* Con: May allow vendors less freedom on implementing best interfaces for the targeted platforms.
+* Con: May decrease the consensus of the paper.
+
 
 ## Do we want to allow system scheduler to be used before start of `main()` ?
 
@@ -620,12 +629,12 @@ std::cout << "Result: " << result << "\n";
 
 ---
 references:
-  - id: P2519
-    citation-label: P2519R0
+  - id: P3149
+    citation-label: P3149R2
     title: "async_scope - Creating scopes for non-sequential concurrency"
     issued:
       year: 2022
-    URL: https://wg21.link/p2519
+    URL: https://wg21.link/P3149
   - id: P2300
     citation-label: P2300
     title: "std::execution"
