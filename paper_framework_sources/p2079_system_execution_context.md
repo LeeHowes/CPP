@@ -493,7 +493,6 @@ Tradeoffs:
 * Pro: increased portability
 * Con: slightly larger interface needed to be standardized, and this is not something common for the C++ standard.
 * Con: May allow vendors less freedom on implementing best interfaces for the targeted platforms.
-* Con: May decrease the consensus of the paper.
 
 
 ## Do we want to allow system scheduler to be used before start of `main()` ?
