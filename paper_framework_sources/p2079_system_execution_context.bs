@@ -22,6 +22,9 @@ Markup Shorthands: markdown yes
 
 ## R4 ## {#r4}
 - Add more design considerations & goals.
+- Add comparison of different replaceability options
+- Add motivation for replaceabiilty ABI standardization
+- Add the example of the ABI for replacement
 - Strengthen the lifetime guarantees.
 
 ## R3 ## {#r3}
@@ -315,6 +318,56 @@ oversubscription.
 We want to obtain feedback from different groups before moving forward with either link-time or run-time replaceability
 design.
 
+### Link-time replaceability is not perfect ### {#bad_link_time_replaceability_examples}
+
+The reason we want to also consider the run-time replaceability is because there are some examples (from the practical
+standpoint) where link-time replaceability might lead to unexpected results or does not work as expected. All the analysis
+is done based on the `operator new/operator delete` since it the good example in the C++ standard that has link-time
+replaceability.
+
+#### Example on Linux #### {#example_on_linux}
+
+Let's consider Linux and its toolchain (GCC, for instance).
+
+Imagine that we have two implementations of the ABI mentioned in [[#system_scheduler_abi]] in some `.so`. Let's say one is
+`libsystem_scheduler_tbb.so` and another one is `libsystem_scheduler_openmp.so`. The problem is whichever library goes first
+in the command line, it would be a system scheduler to use while the other one silently ignored.
+
+Please compare two different examples below:
+
+```
+g++ my_app.cpp -lsystem_scheduler_tbb -lsystem_scheduler_openmp // TBB scheduler is going to be used
+```
+vs
+
+```
+g++ my_app.cpp -lsystem_scheduler_openmp -lsystem_scheduler_tbb // OpenMP scheduler is going to be used
+```
+
+which might be unexpected by for the users.
+
+Of course, in the example above with the simple command line everything might look more or less clear but if someone has
+the complex build system debugging such an issue might be because the possible scenario is that the correctness is not
+affected, only performance is.
+
+#### Example on Windows #### {#example_on_windows}
+
+On Windows the situation is even worse.
+
+Imagine that you have the application and a DLL that implements the ABI from [[#system_scheduler_abi]]. The problem is
+when you link that very DLL with the application the symbols remain within the DLL and they do not replace the system
+scheduler default implementation, which is even more unobvious for the users.
+
+#### Conclusion #### {#replaceability_conclusion}
+
+While run-time replaceability has some drawbacks, it lacks the issues described above. When one would change system scheduler
+with run-time replacement mechanism (if it will be the case), it would work predictably on the different operating systems,
+similar to `set_terminate` API.
+
+One of the potential mitigations of run-time replaceability issues (such as data races) is that we could say that <em>"the
+`system_scheduler` cannot be replaced more than once and must replaced by the application in `main`"</em> or
+something similar. It not a formal wording, of course; it's an example to give some ruminations.
+
 ## Extensibility ## {#extensibility}
 
 The `std::execution` framework is expected to grow over time.
@@ -346,7 +399,65 @@ While standardizing the ABI is going to be challenging, the authors believe that
 because it creates the portable way of substituting `system_scheduler` for every C++ standard library implementation and for
 all OS, supporting modern C++ (Linux, Windows, etc.).
 
-The authors would like to obtain feedback from the implementers before advancing a proposal for standardizing the ABI.
+Below you can see how the ABI might look like:
+
+```cpp
+struct exec_system_scheduler_interface {
+  /// The forward progress guarantee of the scheduler.
+  ///
+  /// 0 == concurrent, 1 == parallel, 2 == weakly_parallel
+  uint32_t forward_progress_guarantee;
+
+  /// The size of the operation state object on the implementation side.
+  uint32_t schedule_operation_size;
+  /// The alignment of the operation state object on the implementation side.
+  uint32_t schedule_operation_alignment;
+
+  /// Schedules new work on the system scheduler, calling `cb` with `data` when the work can start.
+  /// Returns an object that should be passed to destruct_schedule_operation when the operation completes.
+  void* (*schedule)(
+    struct exec_system_scheduler_interface* /*self*/,
+    void* /*preallocated*/,
+    uint32_t /*psize*/,
+    exec_system_context_completion_callback_t /*cb*/,
+    void* /*data*/);
+
+  /// Destructs the operation state object.
+  void (*destruct_schedule_operation)(
+    struct exec_system_scheduler_interface* /*self*/,
+    void* /*operation*/);
+
+  /// The size of the operation state object on the implementation side.
+  uint32_t bulk_schedule_operation_size;
+  /// The alignment of the operation state object on the implementation side.
+  uint32_t bulk_schedule_operation_alignment;
+
+  /// Schedules new bulk work of size `size` on the system scheduler, calling `cb_item` with `data`
+  /// for indices in [0, `size`), and calling `cb` on general completion.
+  /// Returns the operation state object that should be passed to destruct_bulk_schedule_operation.
+  void* (*bulk_schedule)(
+    struct exec_system_scheduler_interface* /*self*/,
+    void* /*preallocated*/,
+    uint32_t /*psize*/,
+    exec_system_context_completion_callback_t /*cb*/,
+    exec_system_context_bulk_item_callback_t /*cb_item*/,
+    void* /*data*/,
+    long /*size*/);
+
+  /// Destructs the operation state object for a bulk_schedule.
+  void (*destruct_bulk_schedule_operation)(
+    struct exec_system_scheduler_interface* /*self*/,
+    void* /*operation*/);
+};
+```
+
+This is just an example that is used in the current reference implementation. In principle, it can be C ABI, virtual
+functions, whatever we agree on.
+
+The implementation of the ABI above can be found in [stdexec](https://github.com/NVIDIA/stdexec) repository.
+
+The authors would like to obtain feedback from the C++ standard library implementers before advancing a proposal for
+standardizing the ABI.
 
 ## Shareability ## {#shareability}
 
@@ -440,7 +551,7 @@ The authors prepared a reference implementation in [stdexec](https://github.com/
 
 A few key points of the implementation:
 * The implementation is divided into two parts: "host" and "backend". The host part implements the API defined in this paper and calls the backend for the actual implementation. The backend provides the actual implementation of the system context.
-* Allows link-time replaceability for `system_scheduler` (link time). Provides examples on doing this.
+* Allows link-time replaceability for `system_scheduler`. Provides examples on doing this.
 * Defines a simple C API between the host and backend parts. This way, one can easily extend this interface when new features need to be added to `system_context`.
 * Uses preallocated storage on the host side, so that the default implementation doesn't need to allocate memory on the heap when adding new work to `system_scheduler`.
 * Guarantees a lifetime of at least the duration of `main()`.
