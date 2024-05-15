@@ -305,6 +305,7 @@ Run-time replaceability has the following characteristics:
 * Con: race conditions between replacing the system scheduler and using it to spawn work.
 * Con: implies going over an ABI, and cannot be optimized at link-time.
 * Con: different implementation may allocate resources for the system scheduler at startup, and then, at the start of main, the implementation is replaced (this is mainly a QOI issue).
+* Con: requires strict lifetime and ownership control to be safe, and for the user to do the right thing explicitly.
 
 Compile-time replaceability has the following characteristics:
 * Pro: users can do this with a type-def that can be used everywhere and switched.
