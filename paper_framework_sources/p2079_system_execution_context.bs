@@ -312,8 +312,7 @@ namespace std::system_context_replaceability {
     virtual void set_stopped() noexcept = 0;
   };
 
-  struct bulk_item_receiver {
-    virtual ~bulk_item_receiver() = default;
+  struct bulk_item_receiver : receiver {
     virtual void start(uint32_t) noexcept = 0;
   };
 
@@ -326,7 +325,7 @@ namespace std::system_context_replaceability {
     virtual ~system_scheduler() = default;
 
     virtual void schedule(storage, receiver*) noexcept = 0;
-    virtual void bulk_schedule(uint32_t, storage, receiver*, bulk_item_receiver*) noexcept = 0;
+    virtual void bulk_schedule(uint32_t, storage, bulk_item_receiver*) noexcept = 0;
   };
 }
 
@@ -352,7 +351,7 @@ namespace std::system_context_replaceability {
       - the `storage` object `st` represents a memory region that starts at `st.data` and has `st.size` bytes.
         - the storage represented by `st` must be valid until the `receiver` object `r` is signaled.
         - the implementation may use the storage represented by `st` to store data needed for the scheduling operation.
-    - if `sch.bulk_schedule()` is called passing `n` of type `uint32_T`, `st` of type `storage`, `r` of type `receiver*`, and `bir` of type `bulk_item_receiver*`, then:
+    - if `sch.bulk_schedule()` is called passing `n` of type `uint32_T`, `st` of type `storage`, `r` of type  `bulk_item_receiver*`, then:
       - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
         - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
         - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
@@ -361,12 +360,12 @@ namespace std::system_context_replaceability {
       - the `storage` object `st` represents a memory region that starts at `st.data` and has `st.size` bytes.
         - the storage represented by `st` must be valid until the `receiver` object `r` is signaled.
         - the implementation may use the storage represented by `st` to store data needed for the scheduling operation.
-      - if `set_value` is called on `r`, then `start` must be called on `bir` `n` times, where `n` is the value passed to `bulk_schedule`.
-        - the `start` method is called on `bir` to signal the start of the work for the `i`-th item in the bulk operation, where `i` is in the range `[0, n)`.
+      - if `set_value` is called on `r`, then `start` must be called on `r` `n` times, where `n` is the value passed to `bulk_schedule`.
+        - the `start` method is called on `r` to signal the start of the work for the `i`-th item in the bulk operation, where `i` is in the range `[0, n)`.
         - the `start` method must be called on a thread belonging to the system execution context.
         - the `start` method must be called before any methods on `r` is called.
-      - if in the process of calling `start` on `bir`, the implementation detects that the work cannot be started, then `set_error` must be called on `r` to signal the error; in this case `bir` may not get all the expected `n` calls to `start`.
-      - if in the process of calling `start` on `bir`, the scheduling process is cancelled, then `set_stopped` must be called on `r` to signal the cancellation; in this case `bir` may not get all the expected `n` calls to `start`.
+      - if in the process of calling `start` on `r`, the implementation detects that the work cannot be started, then `set_error` must be called on `r` to signal the error; in this case `r` may not get all the expected `n` calls to `start`.
+      - if in the process of calling `start` on `r`, the scheduling process is cancelled, then `set_stopped` must be called on `r` to signal the cancellation; in this case `r` may not get all the expected `n` calls to `start`.
 
 
 
@@ -490,10 +489,10 @@ Moreover, for systems for which replaceability is supported they would prefer to
 The authors disagree with the idea that replaceability is not needed for Windows platforms (or other platforms that provide an OS scheduler).
 The OS sheduler is optimized for certain workloads, and it's not the best choice for all workloads.
 This way not providing replaceability options have the following drawbacks:
-* it limits the composability of the system context with other parallel runtimes;
 * it limits the ability to hand-tune the performance of the application (when system scheduler is used);
 * it limits the system_scheduler ability to be used in for CPU-intensive workloads;
-* it limits the system_scheduler ability to be used for platforms with accelerators.
+* it limits the system_scheduler ability to be used for platforms with accelerators;
+* it limits the composability of the system context with other parallel runtimes (while avoiding oversubscription).
 
 For this reasons, the authors encourage all platforms to support replaceability of the system context.
 
