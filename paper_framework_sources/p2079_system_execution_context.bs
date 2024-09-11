@@ -230,19 +230,19 @@ std::cout << "Result: " << result << "\n";
 ## User-facing API ## {#user_facing_api}
 
 <pre highlight="c++">
-<i>impl-defined-system_scheduler</i> get_system_scheduler();
+system_scheduler get_system_scheduler();
 
-class <i>impl-defined-system_scheduler</i> { // exposition only
+class system_scheduler { // exposition only
 public:
-  <i>impl-defined-system_scheduler</i>() = delete;
-  ~<i>impl-defined-system_scheduler</i>();
+  system_scheduler() = delete;
+  ~system_scheduler();
 
-  <i>impl-defined-system_scheduler</i>(const <i>impl-defined-system_scheduler</i>&);
-  <i>impl-defined-system_scheduler</i>(<i>impl-defined-system_scheduler</i>&&);
-  <i>impl-defined-system_scheduler</i>& operator=(const <i>impl-defined-system_scheduler</i>&);
-  <i>impl-defined-system_scheduler</i>& operator=(<i>impl-defined-system_scheduler</i>&&);
+  system_scheduler(const system_scheduler&);
+  system_scheduler(system_scheduler&&);
+  system_scheduler& operator=(const system_scheduler&);
+  system_scheduler& operator=(system_scheduler&&);
 
-  bool operator==(const <i>impl-defined-system_scheduler</i>&) const noexcept;
+  bool operator==(const system_scheduler&) const noexcept;
 
   forward_progress_guarantee query(get_forward_progress_guarantee_t) const noexcept;
   
