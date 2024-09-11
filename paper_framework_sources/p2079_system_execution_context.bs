@@ -297,8 +297,11 @@ public:
 
 ## API for implementing custom system contexts ## {#api_custom_system_contexts}
 
-The following API is useful for implementing custom system contexts.
+Implementations may support replaceability of system scheduler; it's implementation-defined whether the system scheduler is replaceable or not.
+If an implementation supports replaceability, the following API should be used.
+The way that the following interfaces are used to replace the system scheduler is implementation-defined.
 If the implementation of the system context does not support replaceability, the following API is not needed.
+
 
 <pre highlight="c++">
 namespace std::system_context_replaceability {
