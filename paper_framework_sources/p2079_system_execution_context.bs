@@ -26,6 +26,7 @@ Markup Shorthands: markdown yes
 - replace the use of `system_context` class with direct calls to `get_system_scheduler()`
 - update user-facing API
 - define API for implementing custom system contexts
+- relax again the lifetime guarantees, to allow using system scheduler outside of `main()`
 
 ## R4 ## {#r4}
 - Add more design considerations & goals.
@@ -75,7 +76,7 @@ This can create several problems:
 * other performance problems
 * etc.
 
-To solve these problems we propse a shared parallel execution context that:
+To solve these problems we propose a shared parallel execution context that:
 * can be shared between multiple parts of the application
 * does not suffer from oversubscription
 * can integrate with the OS scheduler
@@ -265,8 +266,8 @@ public:
 </pre>
 
  - `get_system_scheduler()` returns a scheduler that provides a view on some underlying execution context supporting *parallel forward progress*, with at least one thread of execution (which may be the main thread).
- - two objects returned by `get_system_scheduler()` will share the same execution context.
-    If work submitted by one can consume the thread pool, that can block progress of another.
+ - two objects returned by `get_system_scheduler()` may share the same execution context.
+    If work submitted by one can consume the underlying thread pool, that can block progress of another.
  - if `Sch` is the type of objects returned by `get_system_scheduler()`, then:
     - `Sch` is implementation-defined, but must be nameable.
     - `Sch` models the `scheduler` concept.
@@ -277,7 +278,6 @@ public:
         - when `execution::set_value(r, args...)` is called on the created `receiver`, an agent is created with parallel forward progress on the
             underlying system context for each `i` of type `Shape` from `0` to `sh`, where `sh` is the shape parameter to the bulk call, that calls `f(i, args...)`.
  - if `sch` is an object returned by `get_system_scheduler()`, then:
-    - the lifetime of `sch`, and all the lifetime of all the object lunched on it, must be fully contained in the lifetime of `main()`.
     - the lifetime of `sch` does not have to outlive work submitted to it.
     - `sch` is both move and copy constructible and assignable.
     - if `sch2` is another object returned by `get_system_scheduler()`, then `sch == sch2` is defined and always evaluates to `true`.
@@ -333,21 +333,18 @@ namespace std::system_context_replaceability {
 
  - Note: for the current exposition we call *backend* the part of the application that implements a custom system context, and *host* the part of the application that uses the custom system context. The *host* part consists of library code that implements the user-facing API to call the interfaces implemented by the backend.
  - `query_system_context` is a function that returns a pointer to an object that implements the `Interface` concept.
-    - the returned object has a lifetime that is at least the lifetime of `main()`.
     - `query_system_context` must have a valid instantiation for the `system_scheduler` interface; it returns the underlying system scheduler implementation that is shared by all user-facing `system_context` objects.
     - is not required for `query_system_context` to be instantiable for interfaces like `receiver`, `bulk_item_receiver`, or `storage`.
     - Note: in the future, this mechanism may be used to query different types of system context objects, like I/O schedulers, priority schedulers, time schedulers, main scheduler, etc. It can also be used to query implementation-specific interfaces.
  - Note: `receiver`, `bulk_item_receiver`, and `storage` are interfaces that are implemented by the host side; only `system_scheduler` is expected to be implemented by a system context implementation.
  - the names of the fields of `storage` class are implementation-defined.
  - if `sch` is an object that implements `system_scheduler` interface (and can be returned by `query_system_context`), then the following must be true:
-    - the lifetime of `sch` is at least the lifetime of `main()`.
     - the users of `sch` must not destroy the object.
     - if `sch.schedule()` is called passing `st` of type `storage`, and `r` of type `receiver*`, then:
       - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
         - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
         - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
         - `set_stopped` may be called on `r` to signal that the execution of work is no longer needed;
-        - signaling `set_value`, `set_error`, or `set_stopped` must be done before `main()` exits.
       - the `storage` object `st` represents a memory region that starts at `st.data` and has `st.size` bytes.
         - the storage represented by `st` must be valid until the `receiver` object `r` is signaled.
         - the implementation may use the storage represented by `st` to store data needed for the scheduling operation.
@@ -356,7 +353,6 @@ namespace std::system_context_replaceability {
         - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
         - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
         - `set_stopped` may be called on `r` to signal that the execution of work is no longer needed;
-        - signaling `set_value`, `set_error`, or `set_stopped` must be done before `main()` exits.
       - the `storage` object `st` represents a memory region that starts at `st.data` and has `st.size` bytes.
         - the storage represented by `st` must be valid until the `receiver` object `r` is signaled.
         - the implementation may use the storage represented by `st` to store data needed for the scheduling operation.
@@ -553,18 +549,20 @@ This paper cannot recommend the specific implementation techniques that should b
 
 ## Lifetime ## {#lifetime}
 
-Underneath the `system_context`, there is a singleton of some sort. We need to specify the lifetime of this object and everything that derives from it.
+Underneath the system scheduler, there is a singleton of some sort.
+We need to specify the lifetime of this object and everything that derives from it.
 
-The paper mandates that the lifetime of any `system_context` to fully be contained the lifetime of `main()`.
+Revision R4 of the paper mandates that the lifetime of any `system_context` must be fully contained within the lifetime of `main()`.
+The reasoning behind this is that ensuring proper construction and destruction order of static objects is typically difficult in practice.
+This is especially challenging during the destruction of static objects; and, by symmetry, we also did not want to guarantee the lifetime of the system scheduler before `main()`.
+We argued that if we took a stricter approach, we could always relax it later.
 
-During the design of this paper the authors considered a more relaxed model: allow the `system_context` to be created before `main()` (as part of static initialization), but still mandate that all access to cease before the end of `main()`; this model is somehow similar to the Intel Threading building blocks (oneTBB) model. While the relaxed model can prove sometime useful, we considered it to be a dangerous path, for the following reasons:
-* The scope of `system_context` should be deterministic with respect to global static objects and main; this allows people to reason about the application.
-* We want to guarantee the access to static objects to all the work spawned on `system_context`.
-* A global static constructor may add work on the `system_context`, thus, it may block on the completion of that work anytime until destruction; this would imply possibly blocking the termination of the program, after `main()` is complete.
-* For replaceability: we want to guarantee the access to static objects for any replacement of `system_context`.
-* There may be circular dependencies between user-supplied `system_context` and the system allocator.
+We received feedback that this was too strict.
+First, there are many applications where the C++ part does not have a `main()` function.
+Secondly, this can be considered a quality of implementation issue; implementations can always use a Phoenix singleton pattern to ensure that the underlying system context object remains alive for the duration of the entire program.
 
-If we start with this stricter path, we can always relax it later. On other hand, if we start with a more relaxed model, it will be harder to make it stricter after being used in production.
+Version R5 of the paper relaxes the lifetime requirements of the system scheduler.
+The system scheduler can now be used in any part of a C++ program.
 
 
 ## Need for the `system_context` class ## {#expose_system_context_name}
@@ -578,11 +576,10 @@ We have a few obvious options:
  - A global `get_system_context()` function that obtains a `system_context` object, or a reference to one, representing the singleton explicitly.
  - A global `get_system_scheduler()` function that obtains a scheduler from some singleton system context, but does not explicitly expose the context.
 
-In R4 and previous revisions, we opted for the explicit context object.
-The argument was that providing explicit contexts is easier to reason about the lifetime of the schedulers.
-However, reasoning for the lifetime of schedulers (and the operations spawned on them) may not be that useful.
-Ultimatelly, all the operations launched on schedulers need to be contained in the lifetime of `main()`.
-Adding an artificial scope for reasoning about lifetimes is just an extra burden.
+In R4 and earlier revisions, we opted for an explicit context object.
+The reasoning was that providing explicit contexts makes it easier to understand the lifetime of the schedulers.
+However, adding this extra class does not affect how one would reason about the lifetime of the schedulers or the work scheduled on them.
+Therefore, introducing an artificial scope object becomes an unnecessary burden.
 
 Thus, the paper simply proposes a `get_system_scheduler()` function that returns a the system scheduler.
 The system context is implementation-defined and not exposed to the user.
