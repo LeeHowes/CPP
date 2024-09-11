@@ -584,6 +584,9 @@ The reasoning was that providing explicit contexts makes it easier to understand
 However, adding this extra class does not affect how one would reason about the lifetime of the schedulers or the work scheduled on them.
 Therefore, introducing an artificial scope object becomes an unnecessary burden.
 
+There were also arguments made for adding `system_context` so that we can later add properties to it, that don't necessarily belong to `system_scheduler`.
+However, if we would later find such properties, nothing prevents us to add `system_context` class later, and make `get_system_scheduler()` return `get_system_context().get_scheduler()`.
+
 Thus, the paper simply proposes a `get_system_scheduler()` function that returns a the system scheduler.
 The system context is implementation-defined and not exposed to the user.
 
