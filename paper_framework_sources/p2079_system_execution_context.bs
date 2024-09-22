@@ -320,8 +320,8 @@ namespace std::system_context_replaceability {
   };
 
   struct storage {
-    void* <i>data</i>; // name is implementation-defined
-    uint32_t <i>size</i>; // name is implementation-defined
+    void* data;
+    uint32_t size;
   };
 
   struct system_scheduler {
@@ -549,6 +549,43 @@ For example, a good implementation should avoid memory allocation for the common
 
 This paper cannot recommend the specific implementation techniques that should be used to maximize performance; these are considered Quality of Implementation (QOI) details.
 
+In the API for implementing custom system contexts, we define a `storage` type that can be used for avoiding memory allocation on the backend side.
+The frontend will create such an object and pass it as a parameter to the backend.
+If the storage indicated by this parameter is large enough, the backend can store the operation state there.
+Otherwise, the backend may need to allocate memory on the heap.
+
+Choosing the size of this storage may affect performance in a significant way.
+If the storage created by the frontend is too small, the backend may be forced to perform a heap allocation; in addition, the frontend storage probably remains unused.
+On the other hand, if the frontend storage is too big, the extra space is wasted.
+Thus, if the size of the storage doesn't match the backend's needs, we waste storage space from the frontend, and we possibly need a memory allocation.
+
+Wasting storage space on the frontend side can be a performance problem, as it may invalidate CPU cache lines.
+
+We received feedback that the proposed model is too flexible, and we may improve performance by adding extra constraints in the API.
+One of the proposals was to have the size of the storage be known at compile time.
+This would remove an integer parameter from the `schedule` and `bulk_schedule`, and an `if` statement in the body of these functions.
+Compared to the costs of calling over a type-erased ABI (which may be known only at link time) and of spawning new work, these costs are insignificant.
+Granting this to be a compile-time value would require recompilation of all the modules in the application each time there is a change in this parameter; this seems to constrain too much what the user can do.
+There are many use cases in which compiling all the modules from scratch may not be possible.
+
+We envision cases in which people would link the replaceable system-context implementation separately from the rest of the modules in the application.
+We may also expect different modules to be compiled with different storage sizes in the frontend; some of the modules may be better tuned for performance, while others are built once and used in multiple places, and may not have such high-performance requirements.
+Thus, having the size of the frontend storage passed to the backend as a runtime parameter seems to be the best choice.
+
+There was another proposal to make the standard guarantee a minimum value for this storage.
+Immediately, this generates a question for which we cannot find a good answer: what would be the right value to use?
+Then, would we really want to put such a value into the standard?
+But, even if we would put such a limit in the standard, a backend implementation that has a larger operation state may still need to check if there is enough storage to put the operation state in it.
+For example, the reference implementation uses, on one platform, 72 bytes for a `schedule` operation and 152 bytes for a `bulk_schedule` operation.
+These values would be too large for other system schedulers that rely on the operating system; we cannot put such large values to be the minimum.
+
+Thus, this idea of requiring a minimum storage size, besides its technical challenges, would not have practical advantages.
+The best path forward is to leave the storage size to be implementation-defined; each implementation can choose a value that better fits the context on the targeted platform(s).
+
+To complete the discussions, we also envision a case in which the implementation may want to not allocate any memory on the frontend side.
+This would make the overall operation state object smaller, thus, potentially faster.
+On the backend side, the operation states need to be on the heap, but one might use an allocator that makes allocations really cheap.
+For example, Intel Threading Building Blocks (oneTBB) has a fast allocator and it doesn't try to avoid heap allocations at all costs.
 
 ## Lifetime ## {#lifetime}
 
