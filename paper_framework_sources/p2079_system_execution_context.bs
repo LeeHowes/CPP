@@ -310,6 +310,12 @@ namespace std::system_context_replaceability {
 
   struct receiver {
     virtual ~receiver() = default;
+
+    receiver(const receiver&) = delete;
+    receiver(receiver&&) = delete;
+    receiver& operator=(const receiver&) = delete;
+    receiver& operator=(receiver&&) = delete;
+
     virtual void set_value() noexcept = 0;
     virtual void set_error(std::exception_ptr) noexcept = 0;
     virtual void set_stopped() noexcept = 0;
