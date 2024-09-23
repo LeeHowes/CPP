@@ -333,8 +333,8 @@ namespace std::system_context_replaceability {
   struct system_scheduler {
     virtual ~system_scheduler() = default;
 
-    virtual void schedule(storage, receiver*) noexcept = 0;
-    virtual void bulk_schedule(uint32_t, storage, bulk_item_receiver*) noexcept = 0;
+    virtual void schedule(receiver*, storage, inplace_stop_token) noexcept = 0;
+    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage, inplace_stop_token) noexcept = 0;
   };
 }
 
@@ -349,7 +349,7 @@ namespace std::system_context_replaceability {
  - the names of the fields of `storage` class are implementation-defined.
  - if `sch` is an object that implements `system_scheduler` interface (and can be returned by `query_system_context`), then the following must be true:
     - the users of `sch` must not destroy the object.
-    - if `sch.schedule()` is called passing `st` of type `storage`, and `r` of type `receiver*`, then:
+    - if `sch.schedule()` is called passing `r` of type `receiver*`, `st` of type `storage` `t` pf type `inplace_stop_token`, then:
       - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
         - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
         - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
@@ -357,7 +357,8 @@ namespace std::system_context_replaceability {
       - the `storage` object `st` represents a memory region that starts at `st.data` and has `st.size` bytes.
         - the storage represented by `st` must be valid until the `receiver` object `r` is signaled.
         - the implementation may use the storage represented by `st` to store data needed for the scheduling operation.
-    - if `sch.bulk_schedule()` is called passing `n` of type `uint32_T`, `st` of type `storage`, `r` of type  `bulk_item_receiver*`, then:
+      - Note: if `s.stop_requested()` returns `true`, `set_stopped` may be called; but this is not guaranteed.
+    - if `sch.bulk_schedule()` is called passing `n` of type `uint32_t`, `r` of type  `bulk_item_receiver*`, `st` of type `storage` and `t` of type `inplace_stop_token`, then:
       - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
         - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
         - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
@@ -365,6 +366,7 @@ namespace std::system_context_replaceability {
       - the `storage` object `st` represents a memory region that starts at `st.data` and has `st.size` bytes.
         - the storage represented by `st` must be valid until the `receiver` object `r` is signaled.
         - the implementation may use the storage represented by `st` to store data needed for the scheduling operation.
+      - Note: if `s.stop_requested()` returns `true`, `set_stopped` may be called; but this is not guaranteed.
       - if `set_value` is called on `r`, then `start` must be called on `r` `n` times, where `n` is the value passed to `bulk_schedule`.
         - the `start` method is called on `r` to signal the start of the work for the `i`-th item in the bulk operation, where `i` is in the range `[0, n)`.
         - the `start` method must be called on a thread belonging to the system execution context.
