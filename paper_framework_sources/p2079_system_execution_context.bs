@@ -25,7 +25,6 @@ Markup Shorthands: markdown yes
 - replaceability is implementation-defined
 - replace the use of `system_context` class with direct calls to `get_system_scheduler()`
 - update user-facing API
-- define API for implementing custom system contexts
 - relax again the lifetime guarantees, to allow using system scheduler outside of `main()`
 
 ## R4 ## {#r4}
@@ -80,7 +79,7 @@ To solve these problems we propose a shared parallel execution context that:
 * can be shared between multiple parts of the application
 * does not suffer from oversubscription
 * can integrate with the OS scheduler
-* can be replaced by the user to compose well with other parallel runtimes
+* (potentially) can be replaced by the user to compose well with other parallel runtimes
 
 ## Design overview ## {#design_overview}
 
@@ -95,7 +94,7 @@ On systems where the OS scheduler is not available, the system context will have
 
 For enabling the users to hand-tune the performance of their applications, and for fulfulling the composability requirements, the system context should be replaceable.
 The user should be able to replace the default implementation of the system context with a custom one that fits their needs.
-We define a *replaceability API* that defines how the system context can be replaced; we, however leave some of the replaceability mechanisms to be implementation-defined.
+The replaceability mechanism are left to be implementation-defined.
 
 Other key concerns of this design are:
 * Extensibility: being able to extend the design to work with new additions to the senders/receivers framework.
@@ -227,8 +226,6 @@ std::cout << "Result: " << result << "\n";
 
 # Design # {#design}
 
-## User-facing API ## {#user_facing_api}
-
 <pre highlight="c++">
 system_scheduler get_system_scheduler();
 
@@ -295,85 +292,6 @@ public:
         on which `start` has been called, but are not yet running (and are hence not yet guaranteed to make progress) **must**
         complete with `set_stopped` as soon as is practical.
 
-## API for implementing custom system contexts ## {#api_custom_system_contexts}
-
-Implementations may support replaceability of system scheduler; it's implementation-defined whether the system scheduler is replaceable or not.
-If an implementation supports replaceability, the following API should be used.
-The way that the following interfaces are used to replace the system scheduler is implementation-defined.
-If the implementation of the system context does not support replaceability, the following API is not needed.
-
-
-<pre highlight="c++">
-namespace std::system_context_replaceability {
-  template &lt;typename Interface>
-  Interface* query_system_context();
-
-  struct receiver {
-    virtual ~receiver() = default;
-
-    receiver(const receiver&) = delete;
-    receiver(receiver&&) = delete;
-    receiver& operator=(const receiver&) = delete;
-    receiver& operator=(receiver&&) = delete;
-
-    virtual void set_value() noexcept = 0;
-    virtual void set_error(std::exception_ptr) noexcept = 0;
-    virtual void set_stopped() noexcept = 0;
-  };
-
-  struct bulk_item_receiver : receiver {
-    virtual void start(uint32_t) noexcept = 0;
-  };
-
-  struct storage {
-    void* data;
-    uint32_t size;
-  };
-
-  struct system_scheduler {
-    virtual ~system_scheduler() = default;
-
-    virtual void schedule(receiver*, storage, inplace_stop_token) noexcept = 0;
-    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage, inplace_stop_token) noexcept = 0;
-  };
-}
-
-</pre>
-
- - Note: for the current exposition we call *backend* the part of the application that implements a custom system context, and *host* the part of the application that uses the custom system context. The *host* part consists of library code that implements the user-facing API to call the interfaces implemented by the backend.
- - `query_system_context` is a function that returns a pointer to an object that implements the `Interface` concept.
-    - `query_system_context` must have a valid instantiation for the `system_scheduler` interface; it returns the underlying system scheduler implementation that is shared by all user-facing `system_context` objects.
-    - is not required for `query_system_context` to be instantiable for interfaces like `receiver`, `bulk_item_receiver`, or `storage`.
-    - Note: in the future, this mechanism may be used to query different types of system context objects, like I/O schedulers, priority schedulers, time schedulers, main scheduler, etc. It can also be used to query implementation-specific interfaces.
- - Note: `receiver`, `bulk_item_receiver`, and `storage` are interfaces that are implemented by the host side; only `system_scheduler` is expected to be implemented by a system context implementation.
- - the names of the fields of `storage` class are implementation-defined.
- - if `sch` is an object that implements `system_scheduler` interface (and can be returned by `query_system_context`), then the following must be true:
-    - the users of `sch` must not destroy the object.
-    - if `sch.schedule()` is called passing `r` of type `receiver*`, `st` of type `storage` `t` pf type `inplace_stop_token`, then:
-      - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
-        - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
-        - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
-        - `set_stopped` may be called on `r` to signal that the execution of work is no longer needed;
-      - the `storage` object `st` represents a memory region that starts at `st.data` and has `st.size` bytes.
-        - the storage represented by `st` must be valid until the `receiver` object `r` is signaled.
-        - the implementation may use the storage represented by `st` to store data needed for the scheduling operation.
-      - Note: if `s.stop_requested()` returns `true`, `set_stopped` may be called; but this is not guaranteed.
-    - if `sch.bulk_schedule()` is called passing `n` of type `uint32_t`, `r` of type  `bulk_item_receiver*`, `st` of type `storage` and `t` of type `inplace_stop_token`, then:
-      - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
-        - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
-        - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
-        - `set_stopped` may be called on `r` to signal that the execution of work is no longer needed;
-      - the `storage` object `st` represents a memory region that starts at `st.data` and has `st.size` bytes.
-        - the storage represented by `st` must be valid until the `receiver` object `r` is signaled.
-        - the implementation may use the storage represented by `st` to store data needed for the scheduling operation.
-      - Note: if `s.stop_requested()` returns `true`, `set_stopped` may be called; but this is not guaranteed.
-      - if `set_value` is called on `r`, then `start` must be called on `r` `n` times, where `n` is the value passed to `bulk_schedule`.
-        - the `start` method is called on `r` to signal the start of the work for the `i`-th item in the bulk operation, where `i` is in the range `[0, n)`.
-        - the `start` method must be called on a thread belonging to the system execution context.
-        - the `start` method must be called before any methods on `r` is called.
-      - if in the process of calling `start` on `r`, the implementation detects that the work cannot be started, then `set_error` must be called on `r` to signal the error; in this case `r` may not get all the expected `n` calls to `start`.
-      - if in the process of calling `start` on `r`, the scheduling process is cancelled, then `set_stopped` must be called on `r` to signal the cancellation; in this case `r` may not get all the expected `n` calls to `start`.
-
 
 
 # Design discussion and decisions # {#design_considerations}
@@ -430,7 +348,7 @@ We express a strong desire for the system scheduler to work on freestanding impl
 
 We envision that, a followup specification will ensure that the system scheduler will work in freestanding implementations by sharing the implementation with the main scheduler, which is driven by the main thread.
 
-## Making `system_context` implementation-defined and replaceable ## {#replaceable_system_context}
+## Making system context implementation-defined and replaceable ## {#replaceable_system_context}
 The system context aims to allow people to implement an application that is dependent only on parallel forward progress and to port it to a wide range of systems.
 As long as an application does not rely on concurrency, and restricts itself to only the system context, we should be able to scale from single threaded systems to highly parallel systems.
 
@@ -505,8 +423,17 @@ For this reasons, the authors encourage all platforms to support replaceability 
 
 However, in accordance with the feedback, the paper proposes the following:
 * whether the system context is replaceable or not is implementation-defined.
-* the replaceability mechanism (if the implementation decides to support it) is implementation-defined.
-* if the implementation allows replaceability, we define an API for implementing custom system contexts.
+* the replaceability mechanism (if the implementation decides to support it), including the interfaces that a backend should implement is implementation-defined.
+
+During the development of this paper, we received constant feedback that the replaceability mechanism should be standardized, even if we standardize just the interfaces that a backend needs to implement (leaving the replaceability mechanism to be implementation-defined).
+However, as time went by, more and more people agreed that standardizing an API for replaceability is problematic.
+Here are a few reasons why:
+* Different standard library vendors have different needs; if the replaceability API is too generic to cover all the needs, we compromize on performance. Example:
+    * for a simple `schedule` operation, some implementations would want cancellation in the backend, some would not (cancellation is better to be handled in the frontend).
+    * including cancellation in the replaceability API would satisfy the needs for those who want cancellation but that would add extra performance penalties
+    * in general, including a runtime environment in the backend may be costly, and some implementations may not need it
+* Even if we specify the replaceability API, somebody who implements a backend for system context may still need to interact with implementation-defined abstractions, as the overall replaceability mechanism is implementation-defined.
+* As certain vendors won't implement replaceability, defining a standard API for replaceability has diminishing returns.
 
 ## Extensibility ## {#extensibility}
 
@@ -557,43 +484,9 @@ For example, a good implementation should avoid memory allocation for the common
 
 This paper cannot recommend the specific implementation techniques that should be used to maximize performance; these are considered Quality of Implementation (QOI) details.
 
-In the API for implementing custom system contexts, we define a `storage` type that can be used for avoiding memory allocation on the backend side.
-The frontend will create such an object and pass it as a parameter to the backend.
-If the storage indicated by this parameter is large enough, the backend can store the operation state there.
-Otherwise, the backend may need to allocate memory on the heap.
-
-Choosing the size of this storage may affect performance in a significant way.
-If the storage created by the frontend is too small, the backend may be forced to perform a heap allocation; in addition, the frontend storage probably remains unused.
-On the other hand, if the frontend storage is too big, the extra space is wasted.
-Thus, if the size of the storage doesn't match the backend's needs, we waste storage space from the frontend, and we possibly need a memory allocation.
-
-Wasting storage space on the frontend side can be a performance problem, as it may invalidate CPU cache lines.
-
-We received feedback that the proposed model is too flexible, and we may improve performance by adding extra constraints in the API.
-One of the proposals was to have the size of the storage be known at compile time.
-This would remove an integer parameter from the `schedule` and `bulk_schedule`, and an `if` statement in the body of these functions.
-Compared to the costs of calling over a type-erased ABI (which may be known only at link time) and of spawning new work, these costs are insignificant.
-Granting this to be a compile-time value would require recompilation of all the modules in the application each time there is a change in this parameter; this seems to constrain too much what the user can do.
-There are many use cases in which compiling all the modules from scratch may not be possible.
-
-We envision cases in which people would link the replaceable system-context implementation separately from the rest of the modules in the application.
-We may also expect different modules to be compiled with different storage sizes in the frontend; some of the modules may be better tuned for performance, while others are built once and used in multiple places, and may not have such high-performance requirements.
-Thus, having the size of the frontend storage passed to the backend as a runtime parameter seems to be the best choice.
-
-There was another proposal to make the standard guarantee a minimum value for this storage.
-Immediately, this generates a question for which we cannot find a good answer: what would be the right value to use?
-Then, would we really want to put such a value into the standard?
-But, even if we would put such a limit in the standard, a backend implementation that has a larger operation state may still need to check if there is enough storage to put the operation state in it.
-For example, the reference implementation uses, on one platform, 72 bytes for a `schedule` operation and 152 bytes for a `bulk_schedule` operation.
-These values would be too large for other system schedulers that rely on the operating system; we cannot put such large values to be the minimum.
-
-Thus, this idea of requiring a minimum storage size, besides its technical challenges, would not have practical advantages.
-The best path forward is to leave the storage size to be implementation-defined; each implementation can choose a value that better fits the context on the targeted platform(s).
-
-To complete the discussions, we also envision a case in which the implementation may want to not allocate any memory on the frontend side.
-This would make the overall operation state object smaller, thus, potentially faster.
-On the backend side, the operation states need to be on the heap, but one might use an allocator that makes allocations really cheap.
-For example, Intel Threading Building Blocks (oneTBB) has a fast allocator and it doesn't try to avoid heap allocations at all costs.
+Standardizing a replaceability API generated many discussions related to performance.
+In the end, we reached the conclusion that, if we want to implement all the features that backends may need, we may need to sacrifice performance.
+This is one of the chief reasons for which this paper doesn't standardize the replaceability API.
 
 ## Lifetime ## {#lifetime}
 
@@ -706,3 +599,87 @@ While it is true that people that would want to replace the system scheduler wil
 They would still be able to the use system context and system scheduler without knowing the implementation details of those.
 
 We have a precedence in the C++ standard for this approach with the global allocator.
+
+# Annex: A possible API for implementing custom system contexts # {#api_custom_system_contexts}
+
+During the discussions on R4 and R5 of the paper, we have spent effort on a possible API for implementing custom system contexts.
+During the final phases of R5, we agreed that we should not standardize such an API.
+However, for reference, we include here the API discussed.
+
+Implementations may support replaceability of system scheduler; it's implementation-defined whether the system scheduler is replaceable or not.
+If an implementation supports replaceability, the following API might be used.
+The way that the following interfaces are used to replace the system scheduler is implementation-defined.
+If the implementation of the system context does not support replaceability, the following API is not needed.
+
+
+<pre highlight="c++">
+namespace std::system_context_replaceability {
+  template &lt;typename Interface>
+  Interface* query_system_context();
+
+  struct receiver {
+    virtual ~receiver() = default;
+
+    receiver(const receiver&) = delete;
+    receiver(receiver&&) = delete;
+    receiver& operator=(const receiver&) = delete;
+    receiver& operator=(receiver&&) = delete;
+
+    virtual void set_value() noexcept = 0;
+    virtual void set_error(std::exception_ptr) noexcept = 0;
+    virtual void set_stopped() noexcept = 0;
+  };
+
+  struct bulk_item_receiver : receiver {
+    virtual void start(uint32_t) noexcept = 0;
+  };
+
+  struct storage {
+    void* data;
+    uint32_t size;
+  };
+
+  struct system_scheduler {
+    virtual ~system_scheduler() = default;
+
+    virtual void schedule(receiver*, storage, inplace_stop_token) noexcept = 0;
+    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage, inplace_stop_token) noexcept = 0;
+  };
+}
+
+</pre>
+
+ - Note: for the current exposition we call *backend* the part of the application that implements a custom system context, and *host* the part of the application that uses the custom system context. The *host* part consists of library code that implements the user-facing API to call the interfaces implemented by the backend.
+ - `query_system_context` is a function that returns a pointer to an object that implements the `Interface` concept.
+    - `query_system_context` must have a valid instantiation for the `system_scheduler` interface; it returns the underlying system scheduler implementation that is shared by all user-facing `system_context` objects.
+    - is not required for `query_system_context` to be instantiable for interfaces like `receiver`, `bulk_item_receiver`, or `storage`.
+    - Note: in the future, this mechanism may be used to query different types of system context objects, like I/O schedulers, priority schedulers, time schedulers, main scheduler, etc. It can also be used to query implementation-specific interfaces.
+ - Note: `receiver`, `bulk_item_receiver`, and `storage` are interfaces that are implemented by the host side; only `system_scheduler` is expected to be implemented by a system context implementation.
+ - the names of the fields of `storage` class are implementation-defined.
+ - if `sch` is an object that implements `system_scheduler` interface (and can be returned by `query_system_context`), then the following must be true:
+    - the users of `sch` must not destroy the object.
+    - if `sch.schedule()` is called passing `r` of type `receiver*`, `st` of type `storage` `t` pf type `inplace_stop_token`, then:
+      - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
+        - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
+        - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
+        - `set_stopped` may be called on `r` to signal that the execution of work is no longer needed;
+      - the `storage` object `st` represents a memory region that starts at `st.data` and has `st.size` bytes.
+        - the storage represented by `st` must be valid until the `receiver` object `r` is signaled.
+        - the implementation may use the storage represented by `st` to store data needed for the scheduling operation.
+      - Note: if `s.stop_requested()` returns `true`, `set_stopped` may be called; but this is not guaranteed.
+    - if `sch.bulk_schedule()` is called passing `n` of type `uint32_t`, `r` of type  `bulk_item_receiver*`, `st` of type `storage` and `t` of type `inplace_stop_token`, then:
+      - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
+        - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
+        - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
+        - `set_stopped` may be called on `r` to signal that the execution of work is no longer needed;
+      - the `storage` object `st` represents a memory region that starts at `st.data` and has `st.size` bytes.
+        - the storage represented by `st` must be valid until the `receiver` object `r` is signaled.
+        - the implementation may use the storage represented by `st` to store data needed for the scheduling operation.
+      - Note: if `s.stop_requested()` returns `true`, `set_stopped` may be called; but this is not guaranteed.
+      - if `set_value` is called on `r`, then `start` must be called on `r` `n` times, where `n` is the value passed to `bulk_schedule`.
+        - the `start` method is called on `r` to signal the start of the work for the `i`-th item in the bulk operation, where `i` is in the range `[0, n)`.
+        - the `start` method must be called on a thread belonging to the system execution context.
+        - the `start` method must be called before any methods on `r` is called.
+      - if in the process of calling `start` on `r`, the implementation detects that the work cannot be started, then `set_error` must be called on `r` to signal the error; in this case `r` may not get all the expected `n` calls to `start`.
+      - if in the process of calling `start` on `r`, the scheduling process is cancelled, then `set_stopped` must be called on `r` to signal the cancellation; in this case `r` may not get all the expected `n` calls to `start`.
+
