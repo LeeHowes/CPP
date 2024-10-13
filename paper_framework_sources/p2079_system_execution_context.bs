@@ -11,7 +11,7 @@ Editor: Lee Howes, lwh@fb.com
         Lucian Radu Teodorescu, lucteo@lucteo.ro
 Audience: SG1, LEWG
 URL: http://wg21.link/P2079R4
-Abstract: A standard execution context based on the facilities in [[P2300R9]] that implements parallel-forward-progress to
+Abstract: A standard execution context based on the facilities in [[P2300R10]] that implements parallel-forward-progress to
           maximise portability. A set of <code>system_context</code>`s share an underlying shared thread pool implementation, and may
           provide an interface to an OS-provided system thread pool.
 Markup Shorthands: markdown yes
@@ -52,7 +52,7 @@ Markup Shorthands: markdown yes
 - First revision
 
 # Introduction # {#introduction}
-[[P2300R9]] describes a rounded set of primitives for asynchronous and parallel execution that give a firm grounding for the future.
+[[P2300R10]] describes a rounded set of primitives for asynchronous and parallel execution that give a firm grounding for the future.
 However, the paper lacks a standard execution context and scheduler.
 It has been broadly accepted that we need some sort of standard scheduler.
 
@@ -60,7 +60,7 @@ As part of [[P3109R0]], `system_context` was voted as a must-have for the initia
 It provides a convenient and scalable way of spawning concurrent work for the users of senders/receivers.
 
 As noted in [[P2079R1]], an earlier revision of this paper, the `static_thread_pool` included in later revisions of [[P0443R14]] had many shortcomings.
-This was removed from [[P2300R9]] based on that and other input.
+This was removed from [[P2300R10]] based on that and other input.
 
 One of the biggest problems with local thread pools is that they lead to CPU oversubscription.
 This introduces a performance problem for complex systems that are composed from many independent parts.
@@ -72,10 +72,9 @@ This can create several problems:
 * oversubscription because of different thread pools
 * problems with nested parallel loops (one parallel loop is called from the other)
 * problems related to interaction between different parallel engines
-* other performance problems
 * etc.
 
-To solve these problems we propose a shared parallel execution context that:
+To solve these problems we propose a parallel execution context that:
 * can be shared between multiple parts of the application
 * does not suffer from oversubscription
 * can integrate with the OS scheduler
@@ -84,7 +83,6 @@ To solve these problems we propose a shared parallel execution context that:
 ## Design overview ## {#design_overview}
 
 The system context is a parallel execution context of undefined size, supporting explicitly *parallel forward progress*.
-By requiring only parallel forward progress, any created parallel context is able to be a view onto the underlying shared global context. (TODO: this phrase is not quite clear; we should probably remove)
 
 The execution resources of the system context are envisioned to be shared across all binaries in the same process.
 System scheduler works best with CPU-intensive workloads, and thus, limiting oversubscription is a key goal.
@@ -104,15 +102,14 @@ Other key concerns of this design are:
 # Examples # {#examples}
 As a simple parallel scheduler we can use it locally, and `sync_wait` on the work to make sure that it is complete.
 With forward progress delegation this would also allow the scheduler to delegate work to the blocked thread.
-This example is derived from the Hello World example in [[P2300R9]]. Note that it only adds a well-defined context
+This example is derived from the Hello World example in [[P2300R10]]. Note that it only adds a well-defined context
 object, and queries that for the scheduler.
 Everything else is unchanged about the example.
 
 ```cpp
-using namespace std::execution;
+using namespace = std::execution;
 
-system_context ctx;
-scheduler auto sch = ctx.scheduler();
+scheduler auto sch = get_system_scheduler();
 
 sender auto begin = schedule(sch);
 sender auto hi = then(begin, []{
@@ -121,15 +118,14 @@ sender auto hi = then(begin, []{
 });
 sender auto add_42 = then(hi, [](int arg) { return arg + 42; });
 
-auto [i] = this_thread::sync_wait(add_42).value();
+auto [i] = std::this_thread::sync_wait(add_42).value();
 ```
 
-We can structure the same thing using `execution::on`, which better matches structured concurrency:
+We can structure the same thing using `on`, which better matches structured concurrency:
 ```cpp
 using namespace std::execution;
 
-system_context ctx;
-scheduler auto sch = ctx.scheduler();
+scheduler auto sch = get_system_scheduler();
 
 sender auto hi = then(just(), []{
     std::cout << "Hello world! Have an int.";
@@ -137,16 +133,18 @@ sender auto hi = then(just(), []{
 });
 sender auto add_42 = then(hi, [](int arg) { return arg + 42; });
 
-auto [i] = this_thread::sync_wait(on(sch, add_42)).value();
+auto [i] = std::this_thread::sync_wait(on(sch, add_42)).value();
 ```
 
 The `system_scheduler` customises `bulk`, so we can use `bulk` dependent on the scheduler.
 Here we use it in structured form using the parameterless `get_scheduler` that retrieves the scheduler from the receiver, combined with `on`:
 ```cpp
+using namespace std::execution;
+
 auto bar() {
   return
-    ex::let_value(
-      ex::get_scheduler(),          // Fetch scheduler from receiver.
+    let_value(
+      read_env(get_scheduler),      // Fetch scheduler from receiver.
       [](auto current_sched) {
         return bulk(
           current_sched.schedule(),
@@ -159,13 +157,9 @@ auto bar() {
 
 void foo()
 {
-  using namespace std::execution;
-
-  system_context ctx;
-
-  auto [i] = this_thread::sync_wait(
+  auto [i] = std::this_thread::sync_wait(
     on(
-      ctx.scheduler(),                // Start bar on the system_scheduler
+      get_system_scheduler(),         // Start bar on the system_scheduler
       bar()))                         // and propagate it through the receivers
     .value();
 }
@@ -178,13 +172,11 @@ In this case we assume it has no threads of its own and has to take over the mai
 ```cpp
 using namespace std::execution;
 
-system_context ctx;
-
 int result = 0;
 
 {
   async_scope scope;
-  scheduler auto sch = ctx.scheduler();
+  scheduler auto sch = get_system_scheduler();
 
   sender auto work =
     then(just(), [&](auto sched) {
@@ -215,7 +207,7 @@ int result = 0;
   terminal_scope.spawn(
     scope.on_empty() | then([](my_os::exit(ctx))));
   my_os::drive(ctx);
-  this_thread::sync_wait(terminal_scope);
+  std::this_thread::sync_wait(terminal_scope);
 };
 
 // The scope ensured that all work is safely joined, so result contains 13
@@ -249,15 +241,11 @@ public:
 
 class <i>impl-defined-system_sender</i> { // exposition only
 public:
-  friend pair&lt;std::execution::system_scheduler, delegatee_scheduler> tag_invoke(
-    std::execution::get_completion_scheduler_t&lt;set_value_t>,
-    const system_scheduler&) noexcept;
-  friend pair&lt;std::execution::system_scheduler, delegatee_scheduler> tag_invoke(
-    std::execution::get_completion_scheduler_t&lt;set_stopped_t>,
-    const system_scheduler&) noexcept;
+  system_scheduler query(get_completion_scheduler_t&lt;set_value_t>) const noexcept;
+  system_scheduler query(get_completion_scheduler_t&lt;set_stopped_t>) const noexcept;
 
   template&lt;receiver R>
-  requires receiver_of<R>
+  requires receiver_of&lt;R>
   <i>impl-defined-operation_state</i> connect(R&&) && noexcept(std::is_nothrow_constructible_v&lt;std::remove_cvref_t&lt;R>, R>);
 };
 </pre>
@@ -265,7 +253,7 @@ public:
  - `get_system_scheduler()` returns a scheduler that provides a view on some underlying execution context supporting *parallel forward progress*, with at least one thread of execution (which may be the main thread).
  - two objects returned by `get_system_scheduler()` may share the same execution context.
     If work submitted by one can consume the underlying thread pool, that can block progress of another.
- - if `Sch` is the type of objects returned by `get_system_scheduler()`, then:
+ - if `Sch` is the type of object returned by `get_system_scheduler()`, then:
     - `Sch` is implementation-defined, but must be nameable.
     - `Sch` models the `scheduler` concept.
     - `Sch` implements the `get_forward_progress_guarantee` query to return `parallel`.
@@ -403,13 +391,13 @@ The paper considers compile-time replaceability as not being a valid option beca
 design principles of a `system_context`, i.e. having one, shared, application-wide execution context, which avoids
 oversubscription.
 
-Replaceability is also part of the [[P2900R7]] proposal for the contract-violation handler.
+Replaceability is also part of the [[P2900R8]] proposal for the contract-violation handler.
 The paper proposes that whether the handler is replaceable to be implementation-defined.
 If an implementation chooses to support replaceability, it shall be done similar to replacing the global `operator new` and `operator delete` (link-time replaceability).
 
 The feedback we received from Microsoft, is that they are not interested in supporting replaceability on their platforms.
 They would prefer that we offer implementations an option to not implement replaceabiilty.
-Moreover, for systems for which replaceability is supported they would prefer to make the replaceabiilty mechanism to be implementation defined.
+Moreover, for systems where replaceability is supported they would prefer to make the replaceabiilty mechanism to be implementation defined.
 
 The authors disagree with the idea that replaceability is not needed for Windows platforms (or other platforms that provide an OS scheduler).
 The OS sheduler is optimized for certain workloads, and it's not the best choice for all workloads.
@@ -426,9 +414,9 @@ However, in accordance with the feedback, the paper proposes the following:
 * the replaceability mechanism (if the implementation decides to support it), including the interfaces that a backend should implement is implementation-defined.
 
 During the development of this paper, we received constant feedback that the replaceability mechanism should be standardized, even if we standardize just the interfaces that a backend needs to implement (leaving the replaceability mechanism to be implementation-defined).
-However, as time went by, more and more people agreed that standardizing an API for replaceability is problematic.
+However, as time went by, more and more people think that agreeing on the same replaceability API shape is going to be problematic.
 Here are a few reasons why:
-* Different standard library vendors have different needs; if the replaceability API is too generic to cover all the needs, we compromize on performance. Example:
+* Different standard library vendors might have different needs; if the replaceability API is too generic to cover all the needs, we compromize on performance. Example:
     * for a simple `schedule` operation, some implementations would want cancellation in the backend, some would not (cancellation is better to be handled in the frontend).
     * including cancellation in the replaceability API would satisfy the needs for those who want cancellation but that would add extra performance penalties
     * in general, including a runtime environment in the backend may be costly, and some implementations may not need it
@@ -543,7 +531,7 @@ implementation-defined-system_scheduler get_scheduler(priority_t priority);
 
 This approach would offer priorities at scheduler granularity and apply to large sections of a program at once.
 
-The other approach, which matches the receiver query approach taken elsewhere in [[P2300R9]] is to add a `get_priority()` query on the receiver, which, if available, passes a priority to the scheduler in the same way that we pass an `allocator` or a `stop_token`.
+The other approach, which matches the receiver query approach taken elsewhere in [[P2300R10]] is to add a `get_priority()` query on the receiver, which, if available, passes a priority to the scheduler in the same way that we pass an `allocator` or a `stop_token`.
 This would work at task granularity, for each `schedule()` call that we connect a receiver to we might pass a different priority.
 
 In either case we can add the priority in a separate paper.
@@ -561,7 +549,7 @@ A few key points of the implementation:
 * Uses preallocated storage on the host side, so that the default implementation doesn't need to allocate memory on the heap when adding new work to `system_scheduler`.
 * Guarantees a lifetime of at least the duration of `main()`.
 * As the default implementation is created outside of the host part, it can be shared between multiple binaries in the same process.
-* uses `libdispatch` on MacOS; uses a `static_thread_pool`-based implementation as a default on other platforms.
+* uses a `static_thread_pool`-based implementation as a default on generic platforms (we have a patch that uses `libdispatch` as default implementaiton on MacOS; as the time of writing this paper revision, the patch is not yet merged on the mainline).
 
 ## Addressing received feedback ## {#addressing_feedback}
 
