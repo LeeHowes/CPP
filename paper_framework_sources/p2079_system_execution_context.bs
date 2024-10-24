@@ -1,18 +1,17 @@
 <pre class='metadata'>
 Title: System execution context
 Shortname: P2079
-Level: 4
+Level: 5
 Status: P
 Group: wg21
-Date: 2024-05-01
-Editor: Lee Howes, lwh@fb.com
+Editor: Lucian Radu Teodorescu, lucteo@lucteo.ro
         Ruslan Arutyunyan, Intel, ruslan.arutyunyan@intel.com
+        Lee Howes, lwh@fb.com
         Michael Voss, Intel, michaelj.voss@intel.com
-        Lucian Radu Teodorescu, lucteo@lucteo.ro
 Audience: SG1, LEWG
-URL: http://wg21.link/P2079R4
+URL: http://wg21.link/P2079R5
 Abstract: A standard execution context based on the facilities in [[P2300R10]] that implements parallel-forward-progress to
-          maximise portability. A set of <code>system_context</code>`s share an underlying shared thread pool implementation, and may
+          maximize portability. A set of <code>system_context</code>`s share an underlying shared thread pool implementation, and may
           provide an interface to an OS-provided system thread pool.
 Markup Shorthands: markdown yes
 </pre>
@@ -21,16 +20,17 @@ Markup Shorthands: markdown yes
 # Changes # {#changes}
 
 ## R5 ## {#r5}
-- streamline the paper
-- replaceability is implementation-defined
-- replace the use of `system_context` class with direct calls to `get_system_scheduler()`
-- update user-facing API
-- relax again the lifetime guarantees, to allow using system scheduler outside of `main()`
+- Streamline the paper
+- Make replaceability availability implementation-defined
+- Make replaceability API implementation-defined
+- Replace the use of `system_context` class with direct calls to `get_system_scheduler()`
+- Update user-facing API
+- Relax the lifetime guarantees to allow using system scheduler outside of `main()`
 
 ## R4 ## {#r4}
 - Add more design considerations & goals.
 - Add comparison of different replaceability options
-- Add motivation for replaceabiilty ABI standardization
+- Add motivation for replaceability ABI standardization
 - Add the example of the ABI for replacement
 - Strengthen the lifetime guarantees.
 
@@ -41,7 +41,7 @@ Markup Shorthands: markdown yes
 - Add design discussion about priorities.
 
 ## R2 ## {#r2}
-- Significant redesign to fit in [[P2300R9]] model.
+- Significant redesign to fit in [[P2300R10]] model.
 - Strictly limit to parallel progress without control over the level of parallelism.
 - Remove direct support for task groups, delegating that to `async_scope`.
 
@@ -90,7 +90,7 @@ System scheduler works best with CPU-intensive workloads, and thus, limiting ove
 By default, the system context should be able to use the OS scheduler, if the OS has one.
 On systems where the OS scheduler is not available, the system context will have a generic implementation that acts like a thread pool.
 
-For enabling the users to hand-tune the performance of their applications, and for fulfulling the composability requirements, the system context should be replaceable.
+For enabling the users to hand-tune the performance of their applications, and for fulfilling the composability requirements, the system context should be replaceable.
 The user should be able to replace the default implementation of the system context with a custom one that fits their needs.
 The replaceability mechanism are left to be implementation-defined.
 
@@ -136,7 +136,7 @@ sender auto add_42 = then(hi, [](int arg) { return arg + 42; });
 auto [i] = std::this_thread::sync_wait(on(sch, add_42)).value();
 ```
 
-The `system_scheduler` customises `bulk`, so we can use `bulk` dependent on the scheduler.
+The `system_scheduler` customizes `bulk`, so we can use `bulk` dependent on the scheduler.
 Here we use it in structured form using the parameterless `get_scheduler` that retrieves the scheduler from the receiver, combined with `on`:
 ```cpp
 using namespace std::execution;
@@ -205,8 +205,8 @@ int result = 0;
   // operation and block for it at the end of main, knowing it will complete.
   async_scope terminal_scope;
   terminal_scope.spawn(
-    scope.on_empty() | then([](my_os::exit(ctx))));
-  my_os::drive(ctx);
+    scope.on_empty() | then([](my_os::exit(sch))));
+  my_os::drive(sch);
   std::this_thread::sync_wait(terminal_scope);
 };
 
@@ -234,7 +234,7 @@ public:
   bool operator==(const system_scheduler&) const noexcept;
 
   forward_progress_guarantee query(get_forward_progress_guarantee_t) const noexcept;
-  
+
   <i>impl-defined-system_sender</i> schedule() const noexcept;
   // customization for bulk
 };
@@ -257,11 +257,11 @@ public:
     - `Sch` is implementation-defined, but must be nameable.
     - `Sch` models the `scheduler` concept.
     - `Sch` implements the `get_forward_progress_guarantee` query to return `parallel`.
-    - `Sch` implements `schedule` customisation point to return an implementation-defined `sender` type.
+    - `Sch` implements `schedule` customization point to return an implementation-defined `sender` type.
     - `schedule` calls on `Sch` are non-blocking operations.
-    - `Sch` implements the `bulk` CPO to customise the `bulk` sender adapter such that:
+    - `Sch` implements the `bulk` CPO to customize the `bulk` sender adapter such that:
         - when `execution::set_value(r, args...)` is called on the created `receiver`, an agent is created with parallel forward progress on the
-            underlying system context for each `i` of type `Shape` from `0` to `sh`, where `sh` is the shape parameter to the bulk call, that calls `f(i, args...)`.
+            underlying system context for each `i` of type `Shape` from `0` to `sh`, where `sh` is the shape parameter to the `bulk` call, that calls `f(i, args...)`.
  - if `sch` is an object returned by `get_system_scheduler()`, then:
     - the lifetime of `sch` does not have to outlive work submitted to it.
     - `sch` is both move and copy constructible and assignable.
@@ -297,12 +297,12 @@ We can simplify this discussion to a single function:
   void drive(system_context& ctx, sender auto snd);
 ```
 
-Let's assume we have a single-threaded environment, and a means of customising the `system_context` for this environment.
+Let's assume we have a single-threaded environment, and a means of customizing the `system_context` for this environment.
 We know we need a way to donate `main`'s thread to this context, it is the only thread we have available.
 Assuming that we want a `drive` operation in some form, our choices are to:
 
  - define our `drive` operation, so that it is standard, and we use it on this system.
- - or allow the customisation to define a custom `drive` operation related to the specific single-threaded environment.
+ - or allow the customization to define a custom `drive` operation related to the specific single-threaded environment.
 
 With a standard `drive` of this sort (or of the more complex design in [[P2079R2]]) we might write an example to use it directly:
 ```cpp
@@ -343,7 +343,7 @@ As long as an application does not rely on concurrency, and restricts itself to 
 In the extreme, this might mean porting to an embedded system with a very specific idea of an execution context.
 Such a system might not have a multi-threading support at all, and thus the system context not only runs with single thread,
 but actually runs on the system's only thread. We might build the context on top of a UI thread, or we might want to swap
-out the system-provided implementation with one from a vendor (like Intel) with experience writing optimised threading
+out the system-provided implementation with one from a vendor (like Intel) with experience writing optimized threading
 runtimes.
 
 The latter is also important for the composability of the existing code with the `system_context`, i.e., if
@@ -351,13 +351,13 @@ Intel Threading building blocks (oneTBB) is used by somebody and they want to st
 likely that the users want to replace `system_context` implementation with oneTBB because in that case they would have
 one thread pool and work scheduler underneath.
 
-We should allow customisation of the system context to cover this full range of cases.
+We should allow customization of the system context to cover this full range of cases.
 For a whole platform this is relatively simple.
 We assume that everything is an implementation-defined type.
 The `system_context` itself is a named type, but in practice is implementation-defined, in the same way that `std::vector` is implementation-defined at the platform level.
 
 Other situations may offer a little less control.
-If we wish Intel to be able to replace the system thread pool with TBB, or Adobe to customise the runtime that they use for all of Photoshop to adapt to their needs, we need  a different customisation mechanism.
+If we wish Intel to be able to replace the system thread pool with TBB, or Adobe to customize the runtime that they use for all of Photoshop to adapt to their needs, we need  a different customization mechanism.
 
 To achieve this we see options:
 
@@ -368,7 +368,7 @@ To achieve this we see options:
 Link-time replaceability has the following characteristics:
 * Pro: we have precedence in the standard: this is similar to replacing `operator new`.
 * Pro: more predictable, in that it can be guaranteed to be application-global.
-* Pro: some of the type erasure and indirection can be removed in practice with link-time optimisation.
+* Pro: some of the type erasure and indirection can be removed in practice with link-time optimization.
 * Con: it requires defining the ABI and thus, in some cases, would require some type erasure and some inefficiency.
 * Con: harder to get it correctly with shared libraries (e.g., DLLs might have different replaced versions of the system scheduler).
 * Con: the replacement might depend on the order of linking.
@@ -387,7 +387,7 @@ Compile-time replaceability has the following characteristics:
 * Con: potential problems with ODR violations.
 * Con: doesn't support shareability across different binaries of the same process
 
-The paper considers compile-time replaceability as not being a valid option because it easily breaks one of the fundamental
+The paper considers compile-time replaceability as not being a viable option because it easily breaks one of the fundamental
 design principles of a `system_context`, i.e. having one, shared, application-wide execution context, which avoids
 oversubscription.
 
@@ -395,16 +395,16 @@ Replaceability is also part of the [[P2900R8]] proposal for the contract-violati
 The paper proposes that whether the handler is replaceable to be implementation-defined.
 If an implementation chooses to support replaceability, it shall be done similar to replacing the global `operator new` and `operator delete` (link-time replaceability).
 
-The feedback we received from Microsoft, is that they are not interested in supporting replaceability on their platforms.
-They would prefer that we offer implementations an option to not implement replaceabiilty.
-Moreover, for systems where replaceability is supported they would prefer to make the replaceabiilty mechanism to be implementation defined.
+The feedback we received from Microsoft, is that they will likely not support replaceability on their platforms.
+They would prefer that we offer implementations an option to not implement replaceability.
+Moreover, for systems where replaceability is supported they would prefer to make the replaceability mechanism to be implementation defined.
 
 The authors disagree with the idea that replaceability is not needed for Windows platforms (or other platforms that provide an OS scheduler).
 The OS sheduler is optimized for certain workloads, and it's not the best choice for all workloads.
 This way not providing replaceability options have the following drawbacks:
 * it limits the ability to hand-tune the performance of the application (when system scheduler is used);
-* it limits the system_scheduler ability to be used in for CPU-intensive workloads;
-* it limits the system_scheduler ability to be used for platforms with accelerators;
+* it limits the `system_scheduler` ability to be used in for CPU-intensive workloads;
+* it limits the `system_scheduler` ability to be used for platforms with accelerators;
 * it limits the composability of the system context with other parallel runtimes (while avoiding oversubscription).
 
 For this reasons, the authors encourage all platforms to support replaceability of the system context.
@@ -416,7 +416,7 @@ However, in accordance with the feedback, the paper proposes the following:
 During the development of this paper, we received constant feedback that the replaceability mechanism should be standardized, even if we standardize just the interfaces that a backend needs to implement (leaving the replaceability mechanism to be implementation-defined).
 However, as time went by, more and more people think that agreeing on the same replaceability API shape is going to be problematic.
 Here are a few reasons why:
-* Different standard library vendors might have different needs; if the replaceability API is too generic to cover all the needs, we compromize on performance. Example:
+* Different standard library vendors might have different needs; if the replaceability API is too generic to cover all the needs, we compromise on performance. Example:
     * for a simple `schedule` operation, some implementations would want cancellation in the backend, some would not (cancellation is better to be handled in the frontend).
     * including cancellation in the replaceability API would satisfy the needs for those who want cancellation but that would add extra performance penalties
     * in general, including a runtime environment in the backend may be costly, and some implementations may not need it
@@ -490,8 +490,7 @@ We received feedback that this was too strict.
 First, there are many applications where the C++ part does not have a `main()` function.
 Secondly, this can be considered a quality of implementation issue; implementations can always use a Phoenix singleton pattern to ensure that the underlying system context object remains alive for the duration of the entire program.
 
-Version R5 of the paper relaxes the lifetime requirements of the system scheduler.
-The system scheduler can now be used in any part of a C++ program.
+R5 revision of the paper relaxes the lifetime requirements of the system scheduler. The system scheduler can now be used in any part of a C++ program.
 
 
 ## Need for the `system_context` class ## {#expose_system_context_name}
@@ -517,7 +516,7 @@ Thus, the paper simply proposes a `get_system_scheduler()` function that returns
 The system context is implementation-defined and not exposed to the user.
 
 ## Priorities ## {#priorities}
-It's broadly accepted that we need some form of priorities to tweak the behaviour of the system context.
+It's broadly accepted that we need some form of priorities to tweak the behavior of the system context.
 This paper does not include priorities, though early drafts of R2 did.
 We had different designs in flight for how to achieve priorities and decided they could be added later in either approach.
 
@@ -549,7 +548,7 @@ A few key points of the implementation:
 * Uses preallocated storage on the host side, so that the default implementation doesn't need to allocate memory on the heap when adding new work to `system_scheduler`.
 * Guarantees a lifetime of at least the duration of `main()`.
 * As the default implementation is created outside of the host part, it can be shared between multiple binaries in the same process.
-* uses a `static_thread_pool`-based implementation as a default on generic platforms (we have a patch that uses `libdispatch` as default implementaiton on MacOS; as the time of writing this paper revision, the patch is not yet merged on the mainline).
+* uses a `static_thread_pool`-based implementation as a default on generic platforms (we have a patch that uses `libdispatch` as default implementation on MacOS; as the time of writing this paper revision, the patch is not yet merged on the mainline).
 
 ## Addressing received feedback ## {#addressing_feedback}
 
