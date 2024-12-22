@@ -20,14 +20,15 @@ Markup Shorthands: markdown yes
 # Changes # {#changes}
 
 ## R6 ## {#r6}
-- incorporate feedback from SG1 and LEWG given in Wrocław, Poland, November 2024.
+- Incorporate feedback from SG1 and LEWG given in Wrocław, Poland, November 2024.
+- Remove the wording about delegatee schedulers
+- `system_scheduler`'s sender can complete with `set_error`, with a `std::error_code` argument.
+- Remove `system_scheuduler query(get_completion_scheduler_t)` overload for `set_stopped_t`.
+- Add `noexcept` to move, copy constructor, move/copy assignment operators (special member functions) of `system_scheduler`.
+- Add Lvalue connectability to to system sender class.
+- Add `sender_concept`, `completion_signatures` and `get_env` to the definition of the system sender class, making it a sender.
 
 TODOs:
-- Remove the wording about delegatee schedulers
-- Add wording about set_error
-- Add noexcept to move, copy constructor, move/copy assignment operators (special member functions).
-- Strike system_scheudler query(get_completion_scheduler_t) overload.
-- Add Lvalue connectability.
 - Add normative recommendation / non-normative note (if normative - should not be in a note) for sharability in implementations, to be decided later.
 - Mandate replaceability
 - Define replaceability mechanism
@@ -325,10 +326,10 @@ public:
   system_scheduler() = delete;
   ~system_scheduler();
 
-  system_scheduler(const system_scheduler&);
-  system_scheduler(system_scheduler&&);
-  system_scheduler& operator=(const system_scheduler&);
-  system_scheduler& operator=(system_scheduler&&);
+  system_scheduler(const system_scheduler&) noexcept;
+  system_scheduler(system_scheduler&&) noexcept;
+  system_scheduler& operator=(const system_scheduler&) noexcept;
+  system_scheduler& operator=(system_scheduler&&) noexcept;
 
   bool operator==(const system_scheduler&) const noexcept;
 
@@ -340,12 +341,24 @@ public:
 
 class <i>impl-defined-system_sender</i> { // exposition only
 public:
+  using sender_concept = sender_t;
+  using completion_signatures = execution::completion_signatures<
+    set_value_t(),
+    set_stopped_t(),
+    set_error_t(error_code)>;
+
+  <i>impl-defined-environment</i> get_env() const noexcept;
+
   system_scheduler query(get_completion_scheduler_t&lt;set_value_t>) const noexcept;
-  system_scheduler query(get_completion_scheduler_t&lt;set_stopped_t>) const noexcept;
 
   template&lt;receiver R>
   requires receiver_of&lt;R>
-  <i>impl-defined-operation_state</i> connect(R&&) && noexcept(std::is_nothrow_constructible_v&lt;std::remove_cvref_t&lt;R>, R>);
+  <i>impl-defined-operation_state</i> connect(R&&) &
+      noexcept(std::is_nothrow_constructible_v&lt;std::remove_cvref_t&lt;R>, R>);
+  template&lt;receiver R>
+  requires receiver_of&lt;R>
+  <i>impl-defined-operation_state</i> connect(R&&) &&
+      noexcept(std::is_nothrow_constructible_v&lt;std::remove_cvref_t&lt;R>, R>);
 };
 </pre>
 
@@ -365,9 +378,6 @@ public:
     - the lifetime of `sch` does not have to outlive work submitted to it.
     - `sch` is both move and copy constructible and assignable.
     - if `sch2` is another object returned by `get_system_scheduler()`, then `sch == sch2` is defined and always evaluates to `true`.
-    - if the underlying system context is unable to make progress on work created through `sch`, and the sender retrieved
-        from `sch` is connected to a `receiver` that supports the `get_delegatee_scheduler` query, work may scheduled on the `scheduler`
-        returned by `get_delegatee_scheduler` at the time of the call to `start`, or at any later point before the work completes.
   - if `snd` is a sender obtaining from the `scheduler` returned by `get_system_scheduler()`, and `Snd` its type, then:
     - `Snd` is implementation-defined, but must be nameable.
     - `Snd` models the `sender` concept.
@@ -378,6 +388,7 @@ public:
     - if `snd` is connected with a `receiver` that supports the `get_stop_token` query and if that `stop_token` is stopped, operations
         on which `start` has been called, but are not yet running (and are hence not yet guaranteed to make progress) **must**
         complete with `set_stopped` as soon as is practical.
+    - if `snd` is connected with a `receiver`, and the resulting operation is started but the implementation reaches an error consition, the operation must complete with `set_error(ec)`, where `ec` is of type `std::error_code`.
 
 
 
