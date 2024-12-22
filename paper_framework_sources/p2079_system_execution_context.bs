@@ -1,15 +1,15 @@
 <pre class='metadata'>
 Title: System execution context
 Shortname: P2079
-Level: 5
+Level: 6
 Status: P
 Group: wg21
-Editor: Lucian Radu Teodorescu, lucteo@lucteo.ro
+Editor: Lucian Radu Teodorescu, Garmin, lucteo@lucteo.ro
         Ruslan Arutyunyan, Intel, ruslan.arutyunyan@intel.com
         Lee Howes, lwh@fb.com
         Michael Voss, Intel, michaelj.voss@intel.com
 Audience: SG1, LEWG
-URL: http://wg21.link/P2079R5
+URL: http://wg21.link/P2079R6
 Abstract: A standard execution context based on the facilities in [[P2300R10]] that implements parallel-forward-progress to
           maximize portability. A set of <code>system_context</code>`s share an underlying shared thread pool implementation, and may
           provide an interface to an OS-provided system thread pool.
@@ -18,6 +18,105 @@ Markup Shorthands: markdown yes
 
 
 # Changes # {#changes}
+
+## R6 ## {#r6}
+- incorporate feedback from SG1 and LEWG given in Wrocław, Poland, November 2024.
+
+TODOs:
+- Remove the wording about delegatee schedulers
+- Add wording about set_error
+- Add noexcept to move, copy constructor, move/copy assignment operators (special member functions).
+- Strike system_scheudler query(get_completion_scheduler_t) overload.
+- Add Lvalue connectability.
+- Add normative recommendation / non-normative note (if normative - should not be in a note) for sharability in implementations, to be decided later.
+- Mandate replaceability
+- Define replaceability mechanism
+- Define replaceability API
+
+
+---
+SG1 provided the following feedback, through a poll:
+
+1.  Forward P2079R5 to LEWG for C++26 with changes:
+    * Remove the wording about delegatee schedulers
+    * Add wording about set_error
+
+
+    ```
+    | SF | F | N | A | SA |
+    | 3  | 2 | 1 | 0 | 0  |
+    ```
+
+    Unanimous consent
+
+LEWG provided the following feedback, through polls:
+
+1. POLL: We support mandating (by specifying in the standard) replaceability, as described in: “P2079R5 System execution context”
+
+    ```
+    | SF | F | N | A | SA |
+    | 10 | 5 | 1 | 0 | 1  |
+    ```
+
+    Attendance: 15 IP, 7 online
+
+    &#35; of Authors: 2
+
+    Author's Position: 2x SF
+
+    Outcome: Consensus in favor
+
+    SA: I think using this central point is equivalent to using global and is bad software engineering practice and I wouldn't like to see it in the standard.
+
+2. POLL: We support mandating the specific mechanism(s) (link time/runtime/both) of replaceability as described in: “P2079R5 System execution context”
+
+    ```
+    | SF | F | N | A | SA |
+    | 5  | 6 | 3 | 0 | 2  |
+    ```
+
+    Attendance: 15 IP, 7 online
+
+    &#35; of Authors: 2
+
+    Author's Position: 1x SF 1x N
+
+    Outcome: Consensus in favor
+
+    SA: I don't believe it's actually possible to describe this in terms of the abstract machine, we've never done that.
+
+3. POLL: We support specifying an API for the replaceability mechanism(s), as described in: “P2079R5 System execution context”
+
+    ```
+    | SF | F | N | A | SA |
+    | 7  | 6 | 2 | 0 | 1  |
+    ```
+
+    Attendance: 15 (IP), 7 (R)
+
+    &#35; of Authors: 2
+
+    Author’s Position: 2x SF
+
+    Outcome: Consensus in favor
+
+
+4. POLL: For lifetime: “P2079R5 System execution context” (approval poll - allowed to vote multiple times):
+
+    1. Not specified in the standard (valid to use the system scheduler everywhere) | 11 |
+    2. Allow lifetime to start before main() (allow use of scheduler before entering main but not after main returns) | 1 |
+    3. Constrain lifetime to only be inside of main() | 8 |
+
+
+    Attendance: 15 (IP), 7 (R)
+
+    Outcome: Slight preference towards 1 ( If authors advocate for 3, they need to add rationale for it)
+
+In addition to these polls, LEWG provided the following action items:
+- Add noexcept to move, copy constructor, move/copy assignment operators (special member functions).
+- Strike system_scheudler query(get_completion_scheduler_t) overload.
+- Add Lvalue connectability.
+- Add normative recommendation / non-normative note (if normative - should not be in a note) for sharability in implementations, to be decided later.
 
 ## R5 ## {#r5}
 - Streamline the paper
