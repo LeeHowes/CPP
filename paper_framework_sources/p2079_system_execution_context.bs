@@ -320,6 +320,43 @@ std::cout << "Result: " << result << "\n";
 // and destruction of the context is now safe
 ```
 
+---
+
+To replace the implementation of system scheduler at runtime, one might do it the following way:
+```cpp
+namespace scr = std::execution::system_context_replaceability;
+
+struct my_system_scheduler_impl : scr::system_scheduler {
+
+  void schedule(scr::receiver* r, scr::storage s, inplace_stop_token t)
+      noexcept override {
+    r->set_value();
+  }
+  void bulk_schedule(uint32_t n, scr::bulk_item_receiver* r,
+      scr::storage s, inplace_stop_token t) noexcept override {
+    for (uint32_t i = 0; i < count; ++i)
+      r->start(i);
+    r->set_value();
+  }
+};
+
+my_system_scheduler_impl my_scheduler;
+bool r = scr::set_system_context_backend<system_scheduler>(&my_scheduler);
+assert(r);
+```
+
+To change the implementation of system scheduler at link-time, one might do it the following way:
+```cpp
+namespace std::execution::system_context_replaceability {
+  template <>
+  extern __attribute__((__weak__))
+  system_scheduler* query_system_context<system_scheduler>() {
+    static my_system_scheduler_impl instance; // Maybe use a Phoenix singleton here
+    return &instance;
+  }
+}
+```
+
 # Design # {#design}
 
 ## User facing API ## {#user_facing_api}
@@ -403,6 +440,9 @@ namespace std::system_context_replaceability {
   template &lt;typename Interface>
   Interface* query_system_context();
 
+  template &lt;typename Interface>
+  bool set_system_context_backend(Interface* new_backend);
+
   struct receiver {
     virtual ~receiver() = default;
 
@@ -436,10 +476,13 @@ namespace std::system_context_replaceability {
 </pre>
 
  - Note: for the current exposition we call *backend* the part of the application that implements a custom system context, and *host* the part of the application that uses the custom system context. The *host* part consists of library code that implements the user-facing API to call the interfaces implemented by the backend.
- - `query_system_context` is a function that returns a pointer to an object that implements the `Interface` concept.
+ - `query_system_context` is a function template that returns a pointer to an object that implements the `Interface` concept.
     - `query_system_context` must have a valid instantiation for the `system_scheduler` interface; it returns the underlying system scheduler implementation that is shared by all user-facing system scheduler objects.
-    - is not required for `query_system_context` to be instantiable for interfaces like `receiver`, `bulk_item_receiver`, or `storage`.
     - Note: in the future, this mechanism may be used to query different types of system context objects, like I/O schedulers, priority schedulers, time schedulers, main scheduler, etc. It can also be used to query implementation-specific interfaces.
+    - Note: it is expected for users to want to have link-time replacements of various instantiations of `Interface`.
+  - `set_system_context_backend` is a function template that allows setting at runtime the backend for an `Interface`.
+    - `set_system_context_backend` must have a valid instantiation for the `system_scheduler` interface; it allows replacing at runtime the backend for system scheduler.
+    - Note: in the future, this mechanism may be used to provide runtime replaceability for different types of system context objects, like I/O schedulers, priority schedulers, time schedulers, main scheduler, etc. It can also be used to set backends for implementation-specific interfaces.
  - Note: `receiver`, `bulk_item_receiver`, and `storage` are interfaces that are implemented by the host side; only `system_scheduler` is expected to be implemented by a system context implementation.
  - the names of the fields of `storage` class are implementation-defined.
  - if `sch` is an object that implements `system_scheduler` interface (and can be returned by `query_system_context`), then the following must be true:
@@ -604,8 +647,8 @@ In accordance with the feedback, and the beliefs of the authors, the paper propo
 
 To replace the system scheduler, the user needs to do the following:
 - Implement a system scheduler behind the `std::system_context_replaceability::system_scheduler` interface.
-- If runtime replaceability is desired, call `std::set_system_scheduler` (TODO) with the new system scheduler.
-- If link-time replaceability is desired, follow the implementation instructions to replace the `std::system_context_replaceability::system_scheduler` symbol.
+- If runtime replaceability is desired, call `std::set_system_context_backend` with the desired system scheduler backend.
+- If link-time replaceability is desired, follow the implementation instructions to replace the `std::system_context_replaceability::query_system_context` symbol.
 
 The above list raises a few questions:
 - Can the system scheduler be replaced multiple times?
@@ -635,8 +678,6 @@ The paper leaves it to the implementation to decide what happens when both mecha
 Implementations might choose to disable runtime replaceability if link-time replaceability is used.
 Alternatively, implementations might choose to allow the users to start the program with a link-time replaced system context, and then replace it at runtime with a different system context.
 
-
-TODO: check the above replaceability details
 
 ## Extensibility ## {#extensibility}
 
