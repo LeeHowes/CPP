@@ -22,7 +22,7 @@ Markup Shorthands: markdown yes
 ## R6 ## {#r6}
 - Incorporate feedback from SG1 and LEWG given in Wrocław, Poland, November 2024.
 - Remove the wording about delegatee schedulers
-- `system_scheduler`'s sender can complete with `set_error`, with a `std::error_code` argument.
+- `system_scheduler`'s sender can complete with `set_error`, with a `std::exception_ptr` argument.
 - Remove `system_scheuduler query(get_completion_scheduler_t)` overload for `set_stopped_t`.
 - Add `noexcept` to move, copy constructor, move/copy assignment operators (special member functions) of `system_scheduler`.
 - Add Lvalue connectability to to system sender class.
@@ -351,7 +351,7 @@ public:
   using completion_signatures = execution::completion_signatures<
     set_value_t(),
     set_stopped_t(),
-    set_error_t(error_code)>;
+    set_error_t(exception_ptr)>;
 
   <i>impl-defined-environment</i> get_env() const noexcept;
 
@@ -394,7 +394,7 @@ public:
     - if `snd` is connected with a `receiver` that supports the `get_stop_token` query and if that `stop_token` is stopped, operations
         on which `start` has been called, but are not yet running (and are hence not yet guaranteed to make progress) **must**
         complete with `set_stopped` as soon as is practical.
-    - if `snd` is connected with a `receiver`, and the resulting operation is started but the implementation reaches an error consition, the operation must complete with `set_error(ec)`, where `ec` is of type `std::error_code`.
+    - if `snd` is connected with a `receiver`, and the resulting operation is started but the implementation reaches an error consition, the operation must complete with `set_error(ep)`, where `ep` is of type `std::exception_ptr`.
 
 ## Replaceability API ## {#replaceability_api}
 
