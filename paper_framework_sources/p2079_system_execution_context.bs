@@ -328,12 +328,12 @@ namespace scr = std::execution::system_context_replaceability;
 
 struct my_system_scheduler_impl : scr::system_scheduler {
 
-  void schedule(scr::receiver* r, scr::storage s, inplace_stop_token t)
+  void schedule(scr::receiver* r, scr::storage s, env e)
       noexcept override {
     r->set_value();
   }
   void bulk_schedule(uint32_t n, scr::bulk_item_receiver* r,
-      scr::storage s, inplace_stop_token t) noexcept override {
+      scr::storage s, env e) noexcept override {
     for (uint32_t i = 0; i < count; ++i)
       r->start(i);
     r->set_value();
@@ -465,11 +465,19 @@ namespace std::system_context_replaceability {
     uint32_t size;
   };
 
+  struct env {
+    template &lt;typename _P>
+    optional<_P> try_query() noexcept;
+
+    // implementation defined construction
+    // implementation defined type-erased storage for the environment
+  };
+
   struct system_scheduler {
     virtual ~system_scheduler() = default;
 
-    virtual void schedule(receiver*, storage, inplace_stop_token) noexcept = 0;
-    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage, inplace_stop_token) noexcept = 0;
+    virtual void schedule(receiver*, storage, env) noexcept = 0;
+    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage, env) noexcept = 0;
   };
 }
 
@@ -484,7 +492,13 @@ namespace std::system_context_replaceability {
     - `set_system_context_backend` must have a valid instantiation for the `system_scheduler` interface; it allows replacing at runtime the backend for system scheduler.
     - Note: in the future, this mechanism may be used to provide runtime replaceability for different types of system context objects, like I/O schedulers, priority schedulers, time schedulers, main scheduler, etc. It can also be used to set backends for implementation-specific interfaces.
  - Note: `receiver`, `bulk_item_receiver`, and `storage` are interfaces that are implemented by the host side; only `system_scheduler` is expected to be implemented by a system context implementation.
- - the names of the fields of `storage` class are implementation-defined.
+ - if `e` is an object of type `env`, passed as parameter to either `schedule` or `bulk_schedule` then:
+    - `e` or any copy of it cannot be accessed outside the lifetime of `schedule` or `bulk_schedule` call;
+      - this means that the backend cannot store a copy of `e` inside the operation state to access it later;
+    - Note: frontend will store type-erased environment proerties in `e` object;
+    - Note: backend is able to consume the environment properties stored in `e` object, during the calls to `schedule` and `bulk_schedule`;
+    - if, on the frontend side, the sender obtained from a system scheduler is connected to a receiver that has an environtment for which `get_stop_token` returns an `inplace_stop_token` object, then `e.template try_query<inplace_stop_token>()` returns an optional of a value equal with the stop token from the environment;
+    - Note: depending on the implementation of the frontend, not all the environment properties may be available to the backend.
  - if `sch` is an object that implements `system_scheduler` interface (and can be returned by `query_system_context`), then the following must be true:
     - the users of `sch` must not destroy the object.
     - if `sch.schedule()` is called passing `r` of type `receiver*`, `st` of type `storage` `t` pf type `inplace_stop_token`, then:
@@ -770,6 +784,27 @@ However, if we would later find such properties, nothing prevents us to add `sys
 
 Thus, the paper simply proposes a `get_system_scheduler()` function that returns a the system scheduler.
 The system context is implementation-defined and not exposed to the user.
+
+## Backend environment ## {#environment}
+For custome backend implementations, it is often necessary access properties of the environment that is connected to the sender that triggers a schedule operation.
+Because the backend is behind a type-erased boundary, the environment type passed to the backend is also type-erased.
+
+For this we envision the `env` class that can be queried for properties of the environment, by passing a type to the `try_query` method.
+One of the implication for this is that the exchange of environment properties needs to use concrete types, and cannot use concepts.
+If, for example, the backend needs to obtain a stop token, it needs to ask for a specific stop token type (like `inplace_stop_token`), and not for a `stoppable_token` concept.
+As another example, if the backend needs an allocator, it needs to ask for a specific allocator type, and not use `simple-allocator` concept.
+
+At this point, the paper requires that only `inplace_stop_token` is supported by the environment.
+Other types might be supported, but it is not required.
+
+The authors envision that the list of supported properties will grow over time.
+
+Another aspect that needs to be touched on the current designed on the type-erased environement is the lifetime of such environment.
+The paper mandates that the environment is only accessible during the `schedule` and `bulk_schedule` calls.
+It many not be acessible after the call returns (for example, on a thread that the async operation starts).
+
+Extending the lifetime of the environment would require storing all the frontend parameters (which may not be used by the backend) in the operation state on the frontend side.
+This has a performance cost, that cannot be justified for the common case.
 
 ## Priorities ## {#priorities}
 It's broadly accepted that we need some form of priorities to tweak the behavior of the system context.
