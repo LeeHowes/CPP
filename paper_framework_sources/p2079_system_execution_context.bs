@@ -340,9 +340,14 @@ struct my_system_scheduler_impl : scr::system_scheduler {
   }
 };
 
-my_system_scheduler_impl my_scheduler;
-bool r = scr::set_system_context_backend<system_scheduler>(&my_scheduler);
-assert(r);
+auto old_factory = scr::set_system_context_backend_factory<scr::system_scheduler>(
+  []() -> std::shared_ptr<scr::system_scheduler> {
+    return std::make_shared<my_system_scheduler_impl>();
+  });
+...
+// Use the system scheduler here
+...
+(void) scr::set_system_context_backend_factory<scr::system_scheduler>(old_factory);
 ```
 
 To change the implementation of system scheduler at link-time, one might do it the following way:
@@ -350,9 +355,8 @@ To change the implementation of system scheduler at link-time, one might do it t
 namespace std::execution::system_context_replaceability {
   template <>
   extern __attribute__((__weak__))
-  system_scheduler* query_system_context<system_scheduler>() {
-    static my_system_scheduler_impl instance; // Maybe use a Phoenix singleton here
-    return &instance;
+  std::shared_ptr<system_scheduler> query_system_context<system_scheduler>() {
+    return std::make_shared<my_system_scheduler_impl>();
   }
 }
 ```
@@ -438,10 +442,14 @@ public:
 <pre highlight="c++">
 namespace std::system_context_replaceability {
   template &lt;typename Interface>
-  Interface* query_system_context();
+  extern shared_ptr&lt;Interface> query_system_context();
+
+  // exposition only
+  template &lt;typename Interface>
+  using <i>factory-type</i> = shared_ptr&lt;Interface> (*)();
 
   template &lt;typename Interface>
-  bool set_system_context_backend(Interface* new_backend);
+  extern <i>factory-type</i><Interface> set_system_context_backend_factory(<i>factory-type</i><Interface>);
 
   struct receiver {
     virtual ~receiver() = default;
@@ -466,8 +474,8 @@ namespace std::system_context_replaceability {
   };
 
   struct env {
-    template &lt;typename _P>
-    optional<_P> try_query() noexcept;
+    template &lt;typename P>
+    optional&lt;P> try_query() noexcept;
 
     // implementation defined construction
     // implementation defined type-erased storage for the environment
@@ -483,15 +491,21 @@ namespace std::system_context_replaceability {
 
 </pre>
 
- - Note: for the current exposition we call *backend* the part of the application that implements a custom system context, and *host* the part of the application that uses the custom system context. The *host* part consists of library code that implements the user-facing API to call the interfaces implemented by the backend.
- - `query_system_context` is a function template that returns a pointer to an object that implements the `Interface` concept.
-    - `query_system_context` must have a valid instantiation for the `system_scheduler` interface; it returns the underlying system scheduler implementation that is shared by all user-facing system scheduler objects.
+ - Note: for the current exposition we call *backend* the part of the application that implements a custom system context, and *frontend* the part of the application that uses the custom system context. The *frontend* part consists of library code that implements the user-facing API to call the interfaces implemented by the backend.
+ - `query_system_context` is a function template that returns a shared pointer to an object that implements the `Interface` concept.
+    - `query_system_context` must have a valid instantiation for the `system_scheduler` interface; it returns the underlying system scheduler implementation that aims to be shared by all user-facing system scheduler objects.
     - Note: in the future, this mechanism may be used to query different types of system context objects, like I/O schedulers, priority schedulers, time schedulers, main scheduler, etc. It can also be used to query implementation-specific interfaces.
     - Note: it is expected for users to want to have link-time replacements of various instantiations of `Interface`.
-  - `set_system_context_backend` is a function template that allows setting at runtime the backend for an `Interface`.
-    - `set_system_context_backend` must have a valid instantiation for the `system_scheduler` interface; it allows replacing at runtime the backend for system scheduler.
+  - `set_system_context_backend_factory` is a function template that allows setting at runtime the backend for an `Interface`.
+    - `set_system_context_backend_factory` must have a valid instantiation for the `system_scheduler` interface; it allows replacing at runtime the backend for system scheduler.
     - Note: in the future, this mechanism may be used to provide runtime replaceability for different types of system context objects, like I/O schedulers, priority schedulers, time schedulers, main scheduler, etc. It can also be used to set backends for implementation-specific interfaces.
- - Note: `receiver`, `bulk_item_receiver`, and `storage` are interfaces that are implemented by the host side; only `system_scheduler` is expected to be implemented by a system context implementation.
+    - the function passed to it might be called multiple times to create the backend instance (e.g., if the system scheduler is used after static object destruction started)
+  - In the absence of link-time replaceability of `query_system_context<system_scheduler>()` and `set_system_context_backend_factory<system_scheduler>()`, the following must be true:
+    - calls to `set_system_context_backend_factory<system_scheduler>()` syncrhonizes with calls to `query_system_context<system_scheduler>()`
+    - after a call to `set_system_context_backend_factory<system_scheduler>(f)`, if a subsequent call to `query_system_context<system_scheduler>()` produces value `psch`, then `psch` is produced by `f`.
+    - Note: calling `set_system_context_backend_factory<system_scheduler>(f)` while a `system_scheduler` object is already in use might produce a different value for `system_scheduler`; this can lead to oversubscription.
+  - If any of `query_system_context<system_scheduler>()` and `set_system_context_backend_factory<system_scheduler>()` are link-time replaced, the interaction between a link-time replaced implementation and a run-time implementation is unspecified; i.e., calling `query_system_context<system_scheduler>()` might yield a value coming from the link-time replaced implementation, or from the run-time replaced implementation.
+ - Note: `receiver`, `bulk_item_receiver`, and `storage` are interfaces that are implemented by the frontend side; only `system_scheduler` is expected to be implemented by a system context implementation.
  - if `e` is an object of type `env`, passed as parameter to either `schedule` or `bulk_schedule` then:
     - `e` or any copy of it cannot be accessed outside the lifetime of `schedule` or `bulk_schedule` call;
       - this means that the backend cannot store a copy of `e` inside the operation state to access it later;
@@ -499,7 +513,7 @@ namespace std::system_context_replaceability {
     - Note: backend is able to consume the environment properties stored in `e` object, during the calls to `schedule` and `bulk_schedule`;
     - if, on the frontend side, the sender obtained from a system scheduler is connected to a receiver that has an environtment for which `get_stop_token` returns an `inplace_stop_token` object, then `e.template try_query<inplace_stop_token>()` returns an optional of a value equal with the stop token from the environment;
     - Note: depending on the implementation of the frontend, not all the environment properties may be available to the backend.
- - if `sch` is an object that implements `system_scheduler` interface (and can be returned by `query_system_context`), then the following must be true:
+ - if `sch` is an object that implements `system_scheduler` interface (and can be returned via `query_system_context`), then the following must be true:
     - the users of `sch` must not destroy the object.
     - if `sch.schedule()` is called passing `r` of type `receiver*`, `st` of type `storage` `t` pf type `inplace_stop_token`, then:
       - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
@@ -661,7 +675,7 @@ In accordance with the feedback, and the beliefs of the authors, the paper propo
 
 To replace the system scheduler, the user needs to do the following:
 - Implement a system scheduler behind the `std::system_context_replaceability::system_scheduler` interface.
-- If runtime replaceability is desired, call `std::set_system_context_backend` with the desired system scheduler backend.
+- If runtime replaceability is desired, call `std::set_system_context_backend_factory` with a factory method to create the desired system scheduler backend.
 - If link-time replaceability is desired, follow the implementation instructions to replace the `std::system_context_replaceability::query_system_context` symbol.
 
 The above list raises a few questions:
@@ -683,9 +697,6 @@ This implies that, for brief periods of time, multiple system schedulers backend
 The system scheduler can be replaced outside of `main()`.
 This implies that the underlying mechanisms should use something similar to a Phoenix singleton pattern to ensure that the system scheduler is alive while there are users to it.
 It is allowed for the implementation to attempt to destroy the system context backend after `main()` returns, just to create it again if system scheduler needs to be used again.
-
-For the cases in which the system scheduler is replaced at runtime, the implementation should ensure that the provided system scheduler is alive while there is work on the scheduler.
-Mechanism like `counting_scope` [[P3149R8]] can be employed by users to ensure that the system scheduler is alive while there is work on it.
 
 While, in theory it is possible to replace the system scheduler both at runtime and at link-time, in practice, it is not recommended.
 The paper leaves it to the implementation to decide what happens when both mechanisms are used.
@@ -709,18 +720,8 @@ The first type of extensibility can easily be solved by adding new getters for t
 Different types of schedulers should be able to be replaced separately; e.g., one should be able to replace the I/O scheduler without replacing the system scheduler.
 The discussed replaceability mechanisms support this.
 
-The second type of extensibility can also be easily achieved, but, at this point, it's beside of the scope of this paper.
-Next section provides more details.
-
-## API for implementing custom system contexts ## {#custom_system_contexts}
-
-A proper implementation of the system scheduler that meets all the goals expressed in the paper needs to be divided into two parts: "host" and "backend".
-The host part implements the API defined in this paper and calls the backend for the actual implementation.
-The backend provides the actual implementation of the system context (e.g., use Grand Central Dispatch or Windows Thread Pool).
-
-As we need to switch between different backend, we need a "stable" type-erased API between these two parts.
-
-An example of such an API can be found in [stdexec](https://github.com/NVIDIA/stdexec) repository.
+To extend existing schedulers, one can pass properties to it, via a type-erased environment object.
+For example, adding priorities to the system scheduler can be done by adding a priority property to the environment object.
 
 ## Shareability ## {#shareability}
 
@@ -832,13 +833,13 @@ It is thus not urgent that we answer this question, but we include the discussio
 The authors prepared a reference implementation in [stdexec](https://github.com/NVIDIA/stdexec)
 
 A few key points of the implementation:
-* The implementation is divided into two parts: "host" and "backend". The host part implements the API defined in this paper and calls the backend for the actual implementation. The backend provides the actual implementation of the system context.
+* The implementation is divided into two parts: "frontend" and "backend". The frontend part implements the API defined in this paper and calls the backend for the actual implementation. The backend provides the actual implementation of the system context.
 * Allows link-time replaceability for `system_scheduler`. Provides examples on doing this.
 * Allows run-time replaceability for `system_scheduler`. Provides examples on doing this.
-* Defines a replaceability API between the host and backend parts. This way, one can easily extend this interface when new features need to be added to system context.
-* Uses preallocated storage on the host side, so that the default implementation doesn't need to allocate memory on the heap when adding new work to `system_scheduler`.
-* Guarantees a lifetime of at least the duration of `main()`.
-* As the default implementation is created outside of the host part, it can be shared between multiple binaries in the same process.
+* Defines a replaceability API between the frontend and backend parts. This way, one can easily extend this interface when new features need to be added to system context.
+* Uses preallocated storage on the frontend side, so that the default implementation doesn't need to allocate memory on the heap when adding new work to `system_scheduler`.
+* Uses a Phoenix singleton pattern to ensure that the system scheduler is alive when needed.
+* As the default implementation is created outside of the frontend part, it can be shared between multiple binaries in the same process.
 * uses a `static_thread_pool`-based implementation as a default on generic platforms (we have a patch that uses `libdispatch` as default implementation on MacOS; as the time of writing this paper revision, the patch is not yet merged on the mainline).
 
 ## Addressing received feedback ## {#addressing_feedback}
@@ -877,4 +878,21 @@ While it is true that people that would want to replace the system scheduler wil
 They would still be able to the use system context and system scheduler without knowing the implementation details of those.
 
 We have a precedence in the C++ standard for this approach with the global allocator.
+
+### Replaceability is not needed (at least on Windows) ### {#replaceability_not_needed}
+
+Microsoft provided feedback that they will likely not support replaceability on their platforms.
+The feedback we received from Microsoft, is that they will likely not support replaceability on their platforms.
+They would prefer that we offer implementations an option to not implement replaceability.
+Moreover, for systems where replaceability is supported they would prefer to make the replaceability mechanism to be implementation defined.
+
+The authors disagree with the idea that replaceability is not needed for Windows platforms (or other platforms that provide an OS scheduler).
+The OS sheduler is optimized for certain workloads, and it's not the best choice for all workloads.
+This way not providing replaceability options have the following drawbacks:
+* it limits the ability to hand-tune the performance of the application (when system scheduler is used);
+* it limits the `system_scheduler` ability to be used in for CPU-intensive workloads;
+* it limits the `system_scheduler` ability to be used for platforms with accelerators;
+* it limits the composability of the system context with other parallel runtimes (while avoiding oversubscription).
+
+The poll taken in Wrocław, Poland, November 2024, showed that the majority of the participants support mandating replaceability, as well as specifying the mechanism of replaceability and the API for replaceability.
 
