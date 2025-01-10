@@ -16,6 +16,59 @@ Abstract: A standard execution context based on the facilities in [[P2300R10]] t
 Markup Shorthands: markdown yes
 </pre>
 
+<style>
+div.ed-note, span.ed-note {
+  color: light-dark(blue, lightblue) !important;
+  font: initial;
+  font-family: sans-serif;
+}
+div.ed-note:before, span.ed-note:before {
+  content: "[Editorial note: ";
+  font-style: italic;
+}
+div.ed-note:after, span.ed-note:after {
+  content: " — end note]";
+  font-style: italic;
+}
+div.enote, span.enote {
+}
+div.enote:before, span.enote:before {
+  content: "[Note: ";
+  font-style: italic;
+}
+div.enote:after, span.enote:after {
+  content: " — end note]";
+  font-style: italic;
+}
+.ins, ins, ins *, span.ins, span.ins * {
+  background-color: light-dark(#cfc, hsl(120, 100.00%, 15%));
+  color: light-dark(#000, #ddd);
+  text-decoration: none;
+}
+.del, del, del *, span.del, span.del * {
+  background-color: light-dark(#fcc,hsl(0, 100.00%, 20%));
+  color: light-dark(#000, #ddd);
+  text-decoration: line-through;
+  text-decoration-color: #c00;
+}
+div.ed-note *, span.ed-note * {
+  color: blue !important;
+  margin-top: 0em;
+  margin-bottom: 0em;
+}
+div.ed-note blockquote {
+  margin-left: 2em;
+}
+div.block-insert, div.block-insert {
+  background-color: light-dark(#cfc, hsl(120, 100.00%, 15%));
+  padding-left: 0;
+  padding-right: 1.6em;
+}
+div.block-insert pre.highlight {
+  background-color: transparent;
+}
+</style>
+
 
 # Changes # {#changes}
 
@@ -440,7 +493,7 @@ public:
 ## Replaceability API ## {#replaceability_api}
 
 <pre highlight="c++">
-namespace std::system_context_replaceability {
+namespace std::execution::system_context_replaceability {
   template &lt;typename Interface>
   extern shared_ptr&lt;Interface> query_system_context();
 
@@ -840,7 +893,9 @@ A few key points of the implementation:
 * Uses preallocated storage on the frontend side, so that the default implementation doesn't need to allocate memory on the heap when adding new work to `system_scheduler`.
 * Uses a Phoenix singleton pattern to ensure that the system scheduler is alive when needed.
 * As the default implementation is created outside of the frontend part, it can be shared between multiple binaries in the same process.
-* uses a `static_thread_pool`-based implementation as a default on generic platforms (we have a patch that uses `libdispatch` as default implementation on MacOS; as the time of writing this paper revision, the patch is not yet merged on the mainline).
+* uses a `static_thread_pool`-based implementation as a default on generic platforms, and using `libdispatch` as default implementation on MacOS
+
+(as the time of writing this paper revision, not all these features are merged on the mainline).
 
 ## Addressing received feedback ## {#addressing_feedback}
 
@@ -896,3 +951,230 @@ This way not providing replaceability options have the following drawbacks:
 
 The poll taken in Wrocław, Poland, November 2024, showed that the majority of the participants support mandating replaceability, as well as specifying the mechanism of replaceability and the API for replaceability.
 
+# Specification # {#specification}
+
+##  Header `<version>` synopsis 17.3.2 \[[version.syn](https://eel.is/c++draft/version.syn)] ## {#wording_version}
+
+To the `<version>` synopsis 17.3.2 \[[version.syn](https://eel.is/c++draft/version.syn)], add the following:
+
+<pre highlight="c++">
+#define __cpp_lib_syncbuf                           201803L // also in &lt;syncstream>
+<ins>#define __cpp_lib_system_scheduler                  2025XXL // also in &lt;execution></ins>
+#define __cpp_lib_text_encoding                     202306L // also in &lt;text_encoding>
+</pre>
+
+## 8.2 Header `<execution>` synopsis 34.4 \[[execution.syn](https://eel.is/c++draft/execution.syn)] ## {#wording_syn}
+
+To the `<execution>` synopsis 34.4 \[[execution.syn](https://eel.is/c++draft/execution.syn)], add the following at the end of the code block:
+
+<div class="block-insert">
+<pre highlight="c++">
+namespace std::execution {
+  // [exec.get_system_scheduler]
+  system_scheduler get_system_scheduler();
+
+  // [exec.system_scheduler]
+  class system_scheduler { <i>unspecified</i> };
+
+  // [exec.system_scheduler]
+  class <i>impl-defined-system_sender</i> { <i>unspecified</i> };
+}
+
+// [exec.sysctxrepl]
+namespace std::execution::system_context_replaceability {
+  template &lt;typename Interface>
+  extern shared_ptr&lt;Interface> query_system_context();
+
+  template &lt;typename Interface>
+  using <i>factory-type</i> = shared_ptr&lt;Interface> (*)(); // exposition only
+
+  template &lt;typename Interface>
+  extern <i>factory-type</i><Interface> set_system_context_backend_factory(<i>factory-type</i><Interface>);
+
+  struct receiver {
+    virtual ~receiver() = default;
+
+    receiver(const receiver&) = delete;
+    receiver(receiver&&) = delete;
+    receiver& operator=(const receiver&) = delete;
+    receiver& operator=(receiver&&) = delete;
+
+    virtual void set_value() noexcept = 0;
+    virtual void set_error(std::exception_ptr) noexcept = 0;
+    virtual void set_stopped() noexcept = 0;
+  };
+
+  struct bulk_item_receiver : receiver {
+    virtual void start(uint32_t) noexcept = 0;
+  };
+
+  struct storage {
+    void* data;
+    uint32_t size;
+  };
+
+  struct env {
+    template &lt;typename P>
+    optional&lt;P> try_query() noexcept;
+
+    // unspecified storage && construction
+  };
+
+  struct system_scheduler {
+    virtual ~system_scheduler() = default;
+
+    virtual void schedule(receiver*, storage, env) noexcept = 0;
+    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage, env)
+      noexcept = 0;
+  };
+}
+</pre>
+</div>
+
+## System context ## {#wording_system_context}
+
+Add the following as a new subsection at the end of 33 \[[exec](https://eel.is/c++draft/exec)]:
+
+<div class="block-insert">
+  <b>33.N System context [exec.sysctx]</b>
+
+  <b>33.N.1 `execution::get_system_scheduler` [exec.get_system_scheduler]</b>
+
+  1. `get_system_scheduler` returns the system scheduler object that represents a parallel execution context that can be shared between applications, aiming at avoiding oversubscription.
+
+  1. <i>Returns:</i> An instance of a `execution::system_scheduler` class.
+
+  <b>33.N.2 `execution::system_scheduler` class [exec.system_scheduler]</b>
+
+  1. `system_scheduler` is a class that models the `scheduler` concept and provides access to a parallel execution context that can be shared between applications, aiming at avoiding oversubscription.
+
+  1. An instance of the `system_scheduler` class will internally reference an instance of `execution::system_context_replaceability::system_scheduler` class. We call this the *backend* of the system scheduler; see [exec.sysctxrepl].
+
+    - If the user doesn't specify a custom backend, a default is provided by the implementation.
+
+    - If there is no system scheduler backend is available when an instance of the class `system_scheduler` is created, `terminate()` ([except.terminate]) is called.
+  
+  1. Two objects `sch1` and `sch2` of type `execution::system_scheduler` shall compare equal if and only if they point to the same backend.
+
+  1. If `sch` is an object of type `execution::system_scheduler`, then `get_forward_progress_guarantee(sch)` returns `execution::parallel`.
+
+  1. Let `snd` be the object reurned by calling `execution::schedule()` on an object of type `system_scheduler`; `snd` has exposition-only type <code><i>impl-defined-system_sender</i></code>. If a receiver `recv` is connected to `snd` and the resulting operation state is started, then:
+    - if `st` is `get_stop_token(get_env(rcvr))`, and stop was requested to `st`, then `recv.set_stopped()` might be called;
+    - if stop was not requested for `recv`, then:
+        - `schedule(r, s, e)` is called on the backend object of the system scheduler;
+        - when the backend calls `r->set_value()`, then `recv.set_value()` is called on the frontend object of the system scheduler;
+        - when the backend calls `r->set_error()` with a value `ep`, then `recv.set_value(ep)` is called on the frontend object of the system scheduler;
+        - when the backend calls `r->set_done()`, then `recv.set_done()` is called on the frontend object of the system scheduler.
+
+  1. Implementations shall provide customizations for the `execution::bulk()` algorithm \[[exec.bulk](https://eel.is/c++draft/exec.bulk)].
+    Let `snd` be te sender corresponding to the customized call to `execution::bulk(sndr, shape, f)`. If a receiver `recv` is connected to `snd` and the resulting operation state is started, then:
+    - if `st` is `get_stop_token(get_env(rcvr))`, and stop was requested to `st`, then `recv.set_stopped()` might be called;
+    - if stop was not requested for `recv`, then:
+        - `bulk_schedule(n, r, s, e)` is called on the backend object of the system scheduler;
+        - when the backend calls `r->set_value()`, then `recv.set_value()` is called on the frontend object of the system scheduler;
+        - when the backend calls `r->set_error()` with a value `ep`, then `recv.set_value(ep)` is called on the frontend object of the system scheduler;
+        - when the backend calls `r->set_done()`, then `recv.set_done()` is called on the frontend object of the system scheduler;
+        - when the backend calls `r->start()` with a value `i`, then `f(i)` is called on the frontend object of the system scheduler.
+  
+  <span class="ed-note">If [[P3481R1]] gets accepted, the text specifying the customization for `bulk()` should be updated to also reference `bulk_chunked()` and `bulk_unchunked()`.
+  If `bulk_chunked()` is customized, the implementations may not provide a customizaztion for `bulk()`.</span>
+
+  <b>33.N.3 `execution::system_context_replaceability` namespace [exec.sysctxrepl]</b>
+
+  1. Facilities in `execution::system_context_replaceability` namespace allow users to replace the *backend* for the system scheduler.
+    It provides facilities that allows extending system context and using these extensions between the *backend* and the *frontend*.
+
+    <span class="enote">we use the term *backend* to refer to the actual implementation of the system scheduler, which is hidden behind a type-erased boundary.
+    At the same type, we refer to the *frontend* as the part of the system context that is exposed to the users, i.e., the `execution::system_scheduler` class and related functionality.</span>
+
+    - `query_system_context()` is used to query a backend for the implementations of certain interfaces.
+
+    - `set_system_context_backend_factory()` allows run-time replaceability of system context backend components.
+
+    - `receiver` represents the type-erased receiveer that will be ntofied about the completion signals of the system scheduler backend; the frontend will provide objects of type `receiver`.
+
+    - `bulk_item_receiver` represents the type-erased object that will be notified for different iterations of the *bulk* backend implementation; the frontend will provide objects of type `receiver`.
+
+    - `storage` is a type that allows the frontend to pass to the backend information of a preallocated storage in which the operation state of the backend might be stored.
+
+    - `env` is a type that represents a type-erased receiver environment; the backend can query this environment for properties that are needed for the execution of the work.
+
+    - `system_scheduler` is the interface that the backend implements for the system scheduler.
+
+
+    `query_system_context<Interface>()`
+
+  1. *Returns*: a shared pointer to an object that implements the `Interface` concept, or a null pointer if the backend doesn't implement the interface `Interface`.
+
+  1. *Remarks*:
+
+      - A C++ program may provide replacements for different instantiations of `query_system_context<Interface>()`, similar to the mechanism defined in \[[replacement.functions](https://eel.is/c++draft/replacement.functions)].
+
+      - Must return a non-null pointer for the `execution::system_context_replaceability::system_scheduler` interface.
+
+
+    <code>set_system_context_backend_factory<Interface>(<i>factory-type</i><Interface>)</code>
+
+  1. *Returns*: the previous factory functor for the given `Interface`.
+
+  1. *Effects*: stores the given factory functor for the given `Interface`.
+
+  1. *Remarks*:
+
+      - A C++ program may provide replacements for different instantiations of `set_system_context_backend_factory<Interface>()`, similar to the mechanism defined in \[[replacement.functions](https://eel.is/c++draft/replacement.functions)].
+
+      - If no replacements are provided, for a type `Interface` for which `query_system_context<Interface>()` returns a non-null pointer, the following must hold:
+
+        - calls to `set_system_context_backend_factory<Interface>()` synchronize with calls to `query_system_context<Interface>()`;
+
+        - after a call to `set_system_context_backend_factory<system_scheduler>(f)` for which `f()` produces value `psch`, a subsequent call to `query_system_context<system_scheduler>()` produces value equal to `psch`.
+
+  1. <span class="enote">Calling `set_system_context_backend_factory<system_scheduler>(f)` while a `system_scheduler` object is already in use might produce a different value for `system_scheduler`; this can lead to oversubscription.</span>
+
+    `struct env`
+
+  1. `env` is a type that represents a type-erased receiver environment; the frontend creates objects of this type in an unspecified way; the backend can query this environment for properties that are needed for the execution of the work.
+
+    `optional<P> env::try_query() noexcept`
+
+  1. *Returns*: an optional object that contains the property of type `P` if the environment has such a property, or an empty optional object otherwise.
+
+    `struct system_scheduler`
+
+  1. `system_scheduler` is an interface that the backend implements for the system scheduler.
+
+    `virtual void system_scheduler::schedule(receiver* r, storage s, env e) noexcept = 0`
+
+  1. *Effects*: undefined behavior unless the following are met by implementations:
+  
+    - it schedules new work on a thread belonging to the execution context represented by `this`;
+
+    - if no error occurs, and the work is not cancelled, `r->set_value()` must be called;
+
+    - if an error occurs, `r->set_error()` must be called with an `exception_ptr` object representing the error;
+
+    - if the work is cancelled, `r->set_stopped()` must be called.
+
+      - <span class="enote">The canonical way of cancelling the work is to store a stop token inside object `e`, such as `e.try_query<inplace_stop_token>()` returns a non-empty object for which stop was requested. However, implementations might choose to ignore this stop request (for example, if cancellation is handled on the frontend), or use alternative ways for signaling cancellation.</span>
+
+  1. *Remarks*:
+
+      - Accessing `e` after the call to `schedule` is complete is undefined behavior.
+
+      - The memory of size `s.size` pointed by `s.data` is guaranteed to be valid during the call to `schedule` until any of `set_value()`, `set_error()` or `set_stopped()` methods are called on object `r`.
+
+    `virtual void system_scheduler::bulk_schedule(uint32_t n, bulk_item_receiver* r, storage s, env e) noexcept = 0`
+
+  1. *Effects*: same as for `schedule(r, s, e)`, and in addition:
+
+    - if `r->set_value()` is called, then `r->start(i)` must be called for each `i` in interval [`0`, `n`) such as all calls to `r->start()` *happen-before* the call to `r->set_value()`;
+
+    - if `r->set_error(e)` is called, then `r->start(i)` may be called for values `i` in interval [`0`, `n`) such as all calls to `r->start()` *happen-before* the call to `r->set_error(e)`;
+
+    - if `r->set_stopped()` is called, then `r->start(i)` may be called for values `i` in interval [`0`, `n`) such as all calls to `r->start()` *happen-before* the call to `r->set_stopped()`;
+
+    - all calls to `r->start(i)` need to be made on threads that belong to the execution context represented by `this`.
+
+  1. *Remarks*: same as for `schedule(r, s, e)`.
+
+</div>
