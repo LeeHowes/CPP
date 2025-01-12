@@ -968,24 +968,23 @@ Add the following as a new subsection at the end of 33 \[[exec](https://eel.is/c
 
   1. If `sch` is an object of type `execution::system_scheduler`, then `get_forward_progress_guarantee(sch)` returns `execution::parallel`.
 
-  1. Let `snd` be the object returned by calling `execution::schedule()` on an object of type `system_scheduler`; `snd` has exposition-only type <code><i>impl-defined-system_sender</i></code>. If a receiver `recv` is connected to `snd` and the resulting operation state is started, then:
-    - if `st` is `get_stop_token(get_env(rcvr))`, and stop was requested to `st`, then `recv.set_stopped()` might be called;
-    - if stop was not requested for `recv`, then:
-        - `schedule(r, s, e)` is called on the backend object of the system scheduler;
-        - when the backend calls `r->set_value()`, `recv.set_value()` is called on the frontend object of the system scheduler;
-        - when the backend calls `r->set_error()` with a value `ep`, `recv.set_value(ep)` is called on the frontend object of the system scheduler;
-        - when the backend calls `r->set_done()`, `recv.set_done()` is called on the frontend object of the system scheduler.
+  1. Let `snd` be the object returned by calling `execution::schedule()` on an object of type `system_scheduler`; `snd` has exposition-only type <code><i>impl-defined-system_sender</i></code>.
+    If a receiver `recv` is connected to `snd` and the resulting operation state is started, then `schedule(r, s)` is called on the backend object of the system scheduler, where `r` and `s` are objects created by the frontend such as:
+      - `r` is an object of type `execution::system_context_replaceability::receiver` such as:
+        - when the backend calls `r->set_value()`, the value completion signal is sent to `recv`;
+        - when the backend calls `r->set_error()` with a value `ep`, the error completion signal is sent to `recv`, passing error value `ep`;
+        - when the backend calls `r->set_done()`, the stopped completion signal is sent to `recv`.
+      - `s` is an object of type `execution::system_context_replaceability::storage` that points to a (possibly empty) storage space; if the storage space is not empty it shall be available until `r->set_value()`, `r->set_error()` or `r->set_stopped()` are called.
 
   1. Implementations shall provide customizations for the `execution::bulk()` algorithm \[[exec.bulk](https://eel.is/c++draft/exec.bulk)].
-    Let `snd` be te sender corresponding to the customized call to `execution::bulk(sndr, shape, f)`. If a receiver `recv` is connected to `snd` and the resulting operation state is started, then:
-    - if `st` is `get_stop_token(get_env(rcvr))`, and stop was requested to `st`, then `recv.set_stopped()` might be called;
-    - if stop was not requested for `recv`, then:
-        - `bulk_schedule(n, r, s, e)` is called on the backend object of the system scheduler;
-        - when the backend calls `r->set_value()`, `recv.set_value()` is called on the frontend object of the system scheduler;
-        - when the backend calls `r->set_error()` with a value `ep`, `recv.set_value(ep)` is called on the frontend object of the system scheduler;
-        - when the backend calls `r->set_done()`, `recv.set_done()` is called on the frontend object of the system scheduler;
-        - when the backend calls `r->start()` with a value `i`, `f(i)` is called on the frontend object of the system scheduler.
-  
+    Let `snd` be te sender corresponding to the customized call to `execution::bulk(sndr, shape, f)`. If a receiver `recv` is connected to `snd` and the resulting operation state is started, then `bulk_schedule(n, r, s, e)` is called on the backend object of the system scheduler such as:
+      - `r` is an object of type `execution::system_context_replaceability::bulk_item_receiver` such as:
+        - when the backend calls `r->set_value()`, the value completion signal is sent to `recv`;
+        - when the backend calls `r->set_error()` with a value `ep`, the error completion signal is sent to `recv`, passing error value `ep`;
+        - when the backend calls `r->set_done()`, the stopped completion signal is sent to `recv`;
+        - when the backend calls `r->start()` with an index `i`, `f(i)` is invoked.
+      - `s` is an object of type `execution::system_context_replaceability::storage` that points to a (possibly empty) storage space; if the storage space is not empty it shall be available until `r->set_value()`, `r->set_error()` or `r->set_stopped()` are called.
+
   <span class="ed-note">If [[P3481R1]] gets accepted, the text specifying the customization for `bulk()` should be updated to also reference `bulk_chunked()` and `bulk_unchunked()`.
   If `bulk_chunked()` is customized, the implementations may not provide a customization for `bulk()`.</span>
 
@@ -1033,7 +1032,7 @@ Add the following as a new subsection at the end of 33 \[[exec](https://eel.is/c
 
       - A C++ program may provide replacements for different instantiations of `set_system_context_backend_factory<Interface>()`, similar to the mechanism defined in \[[replacement.functions](https://eel.is/c++draft/replacement.functions)].
 
-      - If no replacements are provided, for a type `Interface` for which `query_system_context<Interface>()` returns a non-null pointer, the following must hold:
+      - If no such replacements are provided for `set_system_context_backend_factory<Interface>()` and also for `query_system_context<Interface>()`, then for a type `Interface` for which `query_system_context<Interface>()` returns a non-null pointer, the following must hold:
 
         - calls to `set_system_context_backend_factory<Interface>()` synchronize with calls to `query_system_context<Interface>()`;
 
@@ -1075,21 +1074,20 @@ Add the following as a new subsection at the end of 33 \[[exec](https://eel.is/c
 
   1. *Remarks*:
 
-      - The memory of size `s.size` pointed by `s.data` is guaranteed to be valid during the call to `schedule` until any of `set_value()`, `set_error()` or `set_stopped()` methods are called on object `r`.
+      - The caller guarantees that, until `r->set_value()`, `r->set_error()` or `r->set_stopped()` are called, the following hold:
+        - the `this` object of the `system_scheduler` instance is valid;
+        - parameter objects `r` and `s` are valid;
+        - the memory of size `s.size` pointed by `s.data` is valid (if `s.size` is not zero).
 
     <br>
     <b>`virtual void system_scheduler::bulk_schedule(uint32_t n, bulk_item_receiver* r, storage s) noexcept = 0`</b>
 
   1. *Effects*: same as for `schedule(r, s, e)`, and in addition:
 
-    - if `r->set_value()` is called, then `r->start(i)` must be called for each `i` in interval [`0`, `n`) such as all calls to `r->start()` *happen-before* the call to `r->set_value()`;
-
-    - if `r->set_error(ep)` is called, then `r->start(i)` may be called for values `i` in interval [`0`, `n`) such as all calls to `r->start()` *happen-before* the call to `r->set_error(ep)`;
-
-    - if `r->set_stopped()` is called, then `r->start(i)` may be called for values `i` in interval [`0`, `n`) such as all calls to `r->start()` *happen-before* the call to `r->set_stopped()`;
-
+    - if `r->start(i)` is called, then `i` must be in interval [`0`, `n`);
+    - if `r->set_value()` is called, then `r->start(i)` must be called for each `i` in interval [`0`, `n`);
+    - all calls to `r->start(i)` *happen-before* the call to either `r->set_value()`, `r->set_error()`, or `r->set_stopped()`;
     - for a given `i`, there should not be more than one call to `r->start(i)`;
-
     - all calls to `r->start(i)` need to be made on threads that belong to the execution context represented by `this`.
 
   1. *Remarks*: same as for `schedule(r, s)`.
