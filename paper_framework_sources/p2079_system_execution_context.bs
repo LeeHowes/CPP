@@ -381,12 +381,10 @@ namespace scr = std::execution::system_context_replaceability;
 
 struct my_system_scheduler_impl : scr::system_scheduler {
 
-  void schedule(scr::receiver* r, scr::storage s, env e)
-      noexcept override {
+  void schedule(scr::receiver* r, scr::storage s) noexcept override {
     r->set_value();
   }
-  void bulk_schedule(uint32_t n, scr::bulk_item_receiver* r,
-      scr::storage s, env e) noexcept override {
+  void bulk_schedule(uint32_t n, scr::bulk_item_receiver* r, scr::storage s) noexcept override {
     for (uint32_t i = 0; i < count; ++i)
       r->start(i);
     r->set_value();
@@ -507,6 +505,12 @@ namespace std::execution::system_context_replaceability {
   struct receiver {
     virtual ~receiver() = default;
 
+  protected:
+    // exposition only
+    virtual bool <i>unspecified-query-env</i>(<i>unspecified-id</i>, void*) noexcept = 0;
+
+  public:
+
     receiver(const receiver&) = delete;
     receiver(receiver&&) = delete;
     receiver& operator=(const receiver&) = delete;
@@ -515,6 +519,9 @@ namespace std::execution::system_context_replaceability {
     virtual void set_value() noexcept = 0;
     virtual void set_error(std::exception_ptr) noexcept = 0;
     virtual void set_stopped() noexcept = 0;
+
+    template &lt;typename P>
+    std::optional&lt;std::decay_t&lt;P>> try_query() noexcept;
   };
 
   struct bulk_item_receiver : receiver {
@@ -526,19 +533,11 @@ namespace std::execution::system_context_replaceability {
     uint32_t size;
   };
 
-  struct env {
-    template &lt;typename P>
-    optional&lt;P> try_query() noexcept;
-
-    // implementation defined construction
-    // implementation defined type-erased storage for the environment
-  };
-
   struct system_scheduler {
     virtual ~system_scheduler() = default;
 
-    virtual void schedule(receiver*, storage, env) noexcept = 0;
-    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage, env) noexcept = 0;
+    virtual void schedule(receiver*, storage) noexcept = 0;
+    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage) noexcept = 0;
   };
 }
 
@@ -559,12 +558,8 @@ namespace std::execution::system_context_replaceability {
     - Note: calling `set_system_context_backend_factory<system_scheduler>(f)` while a `system_scheduler` object is already in use might produce a different value for `system_scheduler`; this can lead to oversubscription.
   - If any of `query_system_context<system_scheduler>()` and `set_system_context_backend_factory<system_scheduler>()` are link-time replaced, the interaction between a link-time replaced implementation and a run-time implementation is unspecified; i.e., calling `query_system_context<system_scheduler>()` might yield a value coming from the link-time replaced implementation, or from the run-time replaced implementation.
  - Note: `receiver`, `bulk_item_receiver`, and `storage` are interfaces that are implemented by the frontend side; only `system_scheduler` is expected to be implemented by a system context implementation.
- - if `e` is an object of type `env`, passed as parameter to either `schedule` or `bulk_schedule` then:
-    - `e` or any copy of it cannot be accessed outside the lifetime of `schedule` or `bulk_schedule` call;
-      - this means that the backend cannot store a copy of `e` inside the operation state to access it later;
-    - Note: frontend will store type-erased environment proerties in `e` object;
-    - Note: backend is able to consume the environment properties stored in `e` object, during the calls to `schedule` and `bulk_schedule`;
-    - if, on the frontend side, the sender obtained from a system scheduler is connected to a receiver that has an environtment for which `get_stop_token` returns an `inplace_stop_token` object, then `e.template try_query<inplace_stop_token>()` returns an optional of a value equal with the stop token from the environment;
+ - `receiver` class provides the backend a way to query environment properties from the frontend receiver object.
+    - if, on the frontend side, the sender obtained from a system scheduler is connected to a receiver that has an environment for which `get_stop_token` returns an `inplace_stop_token` object, then `try_query<inplace_stop_token>()` returns an optional of a value equal with the stop token from the environment;
     - Note: depending on the implementation of the frontend, not all the environment properties may be available to the backend.
  - if `sch` is an object that implements `system_scheduler` interface (and can be returned via `query_system_context`), then the following must be true:
     - the users of `sch` must not destroy the object.
@@ -773,8 +768,9 @@ The first type of extensibility can easily be solved by adding new getters for t
 Different types of schedulers should be able to be replaced separately; e.g., one should be able to replace the I/O scheduler without replacing the system scheduler.
 The discussed replaceability mechanisms support this.
 
-To extend existing schedulers, one can pass properties to it, via a type-erased environment object.
-For example, adding priorities to the system scheduler can be done by adding a priority property to the environment object.
+To extend existing schedulers, one can pass properties to it, via the receiver.
+For example, adding priorities to the system scheduler can be done by adding a priority property to the type-erased receiver object.
+The list of properties that can be passed to the backend is not finite; however both the frontend and the backend must have knolwedge about the supported properties.
 
 ## Shareability ## {#shareability}
 
@@ -841,24 +837,22 @@ The system context is implementation-defined and not exposed to the user.
 
 ## Backend environment ## {#environment}
 For custome backend implementations, it is often necessary access properties of the environment that is connected to the sender that triggers a schedule operation.
-Because the backend is behind a type-erased boundary, the environment type passed to the backend is also type-erased.
+Because the backend is behind a type-erased boundary, the environment that can be passed to the backend also needs to be type-erased.
 
-For this we envision the `env` class that can be queried for properties of the environment, by passing a type to the `try_query` method.
-One of the implication for this is that the exchange of environment properties needs to use concrete types, and cannot use concepts.
+We've added the possibility to encode environement properties in the receiver object.
+The backend can query the receiver for environment properties by using the `try_query` template method, passing the type of the property that needs querying.
+If the property is available, the method returns an optional with the value of the property; otherwise it returns an empty optional.
+
+The backend can query the receiver object for the entire lifetime of the asyncrhonous operation (until one of the completion signals is called).
+
+One of the implication for using types to query properties is that the exchange of environment properties needs to use concrete types, and cannot use concepts.
 If, for example, the backend needs to obtain a stop token, it needs to ask for a specific stop token type (like `inplace_stop_token`), and not for a `stoppable_token` concept.
 As another example, if the backend needs an allocator, it needs to ask for a specific allocator type, and not use `simple-allocator` concept.
 
-At this point, the paper requires that only `inplace_stop_token` is supported by the environment.
+At this point, the paper requires that only `inplace_stop_token` is supported by the type-erased receiver object.
 Other types might be supported, but it is not required.
 
 The authors envision that the list of supported properties will grow over time.
-
-Another aspect that needs to be touched on the current designed on the type-erased environement is the lifetime of such environment.
-The paper mandates that the environment is only accessible during the `schedule` and `bulk_schedule` calls.
-It many not be acessible after the call returns (for example, on a thread that the async operation starts).
-
-Extending the lifetime of the environment would require storing all the frontend parameters (which may not be used by the backend) in the operation state on the frontend side.
-This has a performance cost, that cannot be justified for the common case.
 
 ## Priorities ## {#priorities}
 It's broadly accepted that we need some form of priorities to tweak the behavior of the system context.
@@ -999,9 +993,17 @@ namespace std::execution::system_context_replaceability {
     receiver& operator=(const receiver&) = delete;
     receiver& operator=(receiver&&) = delete;
 
+  protected:
+    // exposition only
+    virtual bool <i>unspecified-query-env</i>(<i>unspecified-id</i>, void*) noexcept = 0;
+
+  public:
     virtual void set_value() noexcept = 0;
     virtual void set_error(std::exception_ptr) noexcept = 0;
     virtual void set_stopped() noexcept = 0;
+
+    template &lt;typename P>
+    std::optional&lt;std::decay_t&lt;P>> try_query() noexcept;
   };
 
   struct bulk_item_receiver : receiver {
@@ -1013,19 +1015,11 @@ namespace std::execution::system_context_replaceability {
     uint32_t size;
   };
 
-  struct env {
-    template &lt;typename P>
-    optional&lt;P> try_query() noexcept;
-
-    // unspecified storage && construction
-  };
-
   struct system_scheduler {
     virtual ~system_scheduler() = default;
 
-    virtual void schedule(receiver*, storage, env) noexcept = 0;
-    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage, env)
-      noexcept = 0;
+    virtual void schedule(receiver*, storage) noexcept = 0;
+    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage) noexcept = 0;
   };
 }
 </pre>
@@ -1091,13 +1085,11 @@ Add the following as a new subsection at the end of 33 \[[exec](https://eel.is/c
 
     - `set_system_context_backend_factory()` allows run-time replaceability of system context backend components.
 
-    - `receiver` represents the type-erased receiveer that will be ntofied about the completion signals of the system scheduler backend; the frontend will provide objects of type `receiver`.
+    - `receiver` represents the type-erased receiver that will be notified about the completion signals of the system scheduler backend; the frontend will provide objects of type `receiver`.
 
     - `bulk_item_receiver` represents the type-erased object that will be notified for different iterations of the *bulk* backend implementation; the frontend will provide objects of type `receiver`.
 
     - `storage` is a type that allows the frontend to pass to the backend information of a preallocated storage in which the operation state of the backend might be stored.
-
-    - `env` is a type that represents a type-erased receiver environment; the backend can query this environment for properties that are needed for the execution of the work.
 
     - `system_scheduler` is the interface that the backend implements for the system scheduler.
 
@@ -1131,19 +1123,20 @@ Add the following as a new subsection at the end of 33 \[[exec](https://eel.is/c
 
   1. <span class="enote">Calling `set_system_context_backend_factory<system_scheduler>(f)` while a `system_scheduler` object is already in use might produce a different value for `system_scheduler`; this can lead to oversubscription.</span>
 
-    `struct env`
+    `std::optional<std::decay_t<P>> receiver::try_query() noexcept`
 
-  1. `env` is a type that represents a type-erased receiver environment; the frontend creates objects of this type in an unspecified way; the backend can query this environment for properties that are needed for the execution of the work.
+  1. *Returns*: an optional object that contains the property of type `P` if the receiver's environment has such a property, or an empty optional object otherwise.
 
-    `optional<P> env::try_query() noexcept`
+    - If, on the frontend side, the sender obtained from a system scheduler is connected to a receiver that has an environment for which `get_stop_token` returns an `inplace_stop_token` object, then `try_query<inplace_stop_token>()` returns an optional of a value equal with the stop token from the environment;
 
-  1. *Returns*: an optional object that contains the property of type `P` if the environment has such a property, or an empty optional object otherwise.
+    - It is unspecified for which properties `P` the method `try_query` returns a non-empty optional object.
+
 
     `struct system_scheduler`
 
   1. `system_scheduler` is an interface that the backend implements for the system scheduler.
 
-    `virtual void system_scheduler::schedule(receiver* r, storage s, env e) noexcept = 0`
+    `virtual void system_scheduler::schedule(receiver* r, storage s) noexcept = 0`
 
   1. *Effects*: undefined behavior unless the following are met by implementations:
   
@@ -1155,26 +1148,24 @@ Add the following as a new subsection at the end of 33 \[[exec](https://eel.is/c
 
     - if the work is cancelled, `r->set_stopped()` must be called.
 
-      - <span class="enote">The canonical way of cancelling the work is to store a stop token inside object `e`, such as `e.try_query<inplace_stop_token>()` returns a non-empty object for which stop was requested. However, implementations might choose to ignore this stop request (for example, if cancellation is handled on the frontend), or use alternative ways for signaling cancellation.</span>
+      - <span class="enote">The canonical way of cancelling the work is to store a stop token inside object `r`, such as `r.try_query<inplace_stop_token>()` returns a non-empty object for which stop was requested. However, implementations might choose to ignore this stop request (for example, if cancellation is handled on the frontend), or use alternative ways for signaling cancellation.</span>
 
   1. *Remarks*:
 
-      - Accessing `e` after the call to `schedule` is complete is undefined behavior.
-
       - The memory of size `s.size` pointed by `s.data` is guaranteed to be valid during the call to `schedule` until any of `set_value()`, `set_error()` or `set_stopped()` methods are called on object `r`.
 
-    `virtual void system_scheduler::bulk_schedule(uint32_t n, bulk_item_receiver* r, storage s, env e) noexcept = 0`
+    `virtual void system_scheduler::bulk_schedule(uint32_t n, bulk_item_receiver* r, storage s) noexcept = 0`
 
   1. *Effects*: same as for `schedule(r, s, e)`, and in addition:
 
     - if `r->set_value()` is called, then `r->start(i)` must be called for each `i` in interval [`0`, `n`) such as all calls to `r->start()` *happen-before* the call to `r->set_value()`;
 
-    - if `r->set_error(e)` is called, then `r->start(i)` may be called for values `i` in interval [`0`, `n`) such as all calls to `r->start()` *happen-before* the call to `r->set_error(e)`;
+    - if `r->set_error(ep)` is called, then `r->start(i)` may be called for values `i` in interval [`0`, `n`) such as all calls to `r->start()` *happen-before* the call to `r->set_error(ep)`;
 
     - if `r->set_stopped()` is called, then `r->start(i)` may be called for values `i` in interval [`0`, `n`) such as all calls to `r->start()` *happen-before* the call to `r->set_stopped()`;
 
     - all calls to `r->start(i)` need to be made on threads that belong to the execution context represented by `this`.
 
-  1. *Remarks*: same as for `schedule(r, s, e)`.
+  1. *Remarks*: same as for `schedule(r, s)`.
 
 </div>
