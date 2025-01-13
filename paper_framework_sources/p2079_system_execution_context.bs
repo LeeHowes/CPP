@@ -78,13 +78,12 @@ div.block-insert pre.highlight {
 - `system_scheduler`'s sender can complete with `set_error`, with a `std::exception_ptr` argument.
 - Remove `system_scheduler query(get_completion_scheduler_t)` overload for `set_stopped_t`.
 - Add `noexcept` to move, copy constructor, move/copy assignment operators (special member functions) of `system_scheduler`.
-- Add Lvalue connect to to system sender class.
+- Add lvalue `connect` to to system sender class.
 - Add `sender_concept`, `completion_signatures` and `get_env` to the definition of the system sender class, making it a sender.
 - Mandate replaceability
 - Define replaceability mechanism (both link-time and runtime)
 - Define replaceability API
 - Add Specification section
-- Minor changes
 
 ## R5 ## {#r5}
 - Streamline the paper
@@ -1182,3 +1181,18 @@ In addition to these polls, LEWG provided the following action items:
 - Strike system_scheudler query(get_completion_scheduler_t) overload.
 - Add Lvalue connectability.
 - Add normative recommendation / non-normative note (if normative - should not be in a note) for sharability in implementations, to be decided later.
+
+<pre class=biblio>
+{
+    "P3481R1": {
+        "authors": ["Lucian Radu Teodorescu",
+                     "Lewis Baker",
+                     "Ruslan Arutyunyan"],
+        "href": "https://wg21.link/P3481R1",
+        "title": "std::execution::bulk() issues",
+        "deliveredBy": [
+            ""
+        ]
+    }
+}
+</pre>
