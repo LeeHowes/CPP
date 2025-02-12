@@ -8,7 +8,7 @@ Editor: Lucian Radu Teodorescu, Garmin, lucteo@lucteo.ro
         Ruslan Arutyunyan, Intel, ruslan.arutyunyan@intel.com
         Lee Howes, lwh@fb.com
         Michael Voss, Intel, michaelj.voss@intel.com
-Audience: SG1, LEWG
+Audience: LEWG
 URL: http://wg21.link/P2079R6
 Abstract: A standard execution context based on the facilities in [[P2300R10]] that implements parallel-forward-progress to
           maximize portability. A set of parallel schedulers have an underlying shared thread pool implementation, and may
@@ -75,6 +75,7 @@ div.block-insert pre.highlight {
 ## R7 ## {#r7}
 - Change the title from "System execution context" to "Parallel scheduler"
 - Incorporate feedback from SG1 Hagenberg, Austria, February 2025 (rename `system_scheduler` to `parallel_scheduler`, drop run-time replaceability)
+- Tweaking the replaceability API to be consistent with [[P3481R1]], now at R2 (support `bulk_chunked` and `bulk_unchunked`)
 
 ## R6 ## {#r6}
 - Incorporate feedback from SG1 and LEWG given in Wrocław, Poland, November 2024.
@@ -297,10 +298,9 @@ std::cout << "Result: " << result << "\n";
 To change the implementation of system scheduler at link-time, one might do it the following way (very simplistic example):
 ```cpp
 namespace std::execution::system_context_replaceability {
-  template <>
   extern __attribute__((__weak__))
-  std::shared_ptr<get_parallel_scheduler> query_system_context<get_parallel_scheduler>() {
-    return std::make_shared<my_get_parallel_scheduler_impl>();
+  std::shared_ptr<parallel_scheduler> query_parallel_scheduler_backend() {
+    return std::make_shared<my_parallel_scheduler_impl>();
   }
 }
 ```
@@ -354,8 +354,9 @@ public:
 </pre>
 
  - `get_parallel_scheduler()` returns a scheduler that provides a view on some underlying execution context supporting *parallel forward progress*, with at least one thread of execution (which may be the main thread).
- - two objects returned by `get_parallel_scheduler()` share the same execution context.
+ - two objects returned by `get_parallel_scheduler()` most frequently share the same execution context.
     If work submitted by one can consume the underlying thread pool, that can block progress of another.
+    One notable exception is when the backend scheduler needs to be re-created.
  - if `Sch` is the type of object returned by `get_parallel_scheduler()`, then:
     - `Sch` is implementation-defined, but must be nameable.
     - `Sch` models the `scheduler` concept.
@@ -386,10 +387,11 @@ public:
 
 <pre highlight="c++">
 namespace std::execution::system_context_replaceability {
+  struct parallel_scheduler;
+
   // Called by the frontend.
-  // Users might replace instantiations.
-  template &lt;<i>class-type</i> Interface> // <i>class-type</i> is defined in [execution.syn]
-  extern shared_ptr&lt;Interface> query_system_context();
+  // Users might replace this function.
+  shared_ptr&lt;parallel_scheduler> query_parallel_scheduler_backend();
 
   // Implemented by the frontend.
   struct receiver {
@@ -410,13 +412,13 @@ namespace std::execution::system_context_replaceability {
     virtual void set_error(std::exception_ptr) noexcept = 0;
     virtual void set_stopped() noexcept = 0;
 
-    template &lt;<i>class-type</i> P>
+    template &lt;<i>class-type</i> P> // <i>class-type</i> is defined in [execution.syn]
     std::optional&lt;P> try_query() noexcept;
   };
 
   // Implemented by the frontend.
   struct bulk_item_receiver : receiver {
-    virtual void start(uint32_t) noexcept = 0;
+    virtual void start(uint32_t start, uint32_t end) noexcept = 0;
   };
 
   struct storage {
@@ -429,7 +431,8 @@ namespace std::execution::system_context_replaceability {
     virtual ~parallel_scheduler() = default;
 
     virtual void schedule(receiver*, storage) noexcept = 0;
-    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage) noexcept = 0;
+    virtual void schedule_bulk_chunked(uint32_t, bulk_item_receiver*, storage) noexcept = 0;
+    virtual void schedule_bulk_unchunked(uint32_t, bulk_item_receiver*, storage) noexcept = 0;
   };
 }
 
@@ -437,16 +440,14 @@ namespace std::execution::system_context_replaceability {
 
  - Note: for the current exposition we call *backend* the part of the application that implements a (possibly custom) system context, and *frontend* the part of the application around `execution::parallel_scheduler` that uses that  (possibly custom) system context.
     The *frontend* part consists of library code that implements the user-facing API to call the interfaces implemented by the backend.
- - `query_system_context` is a function template that returns a shared pointer to an object that implements the `Interface` concept.
-    - `query_system_context` must return a non-null shared pointer for when called for the `parallel_scheduler` interface; it returns the underlying system scheduler implementation that aims to be shared by all user-facing system scheduler objects.
-    - Note: in the future, this mechanism may be used to query different types of system context objects, like I/O schedulers, priority schedulers, time schedulers, main scheduler, etc. It can also be used to query implementation-specific interfaces.
-    - Note: it is expected for users to want to have link-time replacements of various instantiations of `Interface`.
+ - `query_parallel_scheduler_backend` returns a non-null shared pointer to an object that implements the `parallel_scheduler` interface.
+    - Note: it is expected for users to want to have link-time replacements of this function.
  - Note: `receiver` and `bulk_item_receiver` are interfaces that are implemented by the frontend side; only `parallel_scheduler` is expected to be implemented by a system context implementation.
  - `receiver` class provides the backend a way to query environment properties from the frontend receiver object.
     - if, on the frontend side, the sender obtained from a system scheduler is connected to a receiver that has an environment for which `get_stop_token` returns an `inplace_stop_token` object, then `receiver::try_query<inplace_stop_token>()` returns an optional of a value equal with the stop token from the environment;
     - Note: depending on the implementation of the frontend, not all the environment properties may be available to the backend.
 
- - if `sch` is an object that implements `parallel_scheduler` interface (and can be returned via `query_system_context`), then the following must be true:
+ - if `sch` is an object that implements `parallel_scheduler` interface (and can be returned via `query_parallel_scheduler_backend`), then the following must be true:
     - if `sch.schedule()` is called passing `r` of type `receiver*` and `s` of type `storage`, then:
       - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
         - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
@@ -456,7 +457,7 @@ namespace std::execution::system_context_replaceability {
         - the storage represented by `s` must be valid until a completion signal is sent to the `receiver` object `r`.
         - the implementation may use the storage represented by `s` to store data needed for the scheduling operation.
       - Note: if the receiver `r` exposes a property for a stop token, and stop was requested on that stop token, then `set_stopped` may be called, but this is not guaranteed.
-  - if `sch.bulk_schedule()` is called passing `n` of type `uint32_t`, `r` of type  `bulk_item_receiver*` and `s` of type `storage`, then:
+  - if `sch.schedule_bulk_chunked()` is called passing `n` of type `uint32_t`, `r` of type  `bulk_item_receiver*` and `s` of type `storage`, then:
       - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
         - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
         - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
@@ -465,10 +466,11 @@ namespace std::execution::system_context_replaceability {
           - the storage represented by `s` must be valid until the `receiver` object `r` is signaled.
           - the implementation may use the storage represented by `s` to store data needed for the scheduling operation.
       - Note: if the receiver `r` exposes a property for a stop token, and stop was requested on that stop token, then `set_stopped` may be called, but this is not guaranteed.
-      - if `set_value` is called on `r`, then `start` must be called on `r` `n` times, where `n` is the value passed to `bulk_schedule`.
-          - the `start` method is called on `r` to signal the start of the work for the `i`-th item in the bulk operation, where `i` is in the range `[0, n)`.
+      - if `set_value` is called on `r`, then `start` must be called on `r` `n` times, where `n` is the value passed to `schedule_bulk_chunked`.
+          - the `start` method is called on `r` with non-overlapping intervals [`begin`, `end`) to signal the start of the work for the elements in range  [`begin`, `end`), where `0` <= `begin` < `end` <= `n`.
           - the `start` method must be called on a thread belonging to the system execution context.
-          - the `start` method must be called before any methods on `r` is called.
+          - the `start` method must be called before `set_value()` method is called.
+      - `schedule_bulk_unchunked` does the same thing as `schedule_bulk_chunked`, but the calls to `start` are using parameters `(i, i+1)` for `i` in `[0, n)`.
       - if in the process of calling `start` on `r`, the implementation detects that the work cannot be started, then `set_error` must be called on `r` to signal the error; in this case `r` may not get all the expected `n` calls to `start`.
       - if in the process of calling `start` on `r`, the scheduling process is cancelled, then `set_stopped` must be called on `r` to signal the cancellation; in this case `r` may not get all the expected `n` calls to `start`.
 
@@ -861,8 +863,9 @@ namespace std::execution {
 
 // [exec.sysctxrepl]
 namespace std::execution::system_context_replaceability {
-  template &lt;<i>class-type</i> Interface>
-  extern shared_ptr&lt;Interface> query_system_context();
+  struct parallel_scheduler;
+
+  shared_ptr&lt;parallel_scheduler> query_parallel_scheduler_backend();
 
   struct receiver {
     virtual ~receiver() = default;
@@ -886,7 +889,7 @@ namespace std::execution::system_context_replaceability {
   };
 
   struct bulk_item_receiver : receiver {
-    virtual void start(uint32_t) noexcept = 0;
+    virtual void start(uint32_t, uint32_t) noexcept = 0;
   };
 
   struct storage {
@@ -898,7 +901,8 @@ namespace std::execution::system_context_replaceability {
     virtual ~parallel_scheduler() = default;
 
     virtual void schedule(receiver*, storage) noexcept = 0;
-    virtual void bulk_schedule(uint32_t, bulk_item_receiver*, storage) noexcept = 0;
+    virtual void schedule_bulk_chunked(uint32_t, bulk_item_receiver*, storage) noexcept = 0;
+    virtual void schedule_bulk_unchunked(uint32_t, bulk_item_receiver*, storage) noexcept = 0;
   };
 }
 </pre>
@@ -943,17 +947,26 @@ Add the following as a new subsection at the end of 33 [[exec]]:
         - when the backend calls `r->set_done()`, the stopped completion signal is sent to `recv`.
       - `s` is an object of type `execution::system_context_replaceability::storage` that points to a (possibly empty) storage space; if the storage space is not empty it shall be available until `r->set_value()`, `r->set_error()` or `r->set_stopped()` are called.
 
-  1. Implementations shall provide customizations for the `execution::bulk()` algorithm \[exec.bulk].
-    Let `snd` be te sender corresponding to the customized call to `execution::bulk(sndr, shape, f)`. If a receiver `recv` is connected to `snd` and the resulting operation state is started, then `bulk_schedule(n, r, s, e)` is called on the backend object of the system scheduler such as:
+  1. Implementations shall provide customizations for the `execution::bulk_chunked()` algorithm \[exec.bulk].
+    Let `snd` be te sender corresponding to the customized call to `execution::bulk_chunked(sndr, shape, f)`. If a receiver `recv` is connected to `snd` and the resulting operation state is started, then `schedule_bulk_chunked(n, r, s, e)` is called on the backend object of the system scheduler such as:
       - `r` is an object of type `execution::system_context_replaceability::bulk_item_receiver` such as:
         - when the backend calls `r->set_value()`, the value completion signal is sent to `recv`;
         - when the backend calls `r->set_error()` with a value `ep`, the error completion signal is sent to `recv`, passing error value `ep`;
         - when the backend calls `r->set_done()`, the stopped completion signal is sent to `recv`;
-        - when the backend calls `r->start()` with an index `i`, `f(i)` is invoked.
+        - when the backend calls `r->start()` with indices `b` and `e`, then `f(b, e)` is invoked.
       - `s` is an object of type `execution::system_context_replaceability::storage` that points to a (possibly empty) storage space; if the storage space is not empty it shall be available until `r->set_value()`, `r->set_error()` or `r->set_stopped()` are called.
 
-  <span class="ed-note">If [[P3481R1]] gets accepted, the text specifying the customization for `bulk()` should be updated to also reference `bulk_chunked()` and `bulk_unchunked()`.
-  If `bulk_chunked()` is customized, the implementations may not provide a customization for `bulk()`.</span>
+    - <span class="enote">Customizing the behavior of `bulk_chunked` affects the default implementation of `bulk`.</span>
+
+  1. Implementations shall provide customizations for the `execution::bulk_unchunked()` algorithm \[exec.bulk].
+    Let `snd` be te sender corresponding to the customized call to `execution::bulk_unchunked(sndr, shape, f)`. If a receiver `recv` is connected to `snd` and the resulting operation state is started, then `schedule_bulk_unchunked(n, r, s, e)` is called on the backend object of the system scheduler such as:
+      - `r` is an object of type `execution::system_context_replaceability::bulk_item_receiver` such as:
+        - when the backend calls `r->set_value()`, the value completion signal is sent to `recv`;
+        - when the backend calls `r->set_error()` with a value `ep`, the error completion signal is sent to `recv`, passing error value `ep`;
+        - when the backend calls `r->set_done()`, the stopped completion signal is sent to `recv`;
+        - when the backend calls `r->start()` with an index `i`, then `f(i)` is invoked.
+      - `s` is an object of type `execution::system_context_replaceability::storage` that points to a (possibly empty) storage space; if the storage space is not empty it shall be available until `r->set_value()`, `r->set_error()` or `r->set_stopped()` are called.
+
 
   <b>33.N.3 `execution::system_context_replaceability` namespace [exec.sysctxrepl]</b>
 
@@ -975,15 +988,13 @@ Add the following as a new subsection at the end of 33 [[exec]]:
 
 
     <br>
-    <b>`query_system_context<Interface>()`</b>
+    <b>`query_parallel_scheduler_backend()`</b>
 
-  1. *Returns*: a shared pointer to an object that implements the `Interface` type, or a null pointer if the backend does not implement the interface.
+  1. *Returns*: a non-null shared pointer to an object that implements the `parallel_scheduler` interface.
 
   1. *Remarks*:
 
-      - A C++ program may provide replacements for different instantiations of `query_system_context<Interface>()`, similar to the mechanism defined in [replacement.functions].
-
-      - Must return a non-null pointer for the `execution::system_context_replaceability::parallel_scheduler` interface.
+      - A C++ program may provide replacements for `query_parallel_scheduler_backend()`, similar to the mechanism defined in [replacement.functions].
 
 
     <br>
@@ -1026,15 +1037,22 @@ Add the following as a new subsection at the end of 33 [[exec]]:
         - the memory of size `s.size` pointed by `s.data` is valid (if `s.size` is not zero).
 
     <br>
-    <b>`virtual void parallel_scheduler::bulk_schedule(uint32_t n, bulk_item_receiver* r, storage s) noexcept = 0`</b>
+    <b>`virtual void parallel_scheduler::schedule_bulk_chunked(uint32_t n, bulk_item_receiver* r, storage s) noexcept = 0`</b>
 
   1. *Effects*: same as for `schedule(r, s, e)`, and in addition:
 
-    - if `r->start(i)` is called, then `i` must be in interval [`0`, `n`);
-    - if `r->set_value()` is called, then `r->start(i)` must be called for each `i` in interval [`0`, `n`);
-    - all calls to `r->start(i)` *happen-before* the call to either `r->set_value()`, `r->set_error()`, or `r->set_stopped()`;
-    - for a given `i`, there should not be more than one call to `r->start(i)`;
-    - all calls to `r->start(i)` need to be made on threads that belong to the execution context represented by `this`.
+    - if `r->start(b, e)` is called, then `0` <= `b` < `e` <= `n`;
+    - all calls to `r->start(b, e)` are done with disjoint intervals [`b`, `e`);
+    - if `r->set_value()` is called, then for each `i` in [`0`, `n`), there is a call to `r->start(b, e)` such as `b` <= `i` < `e`;
+    - all calls to `r->start()` *happen-before* the call to either `r->set_value()`, `r->set_error()`, or `r->set_stopped()`;
+    - all calls to `r->start()` need to be made on threads that belong to the execution context represented by `this`.
+
+  1. *Remarks*: same as for `schedule(r, s)`.
+
+    <br>
+    <b>`virtual void parallel_scheduler::schedule_bulk_unchunked(uint32_t n, bulk_item_receiver* r, storage s) noexcept = 0`</b>
+
+  1. *Effects*: same as for `schedule_bulk_chunked(r, s, e)`, with the difference that for all calls `r->start(b, e)`, `e == b + 1`.
 
   1. *Remarks*: same as for `schedule(r, s)`.
 
