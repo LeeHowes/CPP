@@ -885,12 +885,12 @@ namespace std::execution::system_context_replaceability {
 </pre>
 </div>
 
-## System context ## {#wording_system_context}
+## Parallel scheduler ## {#wording_parallel_scheduler}
 
 Add the following as a new subsection at the end of 33 [[exec]]:
 
 <div class="block-insert">
-  <b>33.N System context [exec.parallel.scheduler]</b>
+  <b>33.N Parallel scheduler [exec.parallel.scheduler]</b>
 
   1. `parallel_scheduler` is a class type that models the `scheduler` concept.
 
@@ -944,7 +944,7 @@ Add the following as a new subsection at the end of 33 [[exec]]:
       - `s` is an object of type `std::span<std::byte>` that points to a possibly empty storage space; if the storage space is not empty it shall be available until one of `r.set_value()`, `r.set_error()` or `r.set_stopped()` is called.
 
 
-  <b>33.N `execution::system_context_replaceability` namespace [exec.sysctxrepl]</b>
+  <b>33.N Namespace `execution::system_context_replaceability` [exec.sysctxrepl]</b>
 
   1. Facilities in the `execution::system_context_replaceability` namespace allow users to replace the default implementation of parallel scheduler.
 
@@ -959,7 +959,7 @@ Add the following as a new subsection at the end of 33 [[exec]]:
   1. *Remarks*: This function is replaceable ([dcl.fct.def.replace]).
 
 
-  <b>33.N.2 `struct receiver`  [exec.sysctxrepl.receiver]</b>
+  <b>33.N.2 Class `receiver`  [exec.sysctxrepl.receiver]</b>
 
   1. `receiver` represents the type-erased receiver that will be notified by the implementations of `parallel_scheduler_backend` to trigger the completion operations.
     `bulk_item_receiver` is inherited from `receiver` and is used for `bulk_chunked`/`bulk_unchunked` customizations that will also receive notifications from implementations of `parallel_scheduler_backend` corresponding to different iterations.
@@ -975,7 +975,7 @@ Add the following as a new subsection at the end of 33 [[exec]]:
 
 
   <br>
-  <b>33.N.3 `struct parallel_scheduler_backend` [exec.sysctxrepl.psb]</b>
+  <b>33.N.3 Class `parallel_scheduler_backend` [exec.sysctxrepl.psb]</b>
 
   1. `parallel_scheduler_backend` encapsulates the implementation details of the parallel scheduler.
 
