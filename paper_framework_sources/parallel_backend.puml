@@ -1,0 +1,35 @@
+@startuml
+== par case ==
+user -> frontend: bulk_chunked(par, 100, f)
+frontend -> backend: query_parallel_scheduler_backend()
+frontend <-- backend
+frontend -> frontend: create instance `r` of bulk_item_receiver
+frontend -> backend: bulk_schedule(100, r, storage)
+activate backend
+  frontend <- backend: r.try_query<inplace_stop_token>()
+  frontend <- backend: r.start(0, 20)
+  frontend -> frontend: f(0, 20)
+  frontend <- backend: r.start(20, 40)
+  frontend -> frontend: f(20, 40)
+  frontend <- backend: r.start(40, 100)
+  frontend -> frontend: f(40, 100)
+  frontend <- backend: r.set_value()
+deactivate backend
+
+== seq case ==
+
+user -> frontend: bulk_chunked(seq, 100, f)
+frontend -> backend: query_parallel_scheduler_backend()
+frontend <-- backend
+frontend -> frontend: create instance `r` of bulk_item_receiver
+frontend -> backend: bulk_schedule(1, r, storage)
+activate backend
+  frontend <- backend: r.try_query<inplace_stop_token>()
+  frontend <- backend: r.start(0, 1)
+  loop i=0..99
+    frontend -> frontend: f(i, i+1)
+  end
+  frontend <- backend: r.set_value()
+deactivate backend
+
+@enduml
