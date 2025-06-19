@@ -819,6 +819,14 @@ The poll taken in Wrocław, Poland, November 2024, showed that the majority of t
 
 # Specification # {#specification}
 
+## The `std::terminate` function 14.6.2 [except.terminate] ## {#wording_terminate}
+
+To the note 1 paragraph 1 of 14.6.2 [except.terminate], add the following bullet point at the end:
+
+- when `unhandled_stopped` is called on a `with_awaitable_senders<T>` object ([exec.with.awaitable.senders]) whose continuation is not a handle to a coroutine whose promise type has an unhandled_stopped member function<del>.</del><ins>, or</ins>
+- <ins>when `std::execution::get_parallel_scheduler` is called and `std::execution::system_context_replaceability::query_parallel_scheduler_backend()` returns `nullptr` ([exec.parallel.scheduler]).</ins>
+
+
 ##  Header `<version>` synopsis 17.3.2 [version.syn] ## {#wording_version}
 
 To the `<version>` synopsis 17.3.2 [version.syn], add the following:
@@ -849,11 +857,6 @@ namespace std::execution::system_context_replaceability {
 
   struct receiver {
     virtual ~receiver() = default;
-
-    receiver(const receiver&) = delete;
-    receiver(receiver&&) = delete;
-    receiver& operator=(const receiver&) = delete;
-    receiver& operator=(receiver&&) = delete;
 
   protected:
     // exposition only
@@ -892,61 +895,52 @@ Add the following as a new subsection at the end of 33 [[exec]]:
 <div class="block-insert">
   <b>33.N Parallel scheduler [exec.parallel.scheduler]</b>
 
-  1. `parallel_scheduler` is a class type that models the `scheduler` concept.
+  1. `parallel_scheduler` models `scheduler`.
 
-    - <span class="enote">The underlying parallel execution context can be system provided, shared between applications, aiming to avoiding oversubscription.</span>
     - <span class="enote">The intended use for system scheduler is to have the parallel execution context shared between applications.</span>
+
+  1. Let `sch` be an object of type `parallel_scheduler`, and let <i>`BACKEND-OF`</i>`(sch)` be `*ptr`, where `ptr` is associated with `sch`.
+
+  1. The expression `get_forward_progress_guarantee(sch)` returns `forward_progress_guarantee::parallel`.
+
+  1. Let `sch2` be an object of the `parallel_scheduler` type. The two objects `sch` and `sch2` compare equal if and only if <i>`BACKEND-OF`</i>`(sch)` and <i>`BACKEND-OF`</i>`(sch2)` refer to the same object.
+
+  1. Let `b` be an object returned by the <i>`BACKEND-OF`</i>`(sch)` expression, let `snd` be the object returned by calling `schedule(sch)`, and let `rcvr` be a receiver.
+    If `rcvr` is connected to `snd` and the resulting operation state is started, then `b.schedule(r, s)` is called, where:
+      - `r` is an object of a type derived from `system_context_replaceability::receiver` such that:
+        - if `r.set_value()` is called, then `set_value(std::move(rcvr))` is called;
+        - if `r.set_error(e)` is called for an expression `e`, then `set_error(std::move(rcvr), e)` is called;
+        - if `r.set_stopped()` is called, then `set_stopped(std::move(rcvr))` is called.
+      - `s` is an object of type `std::span<std::byte>` that points to a possibly empty storage space; if the storage space is not empty it shall be available until one of `r.set_value()`, `r.set_error(e)` or `r.set_stopped()` is called.
+
+  1. A sender returned from `schedule(sch)` shall provide a customized implementation of the `bulk_chunked` algorithm \[exec.bulk].
+    If a receiver `rcvr` is connected to the sender returned by the `bulk_chunked(snd, pol, shape, f)` expression and the resulting operation state is started, then `b.schedule_bulk_chunked(shape, r, s)` is called, where:
+      - all the behavior discussed above for calling `b.schedule(r, s)` also apply here, and in addition
+      - `r` is an object of a type derived from `system_context_replaceability::bulk_item_receiver` such that:
+        - if `r.execute(i, j)` is called for indices `i` and `j`, then `f(i, j)` is called.
+
+    - <span class="enote">Customizing the behavior of `bulk_chunked` affects the default implementation of `bulk`.</span>
+
+  1. A sender returned from `schedule(sch)` shall provide a customized implementation of the `bulk_unchunked` algorithm \[exec.bulk].
+    If a receiver `rcvr` is connected to the sender returned by the `bulk_unchunked(snd, shape, f)` expression and the resulting operation state is started, then `b.schedule_bulk_unchunked(shape, r, s)` is called, where:
+      - all the behavior discussed above for calling `b.schedule(r, s)` also apply here, and in addition
+      - `r` is an object of a type derived from `system_context_replaceability::bulk_item_receiver` such that:
+        - if `r.execute(i, i + 1)` is called for index `i`, then `f(i)` is called.
+
+  <br>
+  <b>`parallel_scheduler get_parallel_scheduler();`</b>
 
 
   1. `get_parallel_scheduler` returns a scheduler object that represents a parallel execution context that is shared within the application.  
 
-  1. <i>Returns:</i> An instance of the `execution::parallel_scheduler` class type.
-
-  1. <i>Effects:</i>
-    - Calls `execution::system_context_replaceability::query_parallel_scheduler_backend()` to obtain an object of the `execution::system_context_replaceability::parallel_scheduler_backend` type and associates this object with the returned `execution::parallel_scheduler` object.
-    - If the object returned by `execution::system_context_replaceability::query_parallel_scheduler_backend()` is `nullptr`, `terminate()` ([except.terminate]) is called.
-
-  1. <i>Remarks:</i>
-    - If the user does not specify a custom `parallel_scheduler_backend` object (see [exec.sysctxrepl]), a default is provided by the implementation.
-
-  1. Let `sch` be an object of type `execution::parallel_scheduler`, and let <i>`backend-of`</i> be a function such that an expression <i>`backend-of`</i>`(sch)` returns an object of the `execution::system_context_replaceability::parallel_scheduler_backend` type, associated with `sch`.
-  
-  1. The expression `get_forward_progress_guarantee(sch)` returns `execution::parallel`.
-
-  1. Let `sch2` an object of the `execution::parallel_scheduler` type. The two objects `sch` and `sch2` compare equal if and only if <i>`backend-of`</i>`(sch) == `<i>`backend-of`</i>`(sch2)`.
-
-  1. Let `b` be an object returned by the <i>`backend-of`</i>`(sch)` expression, let `snd` be the object returned by calling `execution::schedule(sch)`, and let `rcvr` be a receiver.
-    If `rcvr` is connected to `snd` and the resulting operation state is started, then `b.schedule(r, s)` is called, where `r` and `s` are objects such that:
-      - `r` is an object of a type derived from `execution::system_context_replaceability::receiver` such that:
-        - if `r.set_value()` is called, then `execution::set_value(std::move(rcvr))` is called;
-        - if `r.set_error(e)` is called for an expression `e`, then `execution::set_error(std::move(rcvr), std::move(e))` is called;
-        - if `r.set_stopped()` is called, then `execution::set_stopped(std::move(rcvr))` is called.
-      - `s` is an object of type `std::span<std::byte>` that points to a possibly empty storage space; if the storage space is not empty it shall be available until one of `r.set_value()`, `r.set_error()` or `r.set_stopped()` is called.
-
-  1. A sender returned from `execution::schedule(sch)` shall provide a customized implementation of the `execution::bulk_chunked()` algorithm \[exec.bulk].
-    If a receiver `rcvr` is connected to the sender returned by the `execution::bulk_chunked(snd, pol, shape, f)` expression and the resulting operation state is started, then `b.schedule_bulk_chunked(shape, r, s)` is called, where `r` and `s` are objects such as:
-      - `r` is an object of a type derived from `execution::system_context_replaceability::bulk_item_receiver` such as:
-        - if `r.set_value(args...)` is called, then `execution::set_value(std::move(rcvr), std::move(args)...)` is called;
-        - if `r.set_error(e)` is called for an expression `e`, then `execution::set_error(std::move(rcvr), std::move(e))` is called;
-        - if `r.set_stopped()` is called, then `execution::set_stopped(std::move(rcvr))` is called.
-        - if `r.execute(i, j)` is called for indices `i` and `j`, then `f(i, j)` is called.
-      - `s` is an object of type `std::span<std::byte>` that points to a possibly empty storage space; if the storage space is not empty it shall be available until one of `r.set_value()`, `r.set_error()` or `r.set_stopped()` is called.
-
-    - <span class="enote">Customizing the behavior of `bulk_chunked` affects the default implementation of `bulk`.</span>
-
-  1. A sender returned from `execution::schedule(sch)` shall provide a customized implementation of the `execution::bulk_unchunked()` algorithm \[exec.bulk].
-    If a receiver `rcvr` is connected to the sender returned by the `execution::bulk_unchunked(snd, shape, f)` expression and the resulting operation state is started, then `b.schedule_bulk_unchunked(shape, r, s)` is called, where `r` and `s` are objects such as:
-      - `r` is an object of a type derived from `execution::system_context_replaceability::bulk_item_receiver` such as:
-        - if `r.set_value(args...)` is called, then `execution::set_value(std::move(rcvr), std::move(args)...)` is called;
-        - if `r.set_error(e)` is called for an expression `e`, then `execution::set_error(std::move(rcvr), std::move(e))` is called;
-        - if `r.set_stopped()` is called, then `execution::set_stopped(std::move(rcvr))` is called.
-        - if `r.execute(i, i + 1)` is called for index `i`, then `f(i)` is called.
-      - `s` is an object of type `std::span<std::byte>` that points to a possibly empty storage space; if the storage space is not empty it shall be available until one of `r.set_value()`, `r.set_error()` or `r.set_stopped()` is called.
+  1. <i>Effects:</i> Let `eb` be the result of `system_context_replaceability::query_parallel_scheduler_backend()`.
+    If `eb == nullptr` is `true`, calls terminate() ([except.terminate]).
+    Otherwise returns an `parallel_scheduler` object associated with `eb`.
 
 
-  <b>33.N Namespace `execution::system_context_replaceability` [exec.sysctxrepl]</b>
+  <b>33.N Namespace `system_context_replaceability` [exec.sysctxrepl]</b>
 
-  1. Facilities in the `execution::system_context_replaceability` namespace allow users to replace the default implementation of parallel scheduler.
+  1. Facilities in the `system_context_replaceability` namespace allow users to replace the default implementation of parallel scheduler.
 
   <br>
   <b>33.N.1 `shared_ptr<parallel_scheduler_backend> query_parallel_scheduler_backend();` [exec.sysctxrepl.query]</b>
@@ -1008,7 +1002,7 @@ Add the following as a new subsection at the end of 33 [[exec]]:
 
     - if `r.execute(b, e)` is called, then `0` <= `b` < `e` <= `n`;
     - all calls to `r.execute(b, e)` are done with disjoint intervals [`b`, `e`);
-    - if `r.set_value()` is called, then for each `i` in [`0`, `n`), there is a call to `r.execute(b, e)` such as `b` <= `i` < `e`;
+    - if `r.set_value()` is called, then for each `i` in [`0`, `n`), there is exactly one call to `r.execute(b, e)` such that `i` is in the range `[b, e)`;
     - all calls to `r.execute()` happen before the call to either `r.set_value()`, `r.set_error()`, or `r.set_stopped()`;
     - all calls to `r.execute()` need to be made on threads that belong to the execution context represented by `this`.
 
