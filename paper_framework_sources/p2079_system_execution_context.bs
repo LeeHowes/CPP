@@ -1,15 +1,15 @@
 <pre class='metadata'>
 Title: Parallel scheduler
 Shortname: P2079
-Level: 8
+Level: 9
 Status: P
 Group: wg21
 Editor: Lucian Radu Teodorescu, Garmin, lucteo@lucteo.ro
         Ruslan Arutyunyan, Intel, ruslan.arutyunyan@intel.com
         Lee Howes, lwh@fb.com
         Michael Voss, Intel, michaelj.voss@intel.com
-Audience: LWG
-URL: http://wg21.link/P2079R8
+Audience: LEWG, LWG
+URL: http://wg21.link/P2079R9
 Abstract: A standard execution context based on the facilities in [[P2300R10]] that implements parallel-forward-progress to
           maximize portability. A set of parallel schedulers have an underlying shared thread pool implementation, and may
           provide an interface to an OS-provided system thread pool.
@@ -71,6 +71,12 @@ div.block-insert pre.highlight {
 
 
 # Changes # {#changes}
+
+## R9 ## {#r9}
+- Improve wording
+- Add `Query` parameter to `try_query`.
+- Change `uint32_t` to `size_t` in backend functions.
+- Rename `system_context_replaceability`'s `receiver` class to `receiver_proxy`.
 
 ## R8 ## {#r8}
 - Apply feedback from LEWG meeting in Hagenberg
@@ -369,7 +375,7 @@ public:
     - `Sch` implements `schedule` customization point to return an implementation-defined `sender` type.
     - `schedule` calls on `Sch` are non-blocking operations.
     - `Sch` implements the `bulk` CPO to customize the `bulk` sender adapter such that:
-        - when `execution::set_value(r, args...)` is called on the created `receiver`, an agent is created with parallel forward progress on the
+        - when `execution::set_value(r, args...)` is called on the created `receiver_proxy`, an agent is created with parallel forward progress on the
             underlying system context for each `i` of type `Shape` from `0` to `sh`, where `sh` is the shape parameter to the `bulk` call, that calls `f(i, args...)`.
  - if `sch` is an object returned by `get_parallel_scheduler()`, then:
     - the lifetime of `sch` does not have to outlive work submitted to it.
@@ -379,11 +385,11 @@ public:
     - `Snd` is implementation-defined, but must be nameable.
     - `Snd` models the `sender` concept.
     - `Snd` exposes an environment that implements the `get_completion_scheduler` query for the value completion channel, returning an object that equals to itself.
-    - `connect`ing `snd` to a `receiver` object and calling `start()` on the resulting operation state are non-blocking operations.
-    - if `snd` is connected with a `receiver` that supports the `get_stop_token` query and if that `stop_token` is stopped, operations
+    - `connect`ing `snd` to a `receiver_proxy` object and calling `start()` on the resulting operation state are non-blocking operations.
+    - if `snd` is connected with a `receiver_proxy` that supports the `get_stop_token` query and if that `stop_token` is stopped, operations
         on which `start` has been called, but are not yet running (and are hence not yet guaranteed to make progress) **must**
         complete with `set_stopped` as soon as is practical.
-    - if `snd` is connected with a `receiver`, and the resulting operation is started but the implementation reaches an error condition, the operation must complete with `set_error(ep)`, where `ep` is of type `std::exception_ptr`.
+    - if `snd` is connected with a `receiver_proxy`, and the resulting operation is started but the implementation reaches an error condition, the operation must complete with `set_error(ep)`, where `ep` is of type `std::exception_ptr`.
   - The `bulk` algorithm is customized for the scheduler returned by `get_parallel_scheduler()`
     - the corresponding sender has the same properties as the sender returned by `schedule()`;
     - the functor given to `bulk` is invoked from threads belonging to the system execution context.
@@ -399,31 +405,24 @@ namespace std::execution::system_context_replaceability {
   shared_ptr&lt;parallel_scheduler> query_parallel_scheduler_backend();
 
   // Implemented by the frontend.
-  struct receiver {
-    virtual ~receiver() = default;
+  struct receiver_proxy {
+    virtual ~receiver_proxy() = default;
 
   protected:
-    // exposition only
-    virtual bool <i>query-env</i>(<i>property-id</i>, void*) noexcept = 0;
+    virtual bool <i>query-env</i>(<i>unspecified</i>) noexcept = 0; // <i>exposition only</i>
 
   public:
-
-    receiver(const receiver&) = delete;
-    receiver(receiver&&) = delete;
-    receiver& operator=(const receiver&) = delete;
-    receiver& operator=(receiver&&) = delete;
-
     virtual void set_value() noexcept = 0;
     virtual void set_error(std::exception_ptr) noexcept = 0;
     virtual void set_stopped() noexcept = 0;
 
-    template &lt;<i>class-type</i> P> // <i>class-type</i> is defined in [execution.syn]
-    std::optional&lt;P> try_query() noexcept;
+    template &lt;<i>class-type</i> P, <i>class-type</i> Query>
+    std::optional&lt;P> try_query(Query q) noexcept;
   };
 
   // Implemented by the frontend.
-  struct bulk_item_receiver : receiver {
-    virtual void execute(uint32_t begin, uint32_t end) noexcept = 0;
+  struct bulk_item_receiver_proxy : receiver_proxy {
+    virtual void execute(size_t begin, size_t end) noexcept = 0;
   };
 
   // Implemented by the backend.
@@ -431,8 +430,8 @@ namespace std::execution::system_context_replaceability {
     virtual ~parallel_scheduler_backend() = default;
 
     virtual void schedule(receiver&, std::span&lt;std::byte>) noexcept = 0;
-    virtual void schedule_bulk_chunked(uint32_t, bulk_item_receiver&, std::span&lt;std::byte>) noexcept = 0;
-    virtual void schedule_bulk_unchunked(uint32_t, bulk_item_receiver&, std::span&lt;std::byte>) noexcept = 0;
+    virtual void schedule_bulk_chunked(size_t, bulk_item_receiver_proxy&, std::span&lt;std::byte>) noexcept = 0;
+    virtual void schedule_bulk_unchunked(size_t, bulk_item_receiver_proxy&, std::span&lt;std::byte>) noexcept = 0;
   };
 }
 
@@ -442,9 +441,9 @@ namespace std::execution::system_context_replaceability {
     The *frontend* part consists of library code that implements the user-facing API to call the interfaces implemented by the backend.
  - `query_parallel_scheduler_backend` returns a non-null shared pointer to an object that implements the `parallel_scheduler_backend` interface.
     - Note: it is expected for users to want to have link-time replacements of this function.
- - Note: `receiver` and `bulk_item_receiver` are interfaces that are implemented by the frontend side; only `parallel_scheduler_backend` is expected to be implemented by a system context implementation.
- - `receiver` class provides the backend a way to query environment properties from the frontend receiver object.
-    - if, on the frontend side, the sender obtained from a system scheduler is connected to a receiver that has an environment for which `get_stop_token` returns an `inplace_stop_token` object, then `receiver::try_query<inplace_stop_token>()` returns an optional of a value equal with the stop token from the environment;
+ - Note: `receiver_proxy` and `bulk_item_receiver_proxy` are interfaces that are implemented by the frontend side; only `parallel_scheduler_backend` is expected to be implemented by a system context implementation.
+ - `receiver_proxy` class provides the backend a way to query environment properties from the frontend receiver object.
+    - `try_query<inplace_stop_token, get_stop_token_t>(get_stop_token_t{})` returns a non-null optional if the receiver has an environment for which `get_stop_token` returns an `inplace_stop_token` object.
     - Note: depending on the implementation of the frontend, not all the environment properties may be available to the backend.
 
  - if `sch` is an object that implements `parallel_scheduler_backend` interface (and can be returned via `query_parallel_scheduler_backend`), then the following must be true:
@@ -455,7 +454,7 @@ namespace std::execution::system_context_replaceability {
         - `set_stopped` may be called on `r` to signal that the execution of work is no longer needed;
       - the `std::span<std::byte>` object `s` represents a memory region that can be used by the backend to store data needed for the scheduling operation.
       - Note: if the receiver `r` exposes a property for a stop token, and stop was requested on that stop token, then `set_stopped` may be called, but this is not guaranteed.
-  - if `sch.schedule_bulk_chunked()` is called passing `n` of type `uint32_t`, `r` of type  `bulk_item_receiver*` and `s` of type `std::span<std::byte>`, then:
+  - if `sch.schedule_bulk_chunked()` is called passing `n` of type `size_t`, `r` of type  `bulk_item_receiver_proxy*` and `s` of type `std::span<std::byte>`, then:
       - at least one of `set_value`, `set_error`, or `set_stopped` must be eventually called on `r`;
         - `set_value` is called to signal a successful scheduling of the work; it must be called on a thread belonging to system execution context;
         - if `set_value` cannot be called, then `set_error` must be called to signal the scheduling error;
@@ -851,8 +850,8 @@ namespace std::execution {
 
 // [exec.sysctxrepl]
 namespace std::execution::system_context_replaceability {
-  struct receiver;
-  struct bulk_item_receiver;
+  struct receiver_proxy;
+  struct bulk_item_receiver_proxy;
   struct parallel_scheduler_backend;
 
   shared_ptr&lt;parallel_scheduler_backend> query_parallel_scheduler_backend();
@@ -883,10 +882,10 @@ Add the following as a new subsection at the end of 33 [[exec]]:
   1. A <i>preallocated backend storage for a type-erased proxy</i> `r` is an object `s` of type `std::span<std::byte>` such that the range `s` remains valid and may be overwritten until one of `set_value`, `set_error` or `set_stopped` is called on `r`.
       - <i>Note</i>: The storage referenced by `s` can be used as temporary storage for operations launched via calls to `parallel_scheduler_backend`. <i>]</i> 
 
-  1. A <i>type-erased bulk chunked proxy for</i> `rcvr` <i>with callable</i> `f` <i>and arguments</i> `args` is a type-erased proxy `r` for `rcvr` with base `system_context_replaceability::bulk_item_receiver` such that:
+  1. A <i>type-erased bulk chunked proxy for</i> `rcvr` <i>with callable</i> `f` <i>and arguments</i> `args` is a type-erased proxy `r` for `rcvr` with base `system_context_replaceability::bulk_item_receiver_proxy` such that:
       - `r.execute(i, j)` for indices `i` and `j` has effects equivalent to `f(i, j, args...)`.
 
-  1. A <i>type-erased bulk unchunked proxy for</i> `rcvr` <i>with callable</i> `f` <i>and arguments</i> `args` is a type-erased proxy `r` for `rcvr` with base `system_context_replaceability::bulk_item_receiver` such that:
+  1. A <i>type-erased bulk unchunked proxy for</i> `rcvr` <i>with callable</i> `f` <i>and arguments</i> `args` is a type-erased proxy `r` for `rcvr` with base `system_context_replaceability::bulk_item_receiver_proxy` such that:
       - `r.execute(i, i+1)` for index `i` has effects equivalent to `f(i, args...)`.
 
   1. Let `b` be <i>`BACKEND-OF`</i>`(sch)`, let `sndr` be the object returned by `schedule(sch)`, and let `rcvr` be a receiver.
@@ -938,8 +937,8 @@ Add the following as a new subsection at the end of 33 [[exec]]:
 <div class="block-insert">
 <pre highlight="c++">
 namespace std::execution::system_context_replaceability {
-  struct receiver {
-    virtual ~receiver() = default;
+  struct receiver_proxy {
+    virtual ~receiver_proxy() = default;
 
   protected:
     virtual bool <i>query-env</i>(<i>unspecified</i>) noexcept = 0; // <i>exposition only</i>
@@ -953,15 +952,15 @@ namespace std::execution::system_context_replaceability {
     std::optional&lt;P> try_query(Query q) noexcept;
   };
 
-  struct bulk_item_receiver : receiver {
-    virtual void execute(uint32_t, uint32_t) noexcept = 0;
+  struct bulk_item_receiver_proxy : receiver_proxy {
+    virtual void execute(size_t, size_t) noexcept = 0;
   };
 }
 </pre>
 </div>
 
-  1. `receiver` represents a receiver that will be notified by the implementations of `parallel_scheduler_backend` to trigger the completion operations.
-    `bulk_item_receiver` is derived from `receiver` and is used for `bulk_chunked` and `bulk_unchunked` customizations that will also receive notifications from implementations of `parallel_scheduler_backend` corresponding to different iterations.
+  1. `receiver_proxy` represents a receiver that will be notified by the implementations of `parallel_scheduler_backend` to trigger the completion operations.
+    `bulk_item_receiver_proxy` is derived from `receiver_proxy` and is used for `bulk_chunked` and `bulk_unchunked` customizations that will also receive notifications from implementations of `parallel_scheduler_backend` corresponding to different iterations.
 
     <br>
     <pre highlight="c++">
@@ -990,9 +989,9 @@ namespace std::execution::system_context_replaceability {
     virtual ~parallel_scheduler_backend() = default;
 
     virtual void schedule(receiver&, std::span&lt;std::byte>) noexcept = 0;
-    virtual void schedule_bulk_chunked(uint32_t, bulk_item_receiver&,
+    virtual void schedule_bulk_chunked(size_t, bulk_item_receiver_proxy&,
       std::span&lt;std::byte>) noexcept = 0;
-    virtual void schedule_bulk_unchunked(uint32_t, bulk_item_receiver&,
+    virtual void schedule_bulk_unchunked(size_t, bulk_item_receiver_proxy&,
       std::span&lt;std::byte>) noexcept = 0;
   };
 }
@@ -1024,7 +1023,7 @@ namespace std::execution::system_context_replaceability {
         - if `s.size() > 0` is `true`, the memory pointed by `s.data()` is valid.
 
     <br>
-    <b>`virtual void parallel_scheduler_backend::schedule_bulk_chunked(uint32_t n, bulk_item_receiver& r, std::span<std::byte> s) noexcept = 0;`</b>
+    <b>`virtual void parallel_scheduler_backend::schedule_bulk_chunked(size_t n, bulk_item_receiver_proxy& r, std::span<std::byte> s) noexcept = 0;`</b>
 
   1. *Effects*: same as for `schedule(r, s)`, and in addition:
 
@@ -1036,7 +1035,7 @@ namespace std::execution::system_context_replaceability {
   1. *Remarks*: same as for `schedule(r, s)`.
 
     <br>
-    <b>`virtual void parallel_scheduler_backend::schedule_bulk_unchunked(uint32_t n, bulk_item_receiver& r, std::span<std::byte> s) noexcept = 0;`</b>
+    <b>`virtual void parallel_scheduler_backend::schedule_bulk_unchunked(size_t n, bulk_item_receiver_proxy& r, std::span<std::byte> s) noexcept = 0;`</b>
 
   1. *Effects*: same as for `schedule_bulk_chunked(n, r, s)`, with the difference that for all calls `r.execute(b, e)`, `e == b + 1`.
 
@@ -1162,7 +1161,7 @@ POLL: in P2079R7: rename `system_context_replaceability::parallel_scheduler` to 
     Outcome: No objection to UC (in favor)
 
 
-POLL: in P2079R7: rename `system_context_replaceability::bulk_item_receiver::start(...)` to `system_context_replaceability::bulk_item_receiver::execute(...)`
+POLL: in P2079R7: rename `system_context_replaceability::bulk_item_receiver_proxy::start(...)` to `system_context_replaceability::bulk_item_receiver_proxy::execute(...)`
 
     Outcome: No objection to UC (in favor)
 
