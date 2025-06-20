@@ -429,7 +429,7 @@ namespace std::execution::system_context_replaceability {
   struct parallel_scheduler_backend {
     virtual ~parallel_scheduler_backend() = default;
 
-    virtual void schedule(receiver&, std::span&lt;std::byte>) noexcept = 0;
+    virtual void schedule(receiver_proxy&, std::span&lt;std::byte>) noexcept = 0;
     virtual void schedule_bulk_chunked(size_t, bulk_item_receiver_proxy&, std::span&lt;std::byte>) noexcept = 0;
     virtual void schedule_bulk_unchunked(size_t, bulk_item_receiver_proxy&, std::span&lt;std::byte>) noexcept = 0;
   };
@@ -988,7 +988,7 @@ namespace std::execution::system_context_replaceability {
   struct parallel_scheduler_backend {
     virtual ~parallel_scheduler_backend() = default;
 
-    virtual void schedule(receiver&, std::span&lt;std::byte>) noexcept = 0;
+    virtual void schedule(receiver_proxy&, std::span&lt;std::byte>) noexcept = 0;
     virtual void schedule_bulk_chunked(size_t, bulk_item_receiver_proxy&,
       std::span&lt;std::byte>) noexcept = 0;
     virtual void schedule_bulk_unchunked(size_t, bulk_item_receiver_proxy&,
@@ -1001,7 +1001,7 @@ namespace std::execution::system_context_replaceability {
   1. `parallel_scheduler_backend` encapsulates the implementation details of the parallel scheduler.
 
     <br>
-    <b>`virtual void parallel_scheduler_backend::schedule(receiver& r, std::span<std::byte> s) noexcept = 0;`</b>
+    <b>`virtual void parallel_scheduler_backend::schedule(receiver_proxy& r, std::span<std::byte> s) noexcept = 0;`</b>
 
   1. *Effects*:
   
@@ -1191,6 +1191,30 @@ POLL: Make the modifications above (rename, turn pointers into refs, replace sto
     Author's Position: SF, F, N
 
     Outcome: Consensus in favour
+
+
+## LEWG, Sofia, Bulgaria, 2025 ## {#lewg.bulgaria.2025}
+
+POLL: Apply the changes suggested by LWG for P2079R8 (i.e. 
+    Add query param to `try_query` (probably an oversight), modify:
+    ```
+    template <class-type P>
+    std::optional<P> try_query() noexcept;
+    ```
+    Into:
+    ```
+    template <class-type P, class-type Query>
+    std::optional<P> try_query(Query q) noexcept;
+    ```
+    Modify `uint32_t` into `size_t` across the paper.
+    Rename: `receiver` into `receiver_proxy` and `bulk_item_receiver` into `bulk_item_receiver_proxy`)
+    And send “P2079R9” back to LWG for C++26.
+
+    ```
+    SF | F | N | A | SA
+    10 | 5 | 1 | 0 | 0
+    ```
+
 
 
 <pre class=biblio>
