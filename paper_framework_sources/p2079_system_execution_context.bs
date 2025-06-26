@@ -1,7 +1,7 @@
 <pre class='metadata'>
 Title: Parallel scheduler
 Shortname: P2079
-Level: 9
+Level: 10
 Status: P
 Group: wg21
 Editor: Lucian Radu Teodorescu, Garmin, lucteo@lucteo.ro
@@ -9,7 +9,7 @@ Editor: Lucian Radu Teodorescu, Garmin, lucteo@lucteo.ro
         Lee Howes, lwh@fb.com
         Michael Voss, Intel, michaelj.voss@intel.com
 Audience: LEWG, LWG
-URL: http://wg21.link/P2079R9
+URL: http://wg21.link/P2079R10
 Abstract: A standard execution context based on the facilities in [[P2300R10]] that implements parallel-forward-progress to
           maximize portability. A set of parallel schedulers have an underlying shared thread pool implementation, and may
           provide an interface to an OS-provided system thread pool.
@@ -71,6 +71,9 @@ div.block-insert pre.highlight {
 
 
 # Changes # {#changes}
+
+## R10 ## {#r10}
+- Improve wording
 
 ## R9 ## {#r9}
 - Improve wording
@@ -429,7 +432,7 @@ namespace std::execution::system_context_replaceability {
   struct parallel_scheduler_backend {
     virtual ~parallel_scheduler_backend() = default;
 
-    virtual void schedule(receiver&, std::span&lt;std::byte>) noexcept = 0;
+    virtual void schedule(receiver_proxy&, std::span&lt;std::byte>) noexcept = 0;
     virtual void schedule_bulk_chunked(size_t, bulk_item_receiver_proxy&, std::span&lt;std::byte>) noexcept = 0;
     virtual void schedule_bulk_unchunked(size_t, bulk_item_receiver_proxy&, std::span&lt;std::byte>) noexcept = 0;
   };
@@ -874,40 +877,40 @@ Add the following as a new subsection at the end of 33 [[exec]]:
 
   1. Let `sch2` be an object of type `parallel_scheduler`. Two objects `sch` and `sch2` compare equal if and only if <i>`BACKEND-OF`</i>`(sch)` and <i>`BACKEND-OF`</i>`(sch2)` refer to the same object.
 
-  1. Let `rcvr` be a receiver. A <i>type-erased proxy for</i> `rcvr` <i>with base</i> `B` is an lvalue `r` of type `B` such that:
+  1. Let `rcvr` be a receiver. A <i>proxy for</i> `rcvr` <i>with base</i> `B` is an lvalue `r` of type `B` such that:
       - `r.set_value()` has effects equivalent to `set_value(std::move(rcvr))`
       - `r.set_error(e)`, where `e` is an `exception_ptr` object, has effects equivalent to `set_error(std::move(rcvr), std::move(e))`
       - `r.set_stopped()` has effects equivalent to `set_stopped(std::move(rcvr))`.
 
-  1. A <i>preallocated backend storage for a type-erased proxy</i> `r` is an object `s` of type `std::span<std::byte>` such that the range `s` remains valid and may be overwritten until one of `set_value`, `set_error` or `set_stopped` is called on `r`.
-      - <i>Note</i>: The storage referenced by `s` can be used as temporary storage for operations launched via calls to `parallel_scheduler_backend`. <i>]</i> 
+  1. A <i>preallocated backend storage for a proxy</i> `r` is an object `s` of type `span<byte>` such that the range `s` remains valid and may be overwritten until one of `set_value`, `set_error` or `set_stopped` is called on `r`.
+      - [ <i>Note</i>: The storage referenced by `s` can be used as temporary storage for operations launched via calls to `parallel_scheduler_backend`. ] 
 
-  1. A <i>type-erased bulk chunked proxy for</i> `rcvr` <i>with callable</i> `f` <i>and arguments</i> `args` is a type-erased proxy `r` for `rcvr` with base `system_context_replaceability::bulk_item_receiver_proxy` such that:
+  1. A <i>bulk chunked proxy for</i> `rcvr` <i>with callable</i> `f` <i>and arguments</i> `args` is a proxy `r` for `rcvr` with base `system_context_replaceability::bulk_item_receiver_proxy` such that:
       - `r.execute(i, j)` for indices `i` and `j` has effects equivalent to `f(i, j, args...)`.
 
-  1. A <i>type-erased bulk unchunked proxy for</i> `rcvr` <i>with callable</i> `f` <i>and arguments</i> `args` is a type-erased proxy `r` for `rcvr` with base `system_context_replaceability::bulk_item_receiver_proxy` such that:
+  1. A <i>bulk unchunked proxy for</i> `rcvr` <i>with callable</i> `f` <i>and arguments</i> `args` is a proxy `r` for `rcvr` with base `system_context_replaceability::bulk_item_receiver_proxy` such that:
       - `r.execute(i, i+1)` for index `i` has effects equivalent to `f(i, args...)`.
 
   1. Let `b` be <i>`BACKEND-OF`</i>`(sch)`, let `sndr` be the object returned by `schedule(sch)`, and let `rcvr` be a receiver.
     If `rcvr` is connected to `sndr` and the resulting operation state is started, then:
       - If `sndr` completes successfully, then `b.schedule(r, s)` is called, where:
-        - `r` is a type-erased proxy for `rcvr` with base `system_context_replaceability::receiver`; and
+        - `r` is a proxy for `rcvr` with base `system_context_replaceability::receiver_proxy`; and
         - `s` is a preallocated backend storage for `r`.
     - All other completion operations are forwarded unchanged.
 
-  1. A sender returned from `schedule(sch)` provides a customized implementation of `bulk_chunked` algorithm \[exec.bulk].
+  1. `parallel_scheduler` provides a customized implementation of `bulk_chunked` algorithm \[exec.bulk].
     If a receiver `rcvr` is connected to the sender returned by `bulk_chunked(sndr, pol, shape, f)` and the resulting operation state is started, then:
       - If `sndr` completes with values `vals`, let `args` be a pack of lvalue subexpressions designating `vals`, then `b.schedule_bulk_chunked(shape, r, s)` is called, where:
-        - `r` is a type-erased bulk chunked proxy for `rcvr` with callable `f` and arguments `args`; and
+        - `r` is a bulk chunked proxy for `rcvr` with callable `f` and arguments `args`; and
         - `s` is a preallocated backend storage for `r`.
     - All other completion operations are forwarded unchanged.
 
     - <span class="enote">Customizing the behavior of `bulk_chunked` affects the default implementation of `bulk`.</span>
 
-  1. A sender returned from `schedule(sch)` provides a customized implementation of `bulk_unchunked` algorithm \[exec.bulk].
+  1. `parallel_scheduler` provides a customized implementation of `bulk_unchunked` algorithm \[exec.bulk].
     If a receiver `rcvr` is connected to the sender returned by `bulk_unchunked(sndr, pol, shape, f)` and the resulting operation state is started, then:
       - If `sndr` completes with values `vals`, let `args` be a pack of lvalue subexpressions designating `vals`, then `b.schedule_bulk_unchunked(shape, r, s)` is called, where:
-        - `r` is a type-erased bulk unchunked proxy for `rcvr` with callable `f` and arguments `args`; and
+        - `r` is a bulk unchunked proxy for `rcvr` with callable `f` and arguments `args`; and
         - `s` is a preallocated backend storage for `r`.
     - All other completion operations are forwarded unchanged.
 
@@ -916,7 +919,7 @@ Add the following as a new subsection at the end of 33 [[exec]]:
 
 
   1. <i>Effects:</i> Let `eb` be the result of `system_context_replaceability::query_parallel_scheduler_backend()`.
-    If `eb == nullptr` is `true`, calls terminate() ([except.terminate]).
+    If `eb == nullptr` is `true`, calls `terminate()` ([except.terminate]).
     Otherwise, returns an `parallel_scheduler` object associated with `eb`.
 
 
@@ -945,11 +948,11 @@ namespace std::execution::system_context_replaceability {
 
   public:
     virtual void set_value() noexcept = 0;
-    virtual void set_error(std::exception_ptr) noexcept = 0;
+    virtual void set_error(exception_ptr) noexcept = 0;
     virtual void set_stopped() noexcept = 0;
 
-    template &lt;<i>class-type</i> P, <i>class-type</i> Query>
-    std::optional&lt;P> try_query(Query q) noexcept;
+    template &lt;class P, <i>class-type</i> Query>
+    optional&lt;P> try_query(Query q) noexcept;
   };
 
   struct bulk_item_receiver_proxy : receiver_proxy {
@@ -964,10 +967,11 @@ namespace std::execution::system_context_replaceability {
 
     <br>
     <pre highlight="c++">
-    template &lt;<i>class-type</i> P, <i>class-type</i> Query>
-    std::optional&lt;P> try_query(Query q) noexcept;
+    template &lt;class P, <i>class-type</i> Query>
+    optional&lt;P> try_query(Query q) noexcept;
     </pre>
 
+  1. *Mandates*: `P` is a cv-unqualified non-array object type.
   1. *Returns*: Let `env` be the environment of the receiver represented by `*this`.
       If:
 
@@ -975,7 +979,7 @@ namespace std::execution::system_context_replaceability {
           - `P` is not a member of an implementation-defined set of supported result types for `Query`; or
           - the expression `q(env)` is not well-formed or does not have type <i>`cv`</i> `P`,
 
-      then returns an empty `optional`. Otherwise, returns `q(env)`.
+      then returns `nullopt`. Otherwise, returns `q(env)`.
 
   1. *Remarks*: `get_stop_token_t` is in the implementation-defined set of supported queries, and `inplace_stop_token` is a member of the implementation-defined set of supported result types for `get_stop_token_t`.
 
@@ -988,58 +992,83 @@ namespace std::execution::system_context_replaceability {
   struct parallel_scheduler_backend {
     virtual ~parallel_scheduler_backend() = default;
 
-    virtual void schedule(receiver&, std::span&lt;std::byte>) noexcept = 0;
+    virtual void schedule(receiver_proxy&, span&lt;byte>) noexcept = 0;
     virtual void schedule_bulk_chunked(size_t, bulk_item_receiver_proxy&,
-      std::span&lt;std::byte>) noexcept = 0;
+      span&lt;byte>) noexcept = 0;
     virtual void schedule_bulk_unchunked(size_t, bulk_item_receiver_proxy&,
-      std::span&lt;std::byte>) noexcept = 0;
+      span&lt;byte>) noexcept = 0;
   };
 }
 </pre>
 </div>
 
-  1. `parallel_scheduler_backend` encapsulates the implementation details of the parallel scheduler.
-
     <br>
-    <b>`virtual void parallel_scheduler_backend::schedule(receiver& r, std::span<std::byte> s) noexcept = 0;`</b>
+    <b>`virtual void schedule(receiver_proxy& r, span<byte> s) noexcept = 0;`</b>
 
-  1. *Effects*:
+  1. *Preconditions*:
+
+      - The ends of the lifetimes of `*this`, the object referred to by `r`, and any storage referenced by `s` all happen after the beginning of the evaluation of one of the expressions below.
+
+  1. *Effects*: A derived class shall implement this function such that:
   
-    - eventually, one of the following methods is called on the given object `r`:
+    - One of the following expressions is evaluated:
 
-        - `r.set_value()`, if no error occurs, and the work is not cancelled;
-        - `r.set_error(e)`, if an error occurs, where `e` is an object of the `exception_ptr` type representing an error;
-        - `r.set_stopped()`, if the work is cancelled.
+        - `r.set_value()`, if no error occurs, and the work is successful;
+        - `r.set_error(eptr)`, if an error occurs, where `eptr` is an object of type `exception_ptr`;
+        - `r.set_stopped()`, if the work is canceled.
 
-    - calls to `r.set_value()` happens on a thread belonging to the execution context represented by `this`;
+    - Any call to `r.set_value()` happens on an execution agent of the execution context represented by `*this`.
 
-      - <i>Note</i>: `set_error` and `set_stopped` can be called on the thread on which `schedule` was called, or on a different thread belonging to the execution context represented by `this`.
-
-  1. *Remarks*:
-
-      - The caller must guarantees that, until one of `r.set_value()`, `r.set_error()` or `r.set_stopped()` is called, the following holds:
-        - `this` object of the `parallel_scheduler_backend` instance is valid;
-        - `r` and `s` are valid;
-        - if `s.size() > 0` is `true`, the memory pointed by `s.data()` is valid.
+  1. *Remarks*: The storage referenced by `s` may be used by `*this` as temporary storage for the duration of the operation launched by this call.
 
     <br>
-    <b>`virtual void parallel_scheduler_backend::schedule_bulk_chunked(size_t n, bulk_item_receiver_proxy& r, std::span<std::byte> s) noexcept = 0;`</b>
+    <b>`virtual void schedule_bulk_chunked(size_t n, bulk_item_receiver_proxy& r, span<byte> s) noexcept = 0;`</b>
 
-  1. *Effects*: same as for `schedule(r, s)`, and in addition:
+  1. *Preconditions*:
 
-    - if `r.execute(b, e)` is called, then `b` and `e` are in range `[0, n]` and `b` < `e`;
-    - if `r.set_value()` is called, then for each `i` in [`0`, `n`), there is exactly one call to `r.execute(b, e)` such that `i` is in the range `[b, e)`;
-    - all calls to `r.execute()` happen before the call to either `set_value`, `set_error`, or `set_stopped()` on `r`;
-    - all calls to `r.execute()` need to be made on threads that belong to the execution context represented by `this`.
+      - The ends of the lifetimes of `*this`, the object referred to by `r`, and any storage referenced by `s` all happen after the beginning of the evaluation of one of the expressions below.
 
-  1. *Remarks*: same as for `schedule(r, s)`.
+  1. *Effects*: A derived class shall implement this function such that:
+
+    - Eventually, one of the following expressions is evaluated:
+
+        - `r.set_value()`, if no error occurs, and the work is successful;
+        - `r.set_error(eptr)`, if an error occurs, where `eptr` is an object of type `exception_ptr`;
+        - `r.set_stopped()`, if the work is canceled.
+
+    - If `r.execute(b, e)` is called, then `b` and `e` are in the range `[0, n]` and `b` < `e`.
+    - For each `i` in [`0`, `n`), there is at most one call to `r.execute(b, e)` such that `i` is in the range `[b, e)`.
+    - If `r.set_value()` is called, then for each `i` in [`0`, `n`), there is exactly one call to `r.execute(b, e)` such that `i` is in the range `[b, e)`.
+    - All calls to `execute` on `r` happen before the call to either `set_value`, `set_error`, or `set_stopped` on `r`.
+    - All calls to `execute` and `set_value` on `r` are made on execution agents of the execution context represented by `*this`.
+
+  1. *Remarks*: The storage referenced by `s` may be used by `*this` as temporary storage for the duration of the operation launched by this call.
+
 
     <br>
-    <b>`virtual void parallel_scheduler_backend::schedule_bulk_unchunked(size_t n, bulk_item_receiver_proxy& r, std::span<std::byte> s) noexcept = 0;`</b>
+    <b>`virtual void schedule_bulk_unchunked(size_t n, bulk_item_receiver_proxy& r, span<byte> s) noexcept = 0;`</b>
 
-  1. *Effects*: same as for `schedule_bulk_chunked(n, r, s)`, with the difference that for all calls `r.execute(b, e)`, `e == b + 1`.
+  1. *Preconditions*:
 
-  1. *Remarks*: same as for `schedule(r, s)`.
+      - The ends of the lifetimes of `*this`, the object referred to by `r`, and any storage referenced by `s` all happen after the beginning of the evaluation of one of the expressions below.
+
+  1. *Effects*: A derived class shall implement this function such that:
+
+    - Eventually, one of the following expressions is evaluated:
+
+        - `r.set_value()`, if no error occurs, and the work is successful;
+        - `r.set_error(eptr)`, if an error occurs, where `eptr` is an object of type `exception_ptr`;
+        - `r.set_stopped()`, if the work is canceled.
+
+    - If `r.execute(b, e)` is called, then `b` is in the range `[0, n)` and `e` is equal to `b + 1`.
+    - For each `i` in [`0`, `n`), there is at most one call to `r.execute(i, i + 1)`.
+    - If `r.set_value()` is called, then for each `i` in [`0`, `n`), there is exactly one call to `r.execute(i, i + 1)`.
+    - All calls to `execute` on `r` happen before the call to either `set_value`, `set_error`, or `set_stopped` on `r`.
+    - All calls to `execute` and `set_value` on `r` are made on execution agents of the execution context represented by `*this`.
+
+  1. *Remarks*: The storage referenced by `s` may be used by `*this` as temporary storage for the duration of the operation launched by this call.
+
+
 
 </div>
 
@@ -1191,6 +1220,30 @@ POLL: Make the modifications above (rename, turn pointers into refs, replace sto
     Author's Position: SF, F, N
 
     Outcome: Consensus in favour
+
+
+## LEWG, Sofia, Bulgaria, 2025 ## {#lewg.bulgaria.2025}
+
+POLL: Apply the changes suggested by LWG for P2079R8 (i.e. 
+    Add query param to `try_query` (probably an oversight), modify:
+    ```
+    template <class-type P>
+    std::optional<P> try_query() noexcept;
+    ```
+    Into:
+    ```
+    template <class-type P, class-type Query>
+    std::optional<P> try_query(Query q) noexcept;
+    ```
+    Modify `uint32_t` into `size_t` across the paper.
+    Rename: `receiver` into `receiver_proxy` and `bulk_item_receiver` into `bulk_item_receiver_proxy`)
+    And send “P2079R9” back to LWG for C++26.
+
+    ```
+    SF | F | N | A | SA
+    10 | 5 | 1 | 0 | 0
+    ```
+
 
 
 <pre class=biblio>
